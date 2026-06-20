@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\QuizController;
 use App\Http\Controllers\Api\QuizClassAssignmentController;
 use App\Http\Controllers\Api\QuizAttemptController;
+use App\Http\Controllers\Api\QuizSessionController;
 use App\Http\Controllers\Api\DisciplinaryCaseController;
 use App\Http\Controllers\Api\DisciplinaryRecordController;
 use App\Http\Controllers\Api\HomeworkController;
@@ -57,6 +58,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('quizzes', QuizController::class);
     Route::apiResource('quiz-assignments', QuizClassAssignmentController::class);
     Route::apiResource('quiz-attempts', QuizAttemptController::class);
+
+    Route::prefix('quiz-sessions')->group(function () {
+        Route::post('{quiz}/start', [QuizSessionController::class, 'startSession']);
+        Route::get('{session}', [QuizSessionController::class, 'getSession']);
+        Route::post('{session}/answer', [QuizSessionController::class, 'submitAnswer']);
+        Route::post('{session}/submit', [QuizSessionController::class, 'submitSession']);
+        Route::get('my-attempts', [QuizSessionController::class, 'myAttempts']);
+    });
+
     Route::apiResource('disciplinary-cases', DisciplinaryCaseController::class);
     Route::apiResource('disciplinary-records', DisciplinaryRecordController::class);
     Route::apiResource('homework', HomeworkController::class);
