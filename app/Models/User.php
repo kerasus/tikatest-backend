@@ -17,6 +17,7 @@ class User extends Authenticatable
     protected $fillable = [
         'firstname',
         'lastname',
+        'full_name',
         'email',
         'username',
         'employee_code',
@@ -47,7 +48,6 @@ class User extends Authenticatable
         'mother_job',
         'mother_melli_code',
         'mother_password',
-        'full_name',
     ];
 
     protected $hidden = [
@@ -75,6 +75,11 @@ class User extends Authenticatable
     public function getPermissionsListAttribute(): array
     {
         return $this->getAllPermissions()->pluck('name')->toArray();
+    }
+
+    public function getFullNameAttribute(): string
+    {
+        return trim(($this->firstname ?? '') . ' ' . ($this->lastname ?? ''));
     }
 
     public function scopeRole(Builder $query, string $role): Builder
