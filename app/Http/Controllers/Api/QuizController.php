@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Quiz;
+use App\Models\QuizClassAssignment;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
@@ -160,5 +161,25 @@ class QuizController extends Controller
         }
 
         return $this->jsonResponseOk($assigned);
+    }
+
+    public function availableForStudent(Request $request): JsonResponse
+    {
+        $student = $request->user()->load('studentClassRegistrations');
+        $classIds = $student->studentClassRegistrations->pluck('class_id')->filter()->values();
+
+        $query = Quiz::query()
+            ->where('is_visible', true)
+            ->with(['quizClassAssignments.schoolClass'])
+            ->where(function ($q) use ($classIds) {
+                $q->whereDoesntHave('quizClassAssignments')
+                    ->orWhereHas('quizClassAssignments', function ($assignmentQuery) use ($classIds) {
+                        $assignmentQuery->whereIn('class_id', $classIds);
+                    });
+            })
+            ->orderByDesc('start_time')
+            ->orderByDesc('created_at');
+
+        return $this->jsonResponseOk($query->paginate($request->get('length', 20)));
     }
 }

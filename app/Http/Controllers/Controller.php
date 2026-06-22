@@ -22,6 +22,13 @@ abstract class Controller extends BaseController
         return response()->json($errors, 500);
     }
 
+    protected function jsonResponseError(string $message, int $status = 400, array $extra = []): JsonResponse
+    {
+        return response()->json(array_merge([
+            'message' => $message,
+        ], $extra), $status);
+    }
+
     public function show(Request $request, $id): JsonResponse
     {
         return new JsonResponse(['error' => 'Method not implemented'], 501);

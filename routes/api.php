@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\QuizController;
 use App\Http\Controllers\Api\QuizClassAssignmentController;
 use App\Http\Controllers\Api\QuizAttemptController;
+use App\Http\Controllers\Api\QuizQuestionController;
+use App\Http\Controllers\Api\QuizQuestionOptionController;
 use App\Http\Controllers\Api\QuizSessionController;
 use App\Http\Controllers\Api\DisciplinaryCaseController;
 use App\Http\Controllers\Api\DisciplinaryRecordController;
@@ -58,18 +60,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('grades/bulk', [GradeController::class, 'bulkStore']);
     Route::get('grades/statistics/{lesson_id}/{class_id}', [GradeController::class, 'statistics']);
     Route::post('grades/update-z-scores', [GradeController::class, 'updateZScores']);
+    Route::get('quizzes/{quiz}/results-with-rank', [QuizController::class, 'resultsWithRank']);
+    Route::post('quizzes/{quiz}/participants', [QuizController::class, 'assignParticipants']);
     Route::apiResource('quizzes', QuizController::class);
     Route::apiResource('quiz-assignments', QuizClassAssignmentController::class);
     Route::apiResource('quiz-attempts', QuizAttemptController::class);
+    Route::apiResource('quiz-questions', QuizQuestionController::class);
+    Route::apiResource('quiz-question-options', QuizQuestionOptionController::class);
 
     Route::prefix('quiz-sessions')->group(function () {
+        Route::get('my-attempts', [QuizSessionController::class, 'myAttempts']);
+        Route::post('auto-expire', [QuizSessionController::class, 'autoExpire']);
         Route::post('{quizId}/start', [QuizSessionController::class, 'startSession']);
         Route::get('{sessionId}', [QuizSessionController::class, 'getSession']);
         Route::post('{sessionId}/answer', [QuizSessionController::class, 'submitAnswer']);
         Route::post('{sessionId}/submit', [QuizSessionController::class, 'submitSession']);
         Route::post('{sessionId}/anti-cheat', [QuizSessionController::class, 'reportAntiCheatEvent']);
         Route::get('{sessionId}/anti-cheat-events', [QuizSessionController::class, 'antiCheatEvents']);
-        Route::get('my-attempts', [QuizSessionController::class, 'myAttempts']);
     });
 
     Route::apiResource('disciplinary-cases', DisciplinaryCaseController::class);
@@ -103,8 +110,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('study-sessions/{id}', [StudentController::class, 'destroyStudySession']);
         Route::get('homework', [HomeworkController::class, 'myHomework']);
         Route::get('homework-submissions', [HomeworkSubmissionController::class, 'index']);
+        Route::get('quizzes', [QuizController::class, 'availableForStudent']);
         Route::get('dashboard', [StudentController::class, 'dashboard']);
     });
 
     Route::prefix('exam-management')->group(function () {
-
+        Route::get('quizzes/{quiz}/results', [QuizController::class, 'resultsWithRank']);
+        Route::post('quizzes/{quiz}/participants', [QuizController::class, 'assignParticipants']);
+        Route::post('quiz-sessions/auto-expire', [QuizSessionController::class, 'autoExpire']);
+    });
+});
