@@ -19,6 +19,7 @@ class Lesson extends Model
         'level_id',
         'class_id',
         'coefficient',
+        'is_report_card',
     ];
 
     public function school(): BelongsTo

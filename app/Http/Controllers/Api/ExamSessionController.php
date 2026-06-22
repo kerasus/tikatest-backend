@@ -97,4 +97,40 @@ class ExamSessionController extends Controller
     {
         return $this->commonDestroy($examSession);
     }
+
+    public function bulkStore(Request $request): JsonResponse
+    {
+        $request->validate([
+            'sessions' => 'required|array',
+            'sessions.*.lesson_id' => 'required|exists:lessons,id',
+            'sessions.*.class_id' => 'required|exists:classes,id',
+            'sessions.*.gregorian_date' => 'required|date',
+            'sessions.*.grade_type' => 'required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
+            'sessions.*.persian_date' => 'nullable|string|max:20',
+            'sessions.*.grade_name_for_other_type' => 'nullable|string|max:255',
+            'sessions.*.is_descriptive' => 'boolean',
+            'sessions.*.is_report_card' => 'boolean',
+            'sessions.*.min_grade' => 'nullable|numeric|min:0',
+            'school_id' => 'nullable|exists:schools,id',
+        ]);
+
+        $createdSessions = [];
+        foreach ($request->sessions as $sessionData) {
+            $sessionData['created_by'] = $request->user()->id;
+            $session = ExamSession::create($sessionData);
+            $createdSessions[] = $session;
+        }
+
+        return $this->jsonResponseOk($createdSessions);
+    }
+
+        return $this->jsonResponseOk($createdSessions);
+    }
+
+    public function participants(Request $request, $sessionId): JsonResponse
+    {
+        $session = ExamSession::with(['school', 'lesson', 'schoolClass', 'createdBy', 'grades.student'])->findOrFail($sessionId);
+
+        return $this->jsonResponseOk($session);
+    }
 }

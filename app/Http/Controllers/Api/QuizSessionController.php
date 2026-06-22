@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\QuizSession;
 use App\Models\QuizAttempt;
 use App\Models\Quiz;
+use App\Models\QuizAntiCheatEvent;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
@@ -32,22 +33,68 @@ class QuizSessionController extends Controller
         $attemptNumber = $request->input('attempt_number', 1);
 
         try {
-            $session = QuizSession::where('quiz_id', $quizId)
+            $existingSession = QuizSession::where('quiz_id', $quizId)
                 ->where('student_id', $studentId)
                 ->where('attempt_number', $attemptNumber)
                 ->first();
 
-            if ($session && $session->isActive()) {
-                return $this->jsonResponseError('Session already in progress', 409);
+            if ($existingSession) {
+                if ($existingSession->isActive()) {
+                    $existingSession->load(['quiz.questions.options', 'attempt']);
+                    return $this->jsonResponseOk([
+                        'session' => $existingSession,
+                        'attempt' => $existingSession->attempt,
+                        'remaining_time' => $existingSession->getRemainingTimeInSeconds(),
+                    ]);
+                }
+                if ($existingSession->status === 'submitted' || $existingSession->status === 'graded') {
+                    return $this->jsonResponseError('Quiz already submitted', 409);
+                }
+                if ($existingSession->isExpired()) {
+                    $existingSession->update(['status' => 'expired']);
+                    $attempt = QuizAttempt::where('quiz_id', $quizId)
+                        ->where('student_id', $studentId)
+                        ->where('quiz_session_id', $existingSession->id)
+                        ->latest()
+                        ->first();
+                    if ($attempt && $attempt->answer_status === 'not_sent') {
+                        $attempt->update([
+                            'answer_status' => 'sent',
+                            'is_locked' => true,
+                            'ended_at' => now(),
+                        ]);
+                    }
+                }
             }
+                if ($existingSession->status === 'submitted' || $existingSession->status === 'graded') {
+                    return $this->jsonResponseError('Quiz already submitted', 409);
+                }
+                if ($existingSession->isExpired()) {
+                    $existingSession->update(['status' => 'expired']);
+                    $attempt = QuizAttempt::where('quiz_id', $quizId)
+                        ->where('student_id', $studentId)
+                        ->where('quiz_session_id', $existingSession->id)
+                        ->latest()
+                        ->first();
+                    if ($attempt && $attempt->answer_status === 'not_sent') {
+                        $attempt->update([
+                            'answer_status' => 'sent',
+                            'is_locked' => true,
+                            'ended_at' => now(),
+                        ]);
+                    }
+                }
+            }
+
+            $duration = $this->getQuizDurationInSeconds($quiz);
 
             $sessionData = [
                 'quiz_id' => $quizId,
                 'student_id' => $studentId,
                 'status' => 'in_progress',
                 'session_started_at' => now(),
-                'session_ended_at' => now()->addSeconds($this->getQuizDurationInSeconds($quiz)),
-                'duration_seconds' => $this->getQuizDurationInSeconds($quiz),
+                'session_ended_at' => now()->addSeconds($duration),
+                'duration_seconds' => $duration,
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
                 'attempt_number' => $attemptNumber,
@@ -57,11 +104,14 @@ class QuizSessionController extends Controller
 
             $attempt = QuizAttempt::create([
                 'quiz_id' => $quizId,
+                'quiz_session_id' => $session->id,
                 'student_id' => $studentId,
                 'started_at' => now(),
                 'answer_status' => 'not_sent',
                 'is_locked' => false,
             ]);
+
+            $session->load(['quiz.questions.options']);
 
             return $this->jsonResponseOk([
                 'session' => $session,
@@ -75,7 +125,7 @@ class QuizSessionController extends Controller
 
     public function getSession(int $sessionId): JsonResponse
     {
-        $session = QuizSession::with(['quiz.questions.options'])->findOrFail($sessionId);
+        $session = QuizSession::with(['quiz.questions.options', 'attempt'])->findOrFail($sessionId);
 
         $userId = auth()->id();
         if ($session->student_id !== $userId) {
@@ -167,6 +217,75 @@ class QuizSessionController extends Controller
             ->get();
 
         return $this->jsonResponseOk($attempts);
+    }
+
+    public function antiCheatEvents(Request $request, $sessionId): JsonResponse
+    {
+        $session = QuizSession::findOrFail($sessionId);
+        $userId = auth()->id();
+
+        if ($session->student_id !== $userId) {
+            return $this->jsonResponseError('Unauthorized', 403);
+        }
+
+        $events = QuizAntiCheatEvent::where('quiz_session_id', $sessionId)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return $this->jsonResponseOk($events);
+    }
+
+    public function reportAntiCheatEvent(Request $request, $sessionId): JsonResponse
+    {
+        $session = QuizSession::findOrFail($sessionId);
+        $userId = auth()->id();
+
+        if ($session->student_id !== $userId) {
+            return $this->jsonResponseError('Unauthorized', 403);
+        }
+
+        $request->validate([
+            'event_type' => 'required|string|max:100',
+            'event_data' => 'nullable|array',
+        ]);
+
+        QuizAntiCheatEvent::create([
+            'quiz_session_id' => $sessionId,
+            'student_id' => $userId,
+            'event_type' => $request->event_type,
+            'event_data' => $request->event_data,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return $this->jsonResponseOk(['message' => 'Event reported']);
+    }
+
+    public function autoExpire(Request $request): JsonResponse
+    {
+        $now = now();
+        $expiredSessions = QuizSession::where('status', 'in_progress')
+            ->where('session_ended_at', '<', $now)
+            ->get();
+
+        $count = 0;
+        foreach ($expiredSessions as $session) {
+            $session->update(['status' => 'expired']);
+            $attempt = QuizAttempt::where('quiz_id', $session->quiz_id)
+                ->where('student_id', $session->student_id)
+                ->latest()
+                ->first();
+            if ($attempt && $attempt->answer_status === 'not_sent') {
+                $attempt->update([
+                    'answer_status' => 'sent',
+                    'is_locked' => true,
+                    'ended_at' => now(),
+                ]);
+            }
+            $count++;
+        }
+
+        return $this->jsonResponseOk(['message' => $count . ' sessions expired']);
     }
 
     private function getQuizDurationInSeconds(Quiz $quiz): int

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class QuizSession extends Model
 {
@@ -41,9 +42,9 @@ class QuizSession extends Model
         return $this->belongsTo(User::class, 'student_id');
     }
 
-    public function attempt(): BelongsTo
+    public function attempt(): HasOne
     {
-        return $this->belongsTo(QuizAttempt::class, 'id', 'quiz_session_id');
+        return $this->hasOne(QuizAttempt::class, 'quiz_session_id');
     }
 
     public function isActive(): bool

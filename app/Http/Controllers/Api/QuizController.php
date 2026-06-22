@@ -105,4 +105,60 @@ class QuizController extends Controller
     {
         return $this->commonDestroy($quiz);
     }
+
+    public function resultsWithRank(Request $request, $quizId): JsonResponse
+    {
+        $quiz = Quiz::with(['quizAttempts.student', 'quizClassAssignments.schoolClass'])->findOrFail($quizId);
+        $attempts = $quiz->quizAttempts()
+            ->where('answer_status', 'sent')
+            ->with('student')
+            ->get();
+
+        $ranked = $attempts->map(function ($attempt) {
+            return [
+                'student_id' => $attempt->student_id,
+                'student_name' => $attempt->student->full_name ?? 'Unknown',
+                'percent' => $attempt->percent,
+                'started_at' => $attempt->started_at,
+                'ended_at' => $attempt->ended_at,
+                'answer_status' => $attempt->answer_status,
+            ];
+        })
+            ->sortByDesc('percent')
+            ->values()
+            ->map(function ($item, $index) {
+                $item['rank'] = $index + 1;
+                return $item;
+            });
+
+        return $this->jsonResponseOk([
+            'quiz' => $quiz,
+            'results' => $ranked,
+        ]);
+    }
+
+    public function assignParticipants(Request $request, $quizId): JsonResponse
+    {
+        $request->validate([
+            'class_ids' => 'required|array',
+            'class_ids.*' => 'exists:classes,id',
+        ]);
+
+        $quiz = Quiz::findOrFail($quizId);
+        $assigned = [];
+        foreach ($request->class_ids as $classId) {
+            $exists = QuizClassAssignment::where('quiz_id', $quizId)
+                ->where('class_id', $classId)
+                ->exists();
+            if (!$exists) {
+                $assignment = QuizClassAssignment::create([
+                    'quiz_id' => $quizId,
+                    'class_id' => $classId,
+                ]);
+                $assigned[] = $assignment;
+            }
+        }
+
+        return $this->jsonResponseOk($assigned);
+    }
 }

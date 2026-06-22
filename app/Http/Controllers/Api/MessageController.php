@@ -75,4 +75,55 @@ class MessageController extends Controller
     {
         return $this->commonDestroy($message);
     }
+
+    public function myMessages(Request $request): JsonResponse
+    {
+        $userId = auth()->id();
+
+        $messages = Message::where('receiver_id', $userId)
+            ->orWhere('sender_id', $userId)
+            ->with(['sender', 'receiver'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+
+        return $this->jsonResponseOk($messages);
+    }
+
+    public function sendMessage(Request $request): JsonResponse
+    {
+        $request->validate([
+            'receiver_id' => 'required|exists:users,id',
+            'subject' => 'nullable|string|max:255',
+            'body' => 'required|string',
+            'attachment' => 'nullable|string|max:255',
+        ]);
+
+        $data = $request->all();
+        $data['sender_id'] = auth()->id();
+        $data['sent_at'] = now();
+
+        $message = Message::create($data);
+
+        return $this->jsonResponseOk($message->load(['sender', 'receiver']));
+    }
+
+    public function sentMessages(Request $request): JsonResponse
+    {
+        $messages = Message::where('sender_id', auth()->id())
+            ->with(['sender', 'receiver'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+
+        return $this->jsonResponseOk($messages);
+    }
+
+    public function receivedMessages(Request $request): JsonResponse
+    {
+        $messages = Message::where('receiver_id', auth()->id())
+            ->with(['sender', 'receiver'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+
+        return $this->jsonResponseOk($messages);
+    }
 }

@@ -85,4 +85,54 @@ class DisciplinaryRecordController extends Controller
     {
         return $this->commonDestroy($record);
     }
+
+    public function registerAbsenteeism(Request $request): JsonResponse
+    {
+        $request->validate([
+            'student_ids' => 'required|array',
+            'student_ids.*' => 'exists:users,id',
+            'date' => 'required|date',
+            'description' => 'nullable|string',
+            'case_id' => 'required|exists:disciplinary_cases,id',
+        ]);
+
+        $createdRecords = [];
+        foreach ($request->student_ids as $studentId) {
+            $record = DisciplinaryRecord::create([
+                'student_id' => $studentId,
+                'case_id' => $request->case_id,
+                'incident_date' => $request->date,
+                'description' => $request->description,
+                'recorded_by' => auth()->id(),
+            ]);
+            $createdRecords[] = $record;
+        }
+
+        return $this->jsonResponseOk($createdRecords);
+    }
+
+    public function viewAbsences(Request $request): JsonResponse
+    {
+        $query = DisciplinaryRecord::whereHas('disciplinaryCase', function ($q) {
+            $q->where('name', 'like', '%غیبت%')->orWhere('name', 'like', '%absence%');
+        })->with(['student', 'disciplinaryCase', 'recordedBy']);
+
+        $query->when($request->filled('date_from'), function ($q) use ($request) {
+            $q->where('incident_date', '>=', $request->date_from);
+        });
+
+        $query->when($request->filled('date_to'), function ($q) use ($request) {
+            $q->where('incident_date', '<=', $request->date_to);
+        });
+
+        $query->when($request->filled('class_id'), function ($q) use ($request) {
+            $q->whereHas('student.studentClassRegistrations', function ($subQ) use ($request) {
+                $subQ->where('class_id', $request->class_id);
+            });
+        });
+
+        $records = $query->orderBy('incident_date', 'desc')->paginate(20);
+
+        return $this->jsonResponseOk($records);
+    }
 }

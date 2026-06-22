@@ -89,4 +89,30 @@ class HomeworkController extends Controller
     {
         return $this->commonDestroy($homework);
     }
+
+    public function myHomework(Request $request): JsonResponse
+    {
+        $studentId = auth()->id();
+
+        $homeworks = Homework::whereHas('schoolClass.studentClassRegistrations', function ($q) use ($studentId) {
+            $q->where('student_id', $studentId);
+        })
+            ->with(['lesson', 'schoolClass', 'submissions'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+
+        return $this->jsonResponseOk($homeworks);
+    }
+
+    public function mySubmissions(Request $request): JsonResponse
+    {
+        $studentId = auth()->id();
+
+        $submissions = \App\Models\HomeworkSubmission::where('student_id', $studentId)
+            ->with(['homework.lesson', 'homework.schoolClass'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+
+        return $this->jsonResponseOk($submissions);
+    }
 }

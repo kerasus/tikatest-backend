@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\QuizParticipationToken;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -50,5 +51,31 @@ class AuthController extends Controller
         return response()->json(
             $request->user()->load('roles', 'permissions')
         );
+    }
+
+    public function verifyQuizToken(Request $request): JsonResponse
+    {
+        $request->validate([
+            'token' => 'required|string',
+        ]);
+
+        $token = QuizParticipationToken::where('token', $request->token)
+            ->where('expires_at', '>', now())
+            ->whereNull('used_at')
+            ->with(['quiz', 'student'])
+            ->first();
+
+        if (!$token) {
+            return response()->json(['message' => 'Invalid or expired token'], 404);
+        }
+
+        $token->update(['used_at' => now()]);
+
+        return response()->json([
+            'quiz_id' => $token->quiz_id,
+            'student_id' => $token->student_id,
+            'quiz' => $token->quiz,
+            'student' => $token->student,
+        ]);
     }
 }

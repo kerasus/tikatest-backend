@@ -55,23 +55,56 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('lessons', LessonController::class);
     Route::apiResource('exam-sessions', ExamSessionController::class);
     Route::apiResource('grades', GradeController::class);
+    Route::post('grades/bulk', [GradeController::class, 'bulkStore']);
+    Route::get('grades/statistics/{lesson_id}/{class_id}', [GradeController::class, 'statistics']);
+    Route::post('grades/update-z-scores', [GradeController::class, 'updateZScores']);
     Route::apiResource('quizzes', QuizController::class);
     Route::apiResource('quiz-assignments', QuizClassAssignmentController::class);
     Route::apiResource('quiz-attempts', QuizAttemptController::class);
 
     Route::prefix('quiz-sessions')->group(function () {
-        Route::post('{quiz}/start', [QuizSessionController::class, 'startSession']);
-        Route::get('{session}', [QuizSessionController::class, 'getSession']);
-        Route::post('{session}/answer', [QuizSessionController::class, 'submitAnswer']);
-        Route::post('{session}/submit', [QuizSessionController::class, 'submitSession']);
+        Route::post('{quizId}/start', [QuizSessionController::class, 'startSession']);
+        Route::get('{sessionId}', [QuizSessionController::class, 'getSession']);
+        Route::post('{sessionId}/answer', [QuizSessionController::class, 'submitAnswer']);
+        Route::post('{sessionId}/submit', [QuizSessionController::class, 'submitSession']);
+        Route::post('{sessionId}/anti-cheat', [QuizSessionController::class, 'reportAntiCheatEvent']);
+        Route::get('{sessionId}/anti-cheat-events', [QuizSessionController::class, 'antiCheatEvents']);
         Route::get('my-attempts', [QuizSessionController::class, 'myAttempts']);
     });
 
     Route::apiResource('disciplinary-cases', DisciplinaryCaseController::class);
     Route::apiResource('disciplinary-records', DisciplinaryRecordController::class);
+    Route::post('disciplinary/absenteeism', [DisciplinaryRecordController::class, 'registerAbsenteeism']);
+    Route::get('disciplinary/absences', [DisciplinaryRecordController::class, 'viewAbsences']);
     Route::apiResource('homework', HomeworkController::class);
     Route::apiResource('homework-submissions', HomeworkSubmissionController::class);
     Route::apiResource('messages', MessageController::class);
+    Route::get('messages/sent', [MessageController::class, 'sentMessages']);
+    Route::get('messages/received', [MessageController::class, 'receivedMessages']);
+    Route::get('grades/report/lesson/{lessonId}', [GradeController::class, 'lessonReport']);
+    Route::get('grades/report/multiple-lessons', [GradeController::class, 'multipleLessonsReport']);
+    Route::get('grades/report/student/{studentId}', [GradeController::class, 'studentReport']);
+    Route::get('study-sessions/report/general', [StudentController::class, 'studyHoursGeneralReport']);
+    Route::get('study-sessions/report/student/{studentId}', [StudentController::class, 'studyHoursStudentReport']);
     Route::apiResource('pre-registrations', PreRegistrationController::class)->only(['index', 'store']);
     Route::apiResource('student-class-registrations', StudentClassRegistrationController::class)->except(['update']);
-});
+
+    Route::prefix('student-portal')->group(function () {
+        Route::get('grades', [StudentController::class, 'myGrades']);
+        Route::get('report-card', [StudentController::class, 'myReportCard']);
+        Route::get('absences', [StudentController::class, 'myAbsences']);
+        Route::get('disciplinary', [StudentController::class, 'myDisciplinaryRecords']);
+        Route::get('messages', [MessageController::class, 'myMessages']);
+        Route::post('messages', [MessageController::class, 'sendMessage']);
+        Route::get('study-sessions', [StudentController::class, 'studySessions']);
+        Route::post('study-sessions', [StudentController::class, 'storeStudySession']);
+        Route::get('study-sessions/{id}', [StudentController::class, 'showStudySession']);
+        Route::put('study-sessions/{id}', [StudentController::class, 'updateStudySession']);
+        Route::delete('study-sessions/{id}', [StudentController::class, 'destroyStudySession']);
+        Route::get('homework', [HomeworkController::class, 'myHomework']);
+        Route::get('homework-submissions', [HomeworkSubmissionController::class, 'index']);
+        Route::get('dashboard', [StudentController::class, 'dashboard']);
+    });
+
+    Route::prefix('exam-management')->group(function () {
+
