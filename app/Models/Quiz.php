@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 class Quiz extends Model
 {
@@ -13,30 +14,53 @@ class Quiz extends Model
     protected $fillable = [
         'school_id',
         'name',
-        'correct_answers',
-        'timer',
+        'time_limit',
+        'starts_at',
+        'ends_at',
         'start_time',
         'end_time',
-        'explanation',
+        'description',
         'is_visible',
         'quiz_type',
-        'question_url',
-        'answer_explanation',
-        'false_negative_grading',
-        'questions_text',
-        'answers_text',
-        'picture_id',
+        'content',
+        'solution',
         'show_answer_date',
         'no_score_questions',
     ];
 
+    protected $appends = [
+        'start_time',
+        'end_time',
+    ];
+
     protected $casts = [
         'is_visible' => 'boolean',
-        'false_negative_grading' => 'boolean',
-        'start_time' => 'datetime',
-        'end_time' => 'datetime',
+        'content' => 'array',
+        'solution' => 'array',
+        'starts_at' => 'datetime',
+        'ends_at' => 'datetime',
         'show_answer_date' => 'datetime',
     ];
+
+    public function getStartTimeAttribute(): ?Carbon
+    {
+        return $this->starts_at;
+    }
+
+    public function setStartTimeAttribute($value): void
+    {
+        $this->attributes['starts_at'] = $value;
+    }
+
+    public function getEndTimeAttribute(): ?Carbon
+    {
+        return $this->ends_at;
+    }
+
+    public function setEndTimeAttribute($value): void
+    {
+        $this->attributes['ends_at'] = $value;
+    }
 
     public function quizClassAssignments(): HasMany
     {
@@ -56,5 +80,10 @@ class Quiz extends Model
     public function sessions(): HasMany
     {
         return $this->hasMany(QuizSession::class);
+    }
+
+    public function answerKeys(): HasMany
+    {
+        return $this->hasMany(QuizAnswerKey::class);
     }
 }

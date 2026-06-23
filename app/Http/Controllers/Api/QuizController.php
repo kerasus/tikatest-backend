@@ -50,19 +50,15 @@ class QuizController extends Controller
         $request->validate([
             'school_id' => 'nullable|exists:schools,id',
             'name' => 'required|string|max:255',
-            'correct_answers' => 'required|string',
-            'timer' => 'nullable|date_format:H:i:s',
+            'time_limit' => 'nullable|integer',
             'start_time' => 'nullable|date',
             'end_time' => 'nullable|date',
-            'explanation' => 'nullable|string',
+            'description' => 'nullable|string',
             'is_visible' => 'boolean',
             'quiz_type' => 'nullable|string|max:50',
-            'question_url' => 'nullable|string',
-            'answer_explanation' => 'nullable|string',
-            'false_negative_grading' => 'boolean',
-            'questions_text' => 'nullable|string',
-            'answers_text' => 'nullable|string',
-            'picture_id' => 'nullable|string|max:255',
+            'content' => 'nullable|json',
+            'solution' => 'nullable|json',
+            'solution_file_path' => 'nullable|string|max:255',
             'show_answer_date' => 'nullable|date',
             'no_score_questions' => 'nullable|string',
         ]);
@@ -72,7 +68,7 @@ class QuizController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $quiz = Quiz::with(['quizClassAssignments.schoolClass', 'quizClassAssignments.academicLevel'])->findOrFail($id);
+        $quiz = Quiz::with(['quizClassAssignments.schoolClass', 'quizClassAssignments.academicLevel', 'answerKeys'])->findOrFail($id);
 
         return $this->jsonResponseOk($quiz);
     }
@@ -82,19 +78,15 @@ class QuizController extends Controller
         $request->validate([
             'school_id' => 'nullable|exists:schools,id',
             'name' => 'sometimes|required|string|max:255',
-            'correct_answers' => 'sometimes|required|string',
-            'timer' => 'nullable|date_format:H:i:s',
+            'time_limit' => 'nullable|integer',
             'start_time' => 'nullable|date',
             'end_time' => 'nullable|date',
-            'explanation' => 'nullable|string',
+            'description' => 'nullable|string',
             'is_visible' => 'boolean',
             'quiz_type' => 'nullable|string|max:50',
-            'question_url' => 'nullable|string',
-            'answer_explanation' => 'nullable|string',
-            'false_negative_grading' => 'boolean',
-            'questions_text' => 'nullable|string',
-            'answers_text' => 'nullable|string',
-            'picture_id' => 'nullable|string|max:255',
+            'content' => 'nullable|json',
+            'solution' => 'nullable|json',
+            'solution_file_path' => 'nullable|string|max:255',
             'show_answer_date' => 'nullable|date',
             'no_score_questions' => 'nullable|string',
         ]);
