@@ -12,15 +12,22 @@ class QuizAttemptResponse extends Model
 
     protected $fillable = [
         'quiz_attempt_id',
+        'quiz_question_id',
+        'quiz_question_option_id',
         'user_id',
         'quiz_id',
         'question_number',
         'submitted_option',
+        'answer_text',
         'is_correct',
+        'marks_obtained',
+        'answered_at',
     ];
 
     protected $casts = [
         'is_correct' => 'boolean',
+        'marks_obtained' => 'decimal:2',
+        'answered_at' => 'datetime',
     ];
 
     public function user(): BelongsTo
@@ -36,5 +43,15 @@ class QuizAttemptResponse extends Model
     public function attempt(): BelongsTo
     {
         return $this->belongsTo(QuizAttempt::class, 'quiz_attempt_id');
+    }
+
+    public function question(): BelongsTo
+    {
+        return $this->belongsTo(QuizQuestion::class, 'quiz_question_id');
+    }
+
+    public function selectedOption(): BelongsTo
+    {
+        return $this->belongsTo(QuizQuestionOption::class, 'quiz_question_option_id');
     }
 }

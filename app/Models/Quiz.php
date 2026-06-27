@@ -31,6 +31,7 @@ class Quiz extends Model
     protected $appends = [
         'start_time',
         'end_time',
+        'timer',
     ];
 
     protected $casts = [
@@ -60,6 +61,16 @@ class Quiz extends Model
     public function setEndTimeAttribute($value): void
     {
         $this->attributes['ends_at'] = $value;
+    }
+
+    public function getTimerAttribute(): ?string
+    {
+        if (!$this->time_limit) {
+            return null;
+        }
+        $hours = floor($this->time_limit / 60);
+        $minutes = $this->time_limit % 60;
+        return sprintf('%02d:%02d:00', $hours, $minutes);
     }
 
     public function quizClassAssignments(): HasMany

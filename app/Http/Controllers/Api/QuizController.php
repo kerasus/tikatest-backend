@@ -68,7 +68,13 @@ class QuizController extends Controller
 
     public function show(int $id): JsonResponse
     {
-        $quiz = Quiz::with(['quizClassAssignments.schoolClass', 'quizClassAssignments.academicLevel', 'answerKeys'])->findOrFail($id);
+        $quiz = Quiz::with([
+            'quizClassAssignments.schoolClass',
+            'quizClassAssignments.academicLevel',
+            'answerKeys',
+            'questions.options',
+            'quizAttempts.student'
+        ])->findOrFail($id);
 
         return $this->jsonResponseOk($quiz);
     }

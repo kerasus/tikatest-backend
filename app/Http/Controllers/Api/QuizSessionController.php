@@ -57,6 +57,9 @@ class QuizSessionController extends Controller
                 if ($existingSession) {
                     if ($existingSession->isActive()) {
                         $existingSession->load(['quiz.questions.options', 'attempt']);
+                        $existingSession->quiz->questions->each(function ($question) {
+                            $question->options->makeHidden(['is_correct_answer']);
+                        });
                         return [
                             'session' => $existingSession,
                             'attempt' => $existingSession->attempt,
@@ -118,6 +121,9 @@ class QuizSessionController extends Controller
                 ]);
 
                 $session->load(['quiz.questions.options']);
+                $session->quiz->questions->each(function ($question) {
+                    $question->options->makeHidden(['is_correct_answer']);
+                });
 
                 return [
                     'session' => $session,
@@ -144,6 +150,10 @@ class QuizSessionController extends Controller
         if ($session->student_id !== $userId) {
             return $this->jsonResponseError('Unauthorized', 403);
         }
+
+        $session->quiz->questions->each(function ($question) {
+            $question->options->makeHidden(['is_correct_answer']);
+        });
 
         return $this->jsonResponseOk([
             'session' => $session,
@@ -270,6 +280,16 @@ class QuizSessionController extends Controller
         return $this->jsonResponseOk($attempts);
     }
 
+    public function getQuizAttempts(int $quizId): JsonResponse
+    {
+        $attempts = QuizAttempt::where('quiz_id', $quizId)
+            ->with(['student'])
+            ->orderBy('started_at', 'desc')
+            ->get();
+
+        return $this->jsonResponseOk($attempts);
+    }
+
     public function antiCheatEvents(Request $request, $sessionId): JsonResponse
     {
         $session = QuizSession::findOrFail($sessionId);
@@ -341,8 +361,8 @@ class QuizSessionController extends Controller
 
     private function getQuizDurationInSeconds(Quiz $quiz): int
     {
-        if ($quiz->timer) {
-            return $quiz->timer ? \Carbon\Carbon::parse('00:00:00')->diffInSeconds(\Carbon\Carbon::parse($quiz->timer)) : 3600;
+        if ($quiz->time_limit) {
+            return $quiz->time_limit * 60;
         }
         return 3600;
     }

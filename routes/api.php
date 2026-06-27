@@ -72,6 +72,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('my-attempts', [QuizSessionController::class, 'myAttempts']);
         Route::post('auto-expire', [QuizSessionController::class, 'autoExpire']);
         Route::post('{quizId}/start', [QuizSessionController::class, 'startSession']);
+        Route::get('{quizId}/attempts', [QuizSessionController::class, 'getQuizAttempts']);
         Route::get('{sessionId}', [QuizSessionController::class, 'getSession']);
         Route::post('{sessionId}/answer', [QuizSessionController::class, 'submitAnswer']);
         Route::post('{sessionId}/submit', [QuizSessionController::class, 'submitSession']);
