@@ -52,11 +52,6 @@ class Lesson extends Model
         return $this->hasMany(Grade::class);
     }
 
-    public function quizAttempts(): HasMany
-    {
-        return $this->hasMany(QuizAttempt::class);
-    }
-
     public function homework(): HasMany
     {
         return $this->hasMany(Homework::class);

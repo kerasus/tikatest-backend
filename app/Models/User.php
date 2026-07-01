@@ -97,9 +97,9 @@ class User extends Authenticatable
         return $this->hasMany(Grade::class, 'student_id');
     }
 
-    public function quizAttempts(): HasMany
+    public function quizSessions(): HasMany
     {
-        return $this->hasMany(QuizAttempt::class, 'student_id');
+        return $this->hasMany(QuizSession::class, 'student_id');
     }
 
     public function disciplinaryRecords(): HasMany

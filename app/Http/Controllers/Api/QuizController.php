@@ -5,17 +5,22 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Quiz;
 use App\Models\QuizClassAssignment;
+use App\Services\QuizScoringService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class QuizController extends Controller
 {
     use Filter, CommonCRUD;
 
-    public function __construct()
+    private QuizScoringService $scoringService;
+
+    public function __construct(QuizScoringService $scoringService)
     {
+        $this->scoringService = $scoringService;
         $this->middleware('auth:sanctum');
         $this->middleware('permission:quizzes.view')->only(['index', 'show']);
         $this->middleware('permission:quizzes.create')->only(['store']);
@@ -56,14 +61,40 @@ class QuizController extends Controller
             'description' => 'nullable|string',
             'is_visible' => 'boolean',
             'quiz_type' => 'nullable|string|max:50',
-            'content' => 'nullable|json',
-            'solution' => 'nullable|json',
-            'solution_file_path' => 'nullable|string|max:255',
+            'contentType' => 'nullable|in:text,image,pdf',
+            'contentValue' => 'nullable',
+            'solutionType' => 'nullable|in:text,image,pdf',
+            'solutionValue' => 'nullable',
             'show_answer_date' => 'nullable|date',
             'no_score_questions' => 'nullable|string',
         ]);
 
-        return $this->commonStore($request, Quiz::class);
+        $data = $request->only([
+            'school_id',
+            'name',
+            'time_limit',
+            'start_time',
+            'end_time',
+            'description',
+            'is_visible',
+            'quiz_type',
+            'show_answer_date',
+            'no_score_questions',
+        ]);
+
+        // Handle content
+        if ($request->filled('contentType')) {
+            $data['content'] = $this->buildContentPayload($request->contentType, $request->contentValue);
+        }
+
+        // Handle solution
+        if ($request->filled('solutionType')) {
+            $data['solution'] = $this->buildContentPayload($request->solutionType, $request->solutionValue);
+        }
+
+        $quiz = Quiz::create($data);
+
+        return $this->jsonResponseOk($quiz->load(['quizClassAssignments.schoolClass', 'answerKeys', 'sessions']));
     }
 
     public function show(int $id): JsonResponse
@@ -72,8 +103,7 @@ class QuizController extends Controller
             'quizClassAssignments.schoolClass',
             'quizClassAssignments.academicLevel',
             'answerKeys',
-            'questions.options',
-            'quizAttempts.student'
+            'sessions'
         ])->findOrFail($id);
 
         return $this->jsonResponseOk($quiz);
@@ -90,14 +120,43 @@ class QuizController extends Controller
             'description' => 'nullable|string',
             'is_visible' => 'boolean',
             'quiz_type' => 'nullable|string|max:50',
-            'content' => 'nullable|json',
-            'solution' => 'nullable|json',
-            'solution_file_path' => 'nullable|string|max:255',
+            'contentType' => 'nullable|in:text,image,pdf',
+            'contentValue' => 'nullable',
+            'solutionType' => 'nullable|in:text,image,pdf',
+            'solutionValue' => 'nullable',
             'show_answer_date' => 'nullable|date',
             'no_score_questions' => 'nullable|string',
         ]);
 
-        return $this->commonUpdate($request, $quiz);
+        $data = $request->only([
+            'school_id',
+            'name',
+            'time_limit',
+            'start_time',
+            'end_time',
+            'description',
+            'is_visible',
+            'quiz_type',
+            'show_answer_date',
+            'no_score_questions',
+        ]);
+
+        // Handle content if provided
+        if ($request->has('contentType')) {
+            $data['content'] = $this->buildContentPayload($request->contentType, $request->contentValue);
+        }
+
+        // Handle solution if provided
+        if ($request->has('solutionType')) {
+            $data['solution'] = $this->buildContentPayload($request->solutionType, $request->solutionValue);
+        }
+
+        $quiz->update($data);
+
+        // Recalculate all session percentages after quiz update
+        $this->scoringService->recalculateAllSessions($quiz);
+
+        return $this->show($quiz->id);
     }
 
     public function destroy(Quiz $quiz): JsonResponse
@@ -107,28 +166,9 @@ class QuizController extends Controller
 
     public function resultsWithRank(Request $request, $quizId): JsonResponse
     {
-        $quiz = Quiz::with(['quizAttempts.student', 'quizClassAssignments.schoolClass'])->findOrFail($quizId);
-        $attempts = $quiz->quizAttempts()
-            ->where('answer_status', 'sent')
-            ->with('student')
-            ->get();
+        $quiz = Quiz::with(['sessions', 'quizClassAssignments.schoolClass'])->findOrFail($quizId);
 
-        $ranked = $attempts->map(function ($attempt) {
-            return [
-                'student_id' => $attempt->student_id,
-                'student_name' => $attempt->student->full_name ?? 'Unknown',
-                'percent' => $attempt->percent,
-                'started_at' => $attempt->started_at,
-                'ended_at' => $attempt->ended_at,
-                'answer_status' => $attempt->answer_status,
-            ];
-        })
-            ->sortByDesc('percent')
-            ->values()
-            ->map(function ($item, $index) {
-                $item['rank'] = $index + 1;
-                return $item;
-            });
+        $ranked = $this->scoringService->getRankings($quiz);
 
         return $this->jsonResponseOk([
             'quiz' => $quiz,
@@ -179,5 +219,36 @@ class QuizController extends Controller
             ->orderByDesc('created_at');
 
         return $this->jsonResponseOk($query->paginate($request->get('length', 20)));
+    }
+
+    private function buildContentPayload(string $type, $value): array
+    {
+        if ($type === 'text') {
+            return [
+                'type' => 'text',
+                'body' => $value,
+            ];
+        }
+
+        // For image or pdf - store file if uploaded
+        if ($type === 'image' || $type === 'pdf') {
+            if ($value instanceof \Illuminate\Http\UploadedFile) {
+                $path = $value->store('quiz-content', 'public');
+                return [
+                    'type' => $type,
+                    'path' => $path,
+                ];
+            }
+            // If path already provided
+            return [
+                'type' => $type,
+                'path' => $value,
+            ];
+        }
+
+        return [
+            'type' => $type,
+            'body' => $value,
+        ];
     }
 }

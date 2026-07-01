@@ -14,9 +14,6 @@ use App\Http\Controllers\Api\ExamSessionController;
 use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\QuizController;
 use App\Http\Controllers\Api\QuizClassAssignmentController;
-use App\Http\Controllers\Api\QuizAttemptController;
-use App\Http\Controllers\Api\QuizQuestionController;
-use App\Http\Controllers\Api\QuizQuestionOptionController;
 use App\Http\Controllers\Api\QuizSessionController;
 use App\Http\Controllers\Api\DisciplinaryCaseController;
 use App\Http\Controllers\Api\DisciplinaryRecordController;
@@ -64,20 +61,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('quizzes/{quiz}/participants', [QuizController::class, 'assignParticipants']);
     Route::apiResource('quizzes', QuizController::class);
     Route::apiResource('quiz-assignments', QuizClassAssignmentController::class);
-    Route::apiResource('quiz-attempts', QuizAttemptController::class);
-    Route::apiResource('quiz-questions', QuizQuestionController::class);
-    Route::apiResource('quiz-question-options', QuizQuestionOptionController::class);
 
     Route::prefix('quiz-sessions')->group(function () {
-        Route::get('my-attempts', [QuizSessionController::class, 'myAttempts']);
+        Route::get('my-sessions', [QuizSessionController::class, 'mySessions']);
         Route::post('auto-expire', [QuizSessionController::class, 'autoExpire']);
         Route::post('{quizId}/start', [QuizSessionController::class, 'startSession']);
-        Route::get('{quizId}/attempts', [QuizSessionController::class, 'getQuizAttempts']);
+        Route::get('{quizId}/sessions', [QuizSessionController::class, 'getQuizSessions']);
         Route::get('{sessionId}', [QuizSessionController::class, 'getSession']);
         Route::post('{sessionId}/answer', [QuizSessionController::class, 'submitAnswer']);
         Route::post('{sessionId}/submit', [QuizSessionController::class, 'submitSession']);
-        Route::post('{sessionId}/anti-cheat', [QuizSessionController::class, 'reportAntiCheatEvent']);
-        Route::get('{sessionId}/anti-cheat-events', [QuizSessionController::class, 'antiCheatEvents']);
     });
 
     Route::apiResource('disciplinary-cases', DisciplinaryCaseController::class);

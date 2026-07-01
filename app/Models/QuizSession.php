@@ -5,15 +5,17 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class QuizSession extends Model
 {
     use HasFactory;
 
     protected $fillable = [
+        'school_id',
         'quiz_id',
         'student_id',
+        'lesson_id',
         'status',
         'session_started_at',
         'session_ended_at',
@@ -24,12 +26,18 @@ class QuizSession extends Model
         'user_agent',
         'attempt_number',
         'submission_data',
+        'percent',
+        'answer_status',
+        'is_locked',
     ];
 
     protected $casts = [
         'session_started_at' => 'datetime',
         'session_ended_at' => 'datetime',
         'submitted_at' => 'datetime',
+        'submission_data' => 'array',
+        'is_locked' => 'boolean',
+        'percent' => 'decimal:2',
     ];
 
     public function quiz(): BelongsTo
@@ -42,9 +50,19 @@ class QuizSession extends Model
         return $this->belongsTo(User::class, 'student_id');
     }
 
-    public function attempt(): HasOne
+    public function school(): BelongsTo
     {
-        return $this->hasOne(QuizAttempt::class, 'quiz_session_id');
+        return $this->belongsTo(School::class);
+    }
+
+    public function lesson(): BelongsTo
+    {
+        return $this->belongsTo(Lesson::class);
+    }
+
+    public function responses(): HasMany
+    {
+        return $this->hasMany(QuizSessionResponse::class, 'quiz_session_id');
     }
 
     public function isActive(): bool
@@ -55,10 +73,10 @@ class QuizSession extends Model
 
     public function isExpired(): bool
     {
-        if ($this->session_ended_at === null) {
-            return false;
+        if ($this->status === 'in_progress' && $this->session_ended_at !== null) {
+            return $this->session_ended_at->isPast();
         }
-        return $this->session_ended_at->isPast();
+        return $this->status === 'expired';
     }
 
     public function getRemainingTimeInSeconds(): int
@@ -67,9 +85,22 @@ class QuizSession extends Model
             return 0;
         }
 
-        $elapsed = now()->diffInSeconds($this->session_started_at);
-        $remaining = $this->duration_seconds - $elapsed;
+        if ($this->session_ended_at === null) {
+            return 0;
+        }
+
+        $remaining = now()->diffInSeconds($this->session_ended_at, false);
 
         return max(0, $remaining);
+    }
+
+    public function getTimeUsedInSeconds(): int
+    {
+        if ($this->session_started_at === null) {
+            return 0;
+        }
+
+        $endPoint = $this->submitted_at ?? now();
+        return (int) $this->session_started_at->diffInSeconds($endPoint);
     }
 }

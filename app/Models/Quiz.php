@@ -24,6 +24,7 @@ class Quiz extends Model
         'quiz_type',
         'content',
         'solution',
+        'solution_file_path',
         'show_answer_date',
         'no_score_questions',
     ];
@@ -76,16 +77,6 @@ class Quiz extends Model
     public function quizClassAssignments(): HasMany
     {
         return $this->hasMany(QuizClassAssignment::class);
-    }
-
-    public function quizAttempts(): HasMany
-    {
-        return $this->hasMany(QuizAttempt::class);
-    }
-
-    public function questions(): HasMany
-    {
-        return $this->hasMany(QuizQuestion::class);
     }
 
     public function sessions(): HasMany

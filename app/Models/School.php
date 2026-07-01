@@ -70,11 +70,6 @@ class School extends Model
         return $this->hasMany(QuizClassAssignment::class);
     }
 
-    public function quizAttempts(): HasMany
-    {
-        return $this->hasMany(QuizAttempt::class);
-    }
-
     public function disciplinaryCases(): HasMany
     {
         return $this->hasMany(DisciplinaryCase::class);

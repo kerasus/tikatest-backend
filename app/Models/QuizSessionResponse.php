@@ -6,14 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class QuizAttemptResponse extends Model
+class QuizSessionResponse extends Model
 {
     use HasFactory;
 
+    protected $table = 'quiz_session_responses';
+
     protected $fillable = [
-        'quiz_attempt_id',
-        'quiz_question_id',
-        'quiz_question_option_id',
+        'quiz_session_id',
         'user_id',
         'quiz_id',
         'question_number',
@@ -40,18 +40,8 @@ class QuizAttemptResponse extends Model
         return $this->belongsTo(Quiz::class);
     }
 
-    public function attempt(): BelongsTo
+    public function session(): BelongsTo
     {
-        return $this->belongsTo(QuizAttempt::class, 'quiz_attempt_id');
-    }
-
-    public function question(): BelongsTo
-    {
-        return $this->belongsTo(QuizQuestion::class, 'quiz_question_id');
-    }
-
-    public function selectedOption(): BelongsTo
-    {
-        return $this->belongsTo(QuizQuestionOption::class, 'quiz_question_option_id');
+        return $this->belongsTo(QuizSession::class, 'quiz_session_id');
     }
 }
