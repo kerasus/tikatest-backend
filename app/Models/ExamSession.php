@@ -15,8 +15,7 @@ class ExamSession extends Model
         'school_id',
         'lesson_id',
         'class_id',
-        'gregorian_date',
-        'persian_date',
+        'exam_date',
         'grade_type',
         'grade_name_for_other_type',
         'is_descriptive',
@@ -29,7 +28,7 @@ class ExamSession extends Model
         'is_descriptive' => 'boolean',
         'is_report_card' => 'boolean',
         'min_grade' => 'decimal:2',
-        'gregorian_date' => 'date',
+        'exam_date' => 'date',
     ];
 
     public function school(): BelongsTo
@@ -55,5 +54,21 @@ class ExamSession extends Model
     public function grades(): HasMany
     {
         return $this->hasMany(Grade::class);
+    }
+
+    public function getGradeTypeLabelAttribute(): string
+    {
+        return match($this->grade_type) {
+            'class_quiz' => 'آزمون کلاسی',
+            'monthly_quiz' => 'آزمون ماهانه',
+            'mid_term_1' => 'میان ترم اول',
+            'continuous_1' => 'مستمر اول',
+            'final_1' => 'پایان ترم اول',
+            'mid_term_2' => 'میان ترم دوم',
+            'continuous_2' => 'مستمر دوم',
+            'final_2' => 'پایان ترم دوم',
+            'other' => $this->grade_name_for_other_type ?: 'سایر',
+            default => $this->grade_type,
+        };
     }
 }

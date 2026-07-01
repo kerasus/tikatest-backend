@@ -27,8 +27,7 @@ class Grade extends Model
         'descriptive_value',
         'is_visible',
         'z_score',
-        'gregorian_date',
-        'persian_date',
+        'exam_date',
         'explanation',
     ];
 
@@ -40,7 +39,8 @@ class Grade extends Model
         'calculated_grade' => 'decimal:2',
         'min_grade' => 'decimal:2',
         'z_score' => 'decimal:4',
-        'gregorian_date' => 'date',
+        'descriptive_value' => 'integer',
+        'exam_date' => 'date',
     ];
 
     public function school(): BelongsTo
@@ -66,5 +66,20 @@ class Grade extends Model
     public function schoolClass(): BelongsTo
     {
         return $this->belongsTo(SchoolClass::class, 'class_id');
+    }
+
+    public function getDescriptiveLabelAttribute(): ?string
+    {
+        if (!$this->is_descriptive) {
+            return null;
+        }
+
+        return match($this->descriptive_value) {
+            1 => 'خیلی خوب',
+            2 => 'خوب',
+            3 => 'قابل قبول',
+            4 => 'نیاز به آموزش و تلاش بیشتر',
+            default => null,
+        };
     }
 }

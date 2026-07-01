@@ -17,7 +17,7 @@ class ExamSessionController extends Controller
     {
         $this->middleware('auth:sanctum');
         $this->middleware('permission:exam_sessions.view')->only(['index', 'show']);
-        $this->middleware('permission:exam_sessions.create')->only(['store']);
+        $this->middleware('permission:exam_sessions.create')->only(['store', 'bulkStore']);
         $this->middleware('permission:exam_sessions.update')->only(['update']);
         $this->middleware('permission:exam_sessions.delete')->only(['destroy']);
     }
@@ -55,7 +55,6 @@ class ExamSessionController extends Controller
             'lesson_id' => 'required|exists:lessons,id',
             'class_id' => 'required|exists:classes,id',
             'gregorian_date' => 'required|date',
-            'persian_date' => 'nullable|string|max:20',
             'grade_type' => 'required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
             'grade_name_for_other_type' => 'nullable|string|max:255',
             'is_descriptive' => 'boolean',
@@ -81,7 +80,6 @@ class ExamSessionController extends Controller
             'lesson_id' => 'sometimes|required|exists:lessons,id',
             'class_id' => 'sometimes|required|exists:classes,id',
             'gregorian_date' => 'sometimes|required|date',
-            'persian_date' => 'nullable|string|max:20',
             'grade_type' => 'sometimes|required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
             'grade_name_for_other_type' => 'nullable|string|max:255',
             'is_descriptive' => 'boolean',
@@ -106,7 +104,6 @@ class ExamSessionController extends Controller
             'sessions.*.class_id' => 'required|exists:classes,id',
             'sessions.*.gregorian_date' => 'required|date',
             'sessions.*.grade_type' => 'required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
-            'sessions.*.persian_date' => 'nullable|string|max:20',
             'sessions.*.grade_name_for_other_type' => 'nullable|string|max:255',
             'sessions.*.is_descriptive' => 'boolean',
             'sessions.*.is_report_card' => 'boolean',
@@ -120,9 +117,6 @@ class ExamSessionController extends Controller
             $session = ExamSession::create($sessionData);
             $createdSessions[] = $session;
         }
-
-        return $this->jsonResponseOk($createdSessions);
-    }
 
         return $this->jsonResponseOk($createdSessions);
     }

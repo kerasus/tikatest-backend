@@ -55,6 +55,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('exam-sessions', ExamSessionController::class);
     Route::apiResource('grades', GradeController::class);
     Route::post('grades/bulk', [GradeController::class, 'bulkStore']);
+    Route::post('grades/store-with-session', [GradeController::class, 'createExamSessionWithGrades']);
     Route::get('grades/statistics/{lesson_id}/{class_id}', [GradeController::class, 'statistics']);
     Route::post('grades/update-z-scores', [GradeController::class, 'updateZScores']);
     Route::get('quizzes/{quiz}/results-with-rank', [QuizController::class, 'resultsWithRank']);
@@ -84,6 +85,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('grades/report/lesson/{lessonId}', [GradeController::class, 'lessonReport']);
     Route::get('grades/report/multiple-lessons', [GradeController::class, 'multipleLessonsReport']);
     Route::get('grades/report/student/{studentId}', [GradeController::class, 'studentReport']);
+    Route::get('grades/report/student/{studentId}/report-card', [GradeController::class, 'getStudentReportCard']);
     Route::get('study-sessions/report/general', [StudentController::class, 'studyHoursGeneralReport']);
     Route::get('study-sessions/report/student/{studentId}', [StudentController::class, 'studyHoursStudentReport']);
     Route::apiResource('pre-registrations', PreRegistrationController::class)->only(['index', 'store']);

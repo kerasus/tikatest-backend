@@ -13,8 +13,7 @@ return new class extends Migration
             $table->foreignId('school_id')->nullable()->constrained('schools')->nullOnDelete();
             $table->foreignId('lesson_id')->constrained('lessons')->cascadeOnDelete();
             $table->foreignId('class_id')->constrained('classes')->cascadeOnDelete();
-            $table->date('gregorian_date');
-            $table->string('persian_date', 20)->nullable();
+            $table->date('exam_date');
             $table->enum('grade_type', [
                 'class_quiz',
                 'monthly_quiz',
@@ -33,7 +32,7 @@ return new class extends Migration
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
 
-            $table->index(['lesson_id', 'class_id', 'gregorian_date']);
+            $table->index(['lesson_id', 'class_id', 'exam_date']);
         });
     }
 
