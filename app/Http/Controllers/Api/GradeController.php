@@ -21,7 +21,7 @@ class GradeController extends Controller
     public function __construct()
     {
         $this->gradeService = new GradeService();
-        
+
         $this->middleware('auth:sanctum');
         $this->middleware('permission:grades.view')->only(['index', 'show', 'lessonReport', 'multipleLessonsReport', 'studentReport', 'statistics']);
         $this->middleware('permission:grades.create')->only(['store', 'bulkStore', 'createExamSessionWithGrades']);
@@ -39,7 +39,7 @@ class GradeController extends Controller
                 'is_descriptive',
             ],
             'filterDate' => [
-                'exam_date',
+                'grade_date',
                 'created_at',
             ],
             'filterRelationKeys' => [
@@ -94,19 +94,19 @@ class GradeController extends Controller
             'descriptive_value' => 'nullable|integer|min:1|max:4',
             'is_visible' => 'boolean',
             'z_score' => 'nullable|numeric',
-            'exam_date' => 'required|date',
+            'grade_date' => 'required|date',
             'explanation' => 'nullable|string',
         ]);
 
         $isReportCard = in_array($request->grade_type, ['mid_term_1', 'continuous_1', 'final_1', 'mid_term_2', 'continuous_2', 'final_2']);
-        
+
         $examSession = null;
         if (!$request->filled('exam_session_id')) {
             $examSession = ExamSession::create([
                 'school_id' => $request->school_id,
                 'lesson_id' => $request->lesson_id,
                 'class_id' => $request->class_id,
-                'exam_date' => $request->exam_date,
+                'exam_date' => $request->exam_date ?? $request->grade_date,
                 'grade_type' => $request->grade_type,
                 'grade_name_for_other_type' => $request->grade_name_for_other_type,
                 'is_descriptive' => $request->is_descriptive ?? false,
@@ -147,7 +147,7 @@ class GradeController extends Controller
             'descriptive_value' => 'nullable|integer|min:1|max:4',
             'is_visible' => 'boolean',
             'z_score' => 'nullable|numeric',
-            'exam_date' => 'sometimes|required|date',
+            'grade_date' => 'sometimes|required|date',
             'explanation' => 'nullable|string',
         ]);
 
@@ -205,8 +205,8 @@ class GradeController extends Controller
                     continue;
                 }
 
-                $calculatedGrade = $request->min_grade 
-                    ? round(($rawGrade / $request->min_grade) * 20, 2) 
+                $calculatedGrade = $request->min_grade
+                    ? round(($rawGrade / $request->min_grade) * 20, 2)
                     : $rawGrade;
             }
 
@@ -237,7 +237,7 @@ class GradeController extends Controller
                 'is_report_card' => $isReportCard,
                 'descriptive_value' => $descriptiveValue,
                 'is_visible' => true,
-                'exam_date' => $request->exam_date,
+                'grade_date' => $request->exam_date,
             ]);
 
             $createdGrades[] = $grade;
@@ -287,7 +287,7 @@ class GradeController extends Controller
             'grades.*.class_id' => 'required|exists:classes,id',
             'grades.*.raw_grade' => 'nullable|numeric|min:0',
             'grades.*.grade_type' => 'required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
-            'grades.*.exam_date' => 'required|date',
+            'grades.*.grade_date' => 'required|date',
         ]);
 
         $errors = [];
@@ -331,7 +331,7 @@ class GradeController extends Controller
             'grades.*.descriptive_value' => 'nullable|integer|min:1|max:4',
             'grades.*.is_visible' => 'boolean',
             'grades.*.z_score' => 'nullable|numeric',
-            'grades.*.exam_date' => 'required|date',
+            'grades.*.grade_date' => 'required|date',
             'grades.*.explanation' => 'nullable|string',
         ]);
 
@@ -347,7 +347,7 @@ class GradeController extends Controller
                     'school_id' => $gradeData['school_id'] ?? $request->user()->school_id,
                     'lesson_id' => $gradeData['lesson_id'],
                     'class_id' => $gradeData['class_id'],
-                    'exam_date' => $gradeData['exam_date'],
+                    'exam_date' => $gradeData['exam_date'] ?? $gradeData['grade_date'],
                     'grade_type' => $gradeData['grade_type'],
                     'grade_name_for_other_type' => $gradeData['grade_name_for_other_type'] ?? null,
                     'is_descriptive' => $gradeData['is_descriptive'] ?? false,
@@ -413,13 +413,13 @@ class GradeController extends Controller
             'lesson_id' => 'required|exists:lessons,id',
             'class_id' => 'required|exists:classes,id',
             'grade_type' => 'required|string',
-            'exam_date' => 'required|date',
+            'grade_date' => 'required|date',
         ]);
 
         $grades = Grade::where('lesson_id', $request->lesson_id)
             ->where('class_id', $request->class_id)
             ->where('grade_type', $request->grade_type)
-            ->where('exam_date', $request->exam_date)
+            ->where('grade_date', $request->grade_date)
             ->whereNotNull('calculated_grade')
             ->get();
 
@@ -559,7 +559,7 @@ class GradeController extends Controller
             $query->where('grade_type', $request->grade_type);
         }
 
-        $grades = $query->orderBy('exam_date', 'desc')->get();
+        $grades = $query->orderBy('grade_date', 'desc')->get();
 
         return $this->jsonResponseOk($grades);
     }
@@ -571,7 +571,7 @@ class GradeController extends Controller
             ->where('is_descriptive', false)
             ->whereNull('deleted_at')
             ->with(['lesson', 'examSession'])
-            ->orderBy('exam_date', 'desc');
+            ->orderBy('grade_date', 'desc');
 
         $grades = $query->get();
 

@@ -33,7 +33,7 @@ class GradeService
                 'school_id' => $firstGrade['school_id'] ?? null,
                 'lesson_id' => $lessonId,
                 'class_id' => $classId,
-                'gregorian_date' => $firstGrade['gregorian_date'],
+                'exam_date' => $firstGrade['exam_date'] ?? $firstGrade['grade_date'],
                 'grade_type' => $gradeType,
                 'grade_name_for_other_type' => $gradeNameForOtherType,
                 'is_descriptive' => $firstGrade['is_descriptive'] ?? false,
@@ -157,7 +157,7 @@ class GradeService
             ->where('class_id', $classId)
             ->where('is_report_card', false)
             ->with(['student', 'schoolClass', 'examSession'])
-            ->orderBy('gregorian_date', 'desc')
+            ->orderBy('grade_date', 'desc')
             ->orderBy('created_at', 'desc');
 
         if ($examSessionId) {
@@ -224,7 +224,7 @@ class GradeService
             ->where('is_descriptive', false)
             ->whereNull('deleted_at')
             ->with(['lesson', 'examSession'])
-            ->orderBy('gregorian_date', 'desc')
+            ->orderBy('grade_date', 'desc')
             ->get();
 
         $processedGrades = $grades->map(function ($grade) {

@@ -27,7 +27,7 @@ class Grade extends Model
         'descriptive_value',
         'is_visible',
         'z_score',
-        'exam_date',
+        'grade_date',
         'explanation',
     ];
 
@@ -40,7 +40,7 @@ class Grade extends Model
         'min_grade' => 'decimal:2',
         'z_score' => 'decimal:4',
         'descriptive_value' => 'integer',
-        'exam_date' => 'date',
+        'grade_date' => 'date',
     ];
 
     public function school(): BelongsTo

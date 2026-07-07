@@ -35,12 +35,12 @@ return new class extends Migration
             $table->integer('descriptive_value')->nullable();
             $table->boolean('is_visible')->default(true);
             $table->decimal('z_score', 8, 4)->nullable();
-            $table->date('exam_date');
+            $table->date('grade_date');
             $table->text('explanation')->nullable();
             $table->softDeletes();
             $table->timestamps();
 
-            $table->index(['student_id', 'lesson_id', 'exam_date']);
+            $table->index(['student_id', 'lesson_id', 'grade_date']);
             $table->index(['class_id', 'grade_type']);
         });
     }

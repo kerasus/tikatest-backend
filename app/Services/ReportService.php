@@ -30,11 +30,11 @@ class ReportService
         foreach ($query as $grade) {
             $studentId = $grade->student_id;
             $gradeTypeLabel = $this->getGradeTypeLabel($grade->grade_type, $grade->grade_name_for_other_type);
-            $groupKey = $grade->gregorian_date . '|' . $grade->grade_type . '|' . ($grade->grade_name_for_other_type ?? '');
+            $groupKey = $grade->grade_date . '|' . $grade->grade_type . '|' . ($grade->grade_name_for_other_type ?? '');
 
             if (!isset($gradeGroups[$groupKey])) {
                 $gradeGroups[$groupKey] = [
-                    'gregorian_date' => $grade->gregorian_date,
+                    'grade_date' => $grade->grade_date,
                     'grade_type' => $grade->grade_type,
                     'grade_type_label' => $gradeTypeLabel,
                     'is_descriptive' => $grade->is_descriptive,
@@ -56,12 +56,12 @@ class ReportService
                 $gradeBase
             );
 
-            $reportData[$studentId][$gradeTypeLabel . '<br>' . $grade->gregorian_date] = $displayGrade;
+            $reportData[$studentId][$gradeTypeLabel . '<br>' . $grade->grade_date] = $displayGrade;
         }
 
         $averages = [];
         foreach ($gradeGroups as $group) {
-            $displayKey = $group['grade_type_label'] . '<br>' . $group['gregorian_date'];
+            $displayKey = $group['grade_type_label'] . '<br>' . $group['grade_date'];
             $average = 0;
             $count = 0;
             foreach ($reportData as $studentGrades) {
@@ -70,7 +70,7 @@ class ReportService
                     $count++;
                 }
             }
-            $averages[$group['grade_type'] . '|' . $group['gregorian_date']] = $count > 0 ? round($average / $count, 2) : 0;
+            $averages[$group['grade_type'] . '|' . $group['grade_date']] = $count > 0 ? round($average / $count, 2) : 0;
         }
 
         $reportData[] = [
@@ -158,15 +158,15 @@ class ReportService
             ->where('lesson_id', $lessonId)
             ->where('is_report_card', false)
             ->whereNull('deleted_at')
-            ->select('gregorian_date', 'grade_type', 'grade_name_for_other_type', 'is_descriptive', 'is_visible')
+            ->select('grade_date', 'grade_type', 'grade_name_for_other_type', 'is_descriptive', 'is_visible')
             ->distinct()
-            ->orderBy('gregorian_date', 'desc')
+            ->orderBy('grade_date', 'desc')
             ->get();
 
         $sessions = [];
         foreach ($query as $grade) {
             $sessions[] = [
-                'gregorian_date' => $grade->gregorian_date,
+                'grade_date' => $grade->grade_date,
                 'grade_type' => $grade->grade_type,
                 'grade_type_label' => $this->getGradeTypeLabel($grade->grade_type, $grade->grade_name_for_other_type),
                 'is_descriptive' => $grade->is_descriptive,
@@ -189,7 +189,7 @@ class ReportService
             ->where('is_report_card', false)
             ->whereNull('deleted_at')
             ->with('examSession')
-            ->orderBy('gregorian_date', 'desc')
+            ->orderBy('grade_date', 'desc')
             ->get();
 
         $processedGrades = $grades->map(function ($grade) {
@@ -201,7 +201,7 @@ class ReportService
                 'calculated_grade' => $grade->calculated_grade,
                 'grade_type' => $grade->grade_type,
                 'grade_type_label' => $this->getGradeTypeLabel($grade->grade_type, $grade->grade_name_for_other_type),
-                'gregorian_date' => $grade->gregorian_date,
+                'grade_date' => $grade->grade_date,
                 'is_descriptive' => $grade->is_descriptive,
                 'descriptive_value' => $grade->descriptive_value,
                 'descriptive_label' => $grade->descriptive_label,
@@ -227,7 +227,7 @@ class ReportService
             ->where('is_descriptive', false)
             ->whereNull('deleted_at')
             ->with(['lesson', 'examSession'])
-            ->orderBy('gregorian_date', 'desc')
+            ->orderBy('grade_date', 'desc')
             ->get();
 
         $student = User::find($studentId);
@@ -259,7 +259,7 @@ class ReportService
                 'grade_type' => $grade->grade_type,
                 'grade_type_label' => $this->getGradeTypeLabel($grade->grade_type, $grade->grade_name_for_other_type),
                 'calculated_grade' => $grade->calculated_grade,
-                'gregorian_date' => $grade->gregorian_date,
+                'grade_date' => $grade->grade_date,
                 'z_score' => $grade->z_score,
             ];
 

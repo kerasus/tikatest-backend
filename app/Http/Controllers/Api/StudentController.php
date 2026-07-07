@@ -365,7 +365,7 @@ class StudentController extends Controller
             $query->where('lesson_id', $request->lesson_id);
         }
 
-        $grades = $query->orderBy('gregorian_date', 'desc')->paginate(20);
+        $grades = $query->orderBy('grade_date', 'desc')->paginate(20);
 
         return $this->jsonResponseOk($grades);
     }

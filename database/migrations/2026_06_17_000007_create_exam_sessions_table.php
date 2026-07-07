@@ -8,6 +8,7 @@ return new class extends Migration
 {
     public function up(): void
     {
+    // alternate `resultOfDars`
         Schema::create('exam_sessions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('school_id')->nullable()->constrained('schools')->nullOnDelete();
