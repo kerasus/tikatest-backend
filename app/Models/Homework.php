@@ -19,12 +19,13 @@ class Homework extends Model
         'title',
         'description',
         'attachment',
+        'attachment_2',
         'due_date',
         'created_by',
     ];
 
     protected $casts = [
-        'due_date' => 'datetime',
+        'due_date' => 'date',
     ];
 
     public function school(): BelongsTo
@@ -47,8 +48,13 @@ class Homework extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function owners(): HasMany
+    {
+        return $this->hasMany(HomeworkOwner::class);
+    }
+
     public function submissions(): HasMany
     {
-        return $this->hasMany(HomeworkSubmission::class, 'homework_id');
+        return $this->hasMany(HomeworkSubmission::class);
     }
 }

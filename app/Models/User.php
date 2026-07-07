@@ -112,6 +112,11 @@ class User extends Authenticatable
         return $this->hasMany(HomeworkSubmission::class, 'student_id');
     }
 
+    public function homeworkOwners(): HasMany
+    {
+        return $this->hasMany(HomeworkOwner::class, 'user_id');
+    }
+
     public function sentMessages(): HasMany
     {
         return $this->hasMany(Message::class, 'sender_id');

@@ -396,8 +396,8 @@ class StudentController extends Controller
             ->limit(3)
             ->get();
 
-        $pendingHomework = \App\Models\Homework::whereHas('submissions', function ($q) use ($studentId) {
-            $q->where('student_id', $studentId)->where('status', '!=', 'submitted');
+        $pendingHomework = \App\Models\Homework::whereHas('owners', function ($q) use ($studentId) {
+            $q->where('user_id', $studentId)->whereNull('submitted_at');
         })->count();
 
         return $this->jsonResponseOk([
