@@ -78,8 +78,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('disciplinary/absenteeism', [DisciplinaryRecordController::class, 'registerAbsenteeism']);
     Route::get('disciplinary/absences', [DisciplinaryRecordController::class, 'viewAbsences']);
     Route::apiResource('homework', HomeworkController::class);
-    Route::get('homework/{homework}/view', [HomeworkController::class, 'viewHomework']);
-    Route::post('homework/{homework}/submit', [HomeworkController::class, 'submitHomework']);
     Route::get('homework/{homework}/submissions', [HomeworkController::class, 'listSubmissions']);
     Route::apiResource('homework-submissions', HomeworkSubmissionController::class);
     Route::apiResource('messages', MessageController::class);
@@ -109,6 +107,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('homework', [HomeworkController::class, 'myHomework']);
         Route::get('homework/{homeworkId}/view', [HomeworkController::class, 'viewHomework']);
         Route::post('homework/{homeworkId}/submit', [HomeworkController::class, 'submitHomework']);
+        Route::get('homework/my-submissions', [HomeworkController::class, 'mySubmissions']);
         Route::get('homework-submissions', [HomeworkSubmissionController::class, 'index']);
         Route::get('quizzes', [QuizController::class, 'availableForStudent']);
         Route::get('dashboard', [StudentController::class, 'dashboard']);

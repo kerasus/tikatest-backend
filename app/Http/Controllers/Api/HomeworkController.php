@@ -17,7 +17,7 @@ class HomeworkController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:homework.view')->only(['index', 'show']);
+        $this->middleware('permission:homework.view')->only(['index', 'show', 'listSubmissions']);
         $this->middleware('permission:homework.create')->only(['store']);
         $this->middleware('permission:homework.update')->only(['update']);
         $this->middleware('permission:homework.delete')->only(['destroy']);
@@ -44,6 +44,18 @@ class HomeworkController extends Controller
                     'relationName' => 'schoolClass',
                     'relationColumn' => 'name',
                     'exact' => false,
+                ],
+                [
+                    'requestKey' => 'field_id',
+                    'relationName' => 'schoolClass.academicField',
+                    'relationColumn' => 'id',
+                    'exact' => true,
+                ],
+                [
+                    'requestKey' => 'level_id',
+                    'relationName' => 'schoolClass.academicLevel',
+                    'relationColumn' => 'id',
+                    'exact' => true,
                 ],
             ],
             'eagerLoads' => ['school', 'lesson', 'schoolClass', 'createdBy', 'owners.student'],
@@ -101,6 +113,7 @@ class HomeworkController extends Controller
     public function myHomework(Request $request): JsonResponse
     {
         $studentId = auth()->id();
+        $perPage = $request->get('length', 20);
 
         $homeworks = Homework::where(function ($query) use ($studentId) {
                 $query->whereHas('schoolClass.studentClassRegistrations', function ($q) use ($studentId) {
@@ -110,7 +123,7 @@ class HomeworkController extends Controller
             })
             ->with(['lesson', 'schoolClass', 'owners'])
             ->orderBy('created_at', 'desc')
-            ->paginate(20);
+            ->paginate($perPage);
 
         return $this->jsonResponseOk($homeworks);
     }
@@ -118,11 +131,16 @@ class HomeworkController extends Controller
     public function mySubmissions(Request $request): JsonResponse
     {
         $studentId = auth()->id();
+        $perPage = $request->get('length', 20);
+
+        if (!auth()->user()->hasRole('student') && !auth()->user()->hasPermissionTo('homework.view')) {
+            abort(403, 'Access denied');
+        }
 
         $submissions = HomeworkOwner::where('user_id', $studentId)
             ->with(['homework.lesson', 'homework.schoolClass'])
             ->orderBy('created_at', 'desc')
-            ->paginate(20);
+            ->paginate($perPage);
 
         return $this->jsonResponseOk($submissions);
     }
@@ -132,6 +150,16 @@ class HomeworkController extends Controller
         $studentId = auth()->id();
 
         $homework = Homework::with(['lesson', 'schoolClass', 'owners'])->findOrFail($homeworkId);
+
+        if ($homework->class_id) {
+            $isEnrolled = \App\Models\StudentClassRegistration::where('student_id', $studentId)
+                ->where('class_id', $homework->class_id)
+                ->exists();
+
+            if (!$isEnrolled) {
+                abort(403, 'You are not enrolled in this class');
+            }
+        }
 
         $owner = HomeworkOwner::where('homework_id', $homeworkId)
             ->where('user_id', $studentId)
@@ -166,6 +194,16 @@ class HomeworkController extends Controller
         $studentId = auth()->id();
 
         $homework = Homework::findOrFail($homeworkId);
+
+        if ($homework->class_id) {
+            $isEnrolled = \App\Models\StudentClassRegistration::where('student_id', $studentId)
+                ->where('class_id', $homework->class_id)
+                ->exists();
+
+            if (!$isEnrolled) {
+                abort(403, 'You are not enrolled in this class');
+            }
+        }
 
         if ($homework->due_date && $homework->due_date->lt(now()->startOfDay())) {
             return $this->jsonResponseError('مهلت ارسال تکلیف گذشته است.', 403);
