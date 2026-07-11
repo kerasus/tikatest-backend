@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Message;
+use App\Models\MessageOwner;
+use App\Models\User;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class MessageController extends Controller
 {
@@ -16,8 +19,9 @@ class MessageController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:messages.view')->only(['index', 'show']);
-        $this->middleware('permission:messages.create')->only(['store']);
+        $this->middleware('permission:messages.view')->only(['index', 'show', 'sent', 'received', 'myMessages']);
+        $this->middleware('permission:messages.create')->only(['store', 'send', 'sendToClass', 'sendToStudent']);
+        $this->middleware('permission:messages.update')->only(['update']);
         $this->middleware('permission:messages.delete')->only(['destroy']);
     }
 
@@ -25,18 +29,14 @@ class MessageController extends Controller
     {
         $config = [
             'filterKeys' => ['subject'],
+            'filterDate' => ['sent_at', 'created_at'],
             'filterRelationIds' => [
                 [
                     'requestKey' => 'sender_ids',
                     'relationName' => 'sender',
                 ],
-                [
-                    'requestKey' => 'receiver_ids',
-                    'relationName' => 'receiver',
-                ],
             ],
-            'filterDate' => ['sent_at', 'created_at'],
-            'eagerLoads' => ['school', 'sender', 'receiver'],
+            'eagerLoads' => ['school', 'sender', 'owners.user'],
         ];
 
         return $this->commonIndex($request, Message::class, $config);
@@ -46,27 +46,58 @@ class MessageController extends Controller
     {
         $request->validate([
             'school_id' => 'nullable|exists:schools,id',
-            'sender_id' => 'required|exists:users,id',
-            'receiver_id' => 'required|exists:users,id',
+            'sender_id' => 'nullable|exists:users,id',
             'subject' => 'nullable|string|max:255',
             'body' => 'required|string',
             'attachment' => 'nullable|string|max:255',
+            'is_sms' => 'boolean',
+            'message_type' => 'nullable|string|max:50',
             'sent_at' => 'nullable|date',
+            'receiver_ids' => 'required|array',
+            'receiver_ids.*' => 'exists:users,id',
+            'recipient_types' => 'required|array',
+            'recipient_types.*.user_id' => 'required|exists:users,id',
+            'recipient_types.*.is_student' => 'boolean',
+            'recipient_types.*.is_father' => 'boolean',
+            'recipient_types.*.is_mother' => 'boolean',
         ]);
 
-        $data = $request->all();
-        if (!$request->filled('sent_at')) {
-            $data['sent_at'] = now();
+        DB::beginTransaction();
+
+        try {
+            $message = Message::create([
+                'school_id' => $request->school_id ?? auth()->user()->school_id,
+                'sender_id' => $request->sender_id ?? auth()->id(),
+                'subject' => $request->subject,
+                'body' => $request->body,
+                'attachment' => $request->attachment,
+                'is_sms' => $request->is_sms ?? false,
+                'message_type' => $request->message_type,
+                'sent_at' => $request->sent_at ?? now(),
+            ]);
+
+            foreach ($request->recipient_types as $recipient) {
+                MessageOwner::create([
+                    'message_id' => $message->id,
+                    'user_id' => $recipient['user_id'],
+                    'is_student' => $recipient['is_student'] ?? false,
+                    'is_father' => $recipient['is_father'] ?? false,
+                    'is_mother' => $recipient['is_mother'] ?? false,
+                ]);
+            }
+
+            DB::commit();
+
+            return $this->jsonResponseOk($message->load(['sender', 'owners.user']));
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->jsonResponseServerError(['errors' => ['message' => 'خطا در ارسال پیام.']]);
         }
-
-        $message = Message::create($data);
-
-        return $this->jsonResponseOk($message->load(['sender', 'receiver']));
     }
 
     public function show(int $id): JsonResponse
     {
-        $message = Message::with(['school', 'sender', 'receiver'])->findOrFail($id);
+        $message = Message::with(['school', 'sender', 'owners.user'])->findOrFail($id);
 
         return $this->jsonResponseOk($message);
     }
@@ -76,54 +107,152 @@ class MessageController extends Controller
         return $this->commonDestroy($message);
     }
 
+    public function sent(Request $request): JsonResponse
+    {
+        $messages = Message::where('sender_id', auth()->id())
+            ->with(['owners.user'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+
+        return $this->jsonResponseOk($messages);
+    }
+
+    public function received(Request $request): JsonResponse
+    {
+        $userId = auth()->id();
+
+        $messages = Message::whereHas('owners', function ($query) use ($userId) {
+                $query->where('user_id', $userId);
+            })
+            ->with(['sender', 'owners'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+
+        return $this->jsonResponseOk($messages);
+    }
+
     public function myMessages(Request $request): JsonResponse
     {
         $userId = auth()->id();
 
-        $messages = Message::where('receiver_id', $userId)
-            ->orWhere('sender_id', $userId)
-            ->with(['sender', 'receiver'])
+        $messages = Message::where(function ($query) use ($userId) {
+                $query->where('sender_id', $userId)
+                    ->orWhereHas('owners', function ($q) use ($userId) {
+                        $q->where('user_id', $userId);
+                    });
+            })
+            ->with(['sender', 'owners'])
             ->orderBy('created_at', 'desc')
             ->paginate(20);
 
         return $this->jsonResponseOk($messages);
     }
 
-    public function sendMessage(Request $request): JsonResponse
+    public function sendToStudent(Request $request): JsonResponse
     {
         $request->validate([
-            'receiver_id' => 'required|exists:users,id',
+            'student_id' => 'required|exists:users,id',
             'subject' => 'nullable|string|max:255',
             'body' => 'required|string',
             'attachment' => 'nullable|string|max:255',
+            'is_sms' => 'boolean',
+            'message_type' => 'nullable|string|max:50',
         ]);
 
-        $data = $request->all();
-        $data['sender_id'] = auth()->id();
-        $data['sent_at'] = now();
+        DB::beginTransaction();
 
-        $message = Message::create($data);
+        try {
+            $message = Message::create([
+                'school_id' => auth()->user()->school_id,
+                'sender_id' => auth()->id(),
+                'subject' => $request->subject,
+                'body' => $request->body,
+                'attachment' => $request->attachment,
+                'is_sms' => $request->is_sms ?? false,
+                'message_type' => $request->message_type ?? 'inner',
+                'sent_at' => now(),
+            ]);
 
-        return $this->jsonResponseOk($message->load(['sender', 'receiver']));
+            MessageOwner::create([
+                'message_id' => $message->id,
+                'user_id' => $request->student_id,
+                'is_student' => true,
+                'is_father' => false,
+                'is_mother' => false,
+            ]);
+
+            DB::commit();
+
+            return $this->jsonResponseOk($message->load(['sender', 'owners.user']));
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->jsonResponseServerError(['errors' => ['message' => 'خطا در ارسال پیام.']]);
+        }
     }
 
-    public function sentMessages(Request $request): JsonResponse
+    public function sendToClass(Request $request): JsonResponse
     {
-        $messages = Message::where('sender_id', auth()->id())
-            ->with(['sender', 'receiver'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
+        $request->validate([
+            'class_id' => 'required|exists:classes,id',
+            'subject' => 'nullable|string|max:255',
+            'body' => 'required|string',
+            'attachment' => 'nullable|string|max:255',
+            'is_sms' => 'boolean',
+            'message_type' => 'nullable|string|max:50',
+            'recipient_types' => 'required|array',
+            'recipient_types.*' => 'string|in:student,father,mother',
+        ]);
 
-        return $this->jsonResponseOk($messages);
+        $recipientTypes = $request->recipient_types;
+
+        DB::beginTransaction();
+
+        try {
+            $message = Message::create([
+                'school_id' => auth()->user()->school_id,
+                'sender_id' => auth()->id(),
+                'subject' => $request->subject,
+                'body' => $request->body,
+                'attachment' => $request->attachment,
+                'is_sms' => $request->is_sms ?? false,
+                'message_type' => $request->message_type ?? 'inner',
+                'sent_at' => now(),
+            ]);
+
+            $students = User::whereHas('studentClassRegistrations', function ($query) use ($request) {
+                $query->where('class_id', $request->class_id);
+            })->get();
+
+            foreach ($students as $student) {
+                $isStudent = in_array('student', $recipientTypes);
+                $isFather = in_array('father', $recipientTypes);
+                $isMother = in_array('mother', $recipientTypes);
+
+                MessageOwner::create([
+                    'message_id' => $message->id,
+                    'user_id' => $student->id,
+                    'is_student' => $isStudent,
+                    'is_father' => $isFather,
+                    'is_mother' => $isMother,
+                ]);
+            }
+
+            DB::commit();
+
+            return $this->jsonResponseOk($message->load(['sender', 'owners.user']));
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->jsonResponseServerError(['errors' => ['message' => 'خطا در ارسال پیام به کلاس.']]);
+        }
     }
 
-    public function receivedMessages(Request $request): JsonResponse
+    public function markAsRead(Request $request, MessageOwner $messageOwner): JsonResponse
     {
-        $messages = Message::where('receiver_id', auth()->id())
-            ->with(['sender', 'receiver'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
+        $messageOwner->update([
+            'is_read' => true,
+            'read_at' => now(),
+        ]);
 
-        return $this->jsonResponseOk($messages);
+        return $this->jsonResponseOk($messageOwner);
     }
 }

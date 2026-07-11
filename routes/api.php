@@ -81,8 +81,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('homework/{homework}/submissions', [HomeworkController::class, 'listSubmissions']);
     Route::apiResource('homework-submissions', HomeworkSubmissionController::class);
     Route::apiResource('messages', MessageController::class);
-    Route::get('messages/sent', [MessageController::class, 'sentMessages']);
-    Route::get('messages/received', [MessageController::class, 'receivedMessages']);
+    Route::get('messages/sent', [MessageController::class, 'sent']);
+    Route::get('messages/received', [MessageController::class, 'received']);
+    Route::post('messages/send-to-student', [MessageController::class, 'sendToStudent']);
+    Route::post('messages/send-to-class', [MessageController::class, 'sendToClass']);
+    Route::patch('messages/{message}/read', [MessageController::class, 'markAsRead']);
     Route::get('grades/report/lesson/{lessonId}', [GradeController::class, 'lessonReport']);
     Route::get('grades/report/multiple-lessons', [GradeController::class, 'multipleLessonsReport']);
     Route::get('grades/report/student/{studentId}', [GradeController::class, 'studentReport']);
@@ -98,7 +101,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('absences', [StudentController::class, 'myAbsences']);
         Route::get('disciplinary', [StudentController::class, 'myDisciplinaryRecords']);
         Route::get('messages', [MessageController::class, 'myMessages']);
-        Route::post('messages', [MessageController::class, 'sendMessage']);
+        Route::post('messages/send', [MessageController::class, 'sendToStudent']);
+        Route::get('messages/sent', [MessageController::class, 'sent']);
+        Route::get('messages/received', [MessageController::class, 'received']);
         Route::get('study-sessions', [StudentController::class, 'studySessions']);
         Route::post('study-sessions', [StudentController::class, 'storeStudySession']);
         Route::get('study-sessions/{id}', [StudentController::class, 'showStudySession']);
