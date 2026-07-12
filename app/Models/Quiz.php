@@ -88,4 +88,9 @@ class Quiz extends Model
     {
         return $this->hasMany(QuizAnswerKey::class);
     }
+
+    public function booklets(): HasMany
+    {
+        return $this->hasMany(QuizBooklet::class)->orderBy('from_question');
+    }
 }

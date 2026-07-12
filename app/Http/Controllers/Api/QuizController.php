@@ -44,7 +44,7 @@ class QuizController extends Controller
                 'end_time',
                 'created_at',
             ],
-            'eagerLoads' => ['quizClassAssignments'],
+            'eagerLoads' => ['quizClassAssignments', 'booklets'],
         ];
 
         return $this->commonIndex($request, Quiz::class, $config);
@@ -94,7 +94,7 @@ class QuizController extends Controller
 
         $quiz = Quiz::create($data);
 
-        return $this->jsonResponseOk($quiz->load(['quizClassAssignments.schoolClass', 'answerKeys', 'sessions']));
+        return $this->jsonResponseOk($quiz->load(['quizClassAssignments.schoolClass', 'answerKeys', 'booklets', 'sessions']));
     }
 
     public function show(int $id): JsonResponse
@@ -103,6 +103,7 @@ class QuizController extends Controller
             'quizClassAssignments.schoolClass',
             'quizClassAssignments.academicLevel',
             'answerKeys',
+            'booklets',
             'sessions'
         ])->findOrFail($id);
 

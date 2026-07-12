@@ -20,6 +20,7 @@ class ExamSession extends Model
         'grade_name_for_other_type',
         'is_descriptive',
         'is_report_card',
+        'quiz_session_id',
         'min_grade',
         'created_by',
     ];
@@ -44,6 +45,11 @@ class ExamSession extends Model
     public function schoolClass(): BelongsTo
     {
         return $this->belongsTo(SchoolClass::class, 'class_id');
+    }
+
+    public function quizSession(): BelongsTo
+    {
+        return $this->belongsTo(QuizSession::class);
     }
 
     public function createdBy(): BelongsTo

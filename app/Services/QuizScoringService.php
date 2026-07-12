@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Quiz;
 use App\Models\QuizSession;
 use App\Models\QuizAnswerKey;
+use App\Models\QuizBooklet;
 
 class QuizScoringService
 {
@@ -42,11 +43,69 @@ class QuizScoringService
 
         $percentage = $totalMarks > 0 ? ($obtainedMarks / $totalMarks) * 100 : 0;
 
+        $bookletScores = $this->calculateBookletScores($session);
+
         return [
             'percent' => max(0, $percentage),
             'total_marks' => $totalMarks,
             'obtained_marks' => $obtainedMarks,
+            'booklet_scores' => $bookletScores,
         ];
+    }
+
+    public function calculateBookletScores(QuizSession $session): array
+    {
+        $booklets = QuizBooklet::where('quiz_id', $session->quiz_id)
+            ->orderBy('from_question')
+            ->get();
+
+        if ($booklets->isEmpty()) {
+            return [];
+        }
+
+        $responses = $session->responses;
+        $scores = [];
+
+        foreach ($booklets as $booklet) {
+            $bookletTotal = 0;
+            $bookletObtained = 0;
+
+            foreach ($responses as $response) {
+                if ($response->question_number < $booklet->from_question
+                    || $response->question_number > $booklet->to_question) {
+                    continue;
+                }
+
+                $answerKey = QuizAnswerKey::where('quiz_id', $session->quiz_id)
+                    ->where('question_number', $response->question_number)
+                    ->first();
+
+                $points = ($answerKey->weight ?? 1);
+                $bookletTotal += $points;
+
+                if ($answerKey && $answerKey->is_active) {
+                    if ($response->submitted_option === $answerKey->correct_option) {
+                        $bookletObtained += $points;
+                    } elseif ($response->answer_text !== null) {
+                        $bookletObtained += $points * 0.5;
+                    }
+                }
+            }
+
+            $percent = $bookletTotal > 0 ? max(0, round(($bookletObtained / $bookletTotal) * 100, 2)) : 0;
+
+            $scores[] = [
+                'id' => $booklet->id,
+                'title' => $booklet->title,
+                'from_question' => $booklet->from_question,
+                'to_question' => $booklet->to_question,
+                'total_marks' => $bookletTotal,
+                'obtained_marks' => $bookletObtained,
+                'percent' => $percent,
+            ];
+        }
+
+        return $scores;
     }
 
     public function recalculateAllSessions(Quiz $quiz): void
@@ -58,6 +117,7 @@ class QuizScoringService
 
             $session->update([
                 'percent' => $scoreData['percent'],
+                'booklet_scores' => $scoreData['booklet_scores'],
             ]);
         }
     }
@@ -74,6 +134,7 @@ class QuizScoringService
                 'student_id' => $session->student_id,
                 'student_name' => $session->student->full_name ?? 'Unknown',
                 'percent' => $session->percent,
+                'booklet_scores' => $session->booklet_scores,
                 'started_at' => $session->session_started_at,
                 'ended_at' => $session->submitted_at,
                 'answer_status' => $session->answer_status,

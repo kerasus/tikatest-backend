@@ -29,6 +29,7 @@ return new class extends Migration
             $table->string('grade_name_for_other_type', 255)->nullable();
             $table->boolean('is_descriptive')->default(false);
             $table->boolean('is_report_card')->default(false);
+            $table->foreignId('quiz_session_id')->nullable()->constrained('quiz_sessions')->nullOnDelete();
             $table->decimal('min_grade', 5, 2)->nullable();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();

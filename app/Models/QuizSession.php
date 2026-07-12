@@ -35,8 +35,9 @@ class QuizSession extends Model
         'session_started_at' => 'datetime',
         'session_ended_at' => 'datetime',
         'submitted_at' => 'datetime',
-        'submission_data' => 'array',
-        'is_locked' => 'boolean',
+            'submission_data' => 'array',
+            'booklet_scores' => 'array',
+            'is_locked' => 'boolean',
         'percent' => 'decimal:2',
     ];
 

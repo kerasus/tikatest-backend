@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\LessonController;
 use App\Http\Controllers\Api\ExamSessionController;
 use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\QuizController;
+use App\Http\Controllers\Api\QuizBookletController;
 use App\Http\Controllers\Api\QuizClassAssignmentController;
 use App\Http\Controllers\Api\QuizSessionController;
 use App\Http\Controllers\Api\DisciplinaryCaseController;
@@ -61,6 +62,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('quizzes/{quiz}/results-with-rank', [QuizController::class, 'resultsWithRank']);
     Route::post('quizzes/{quiz}/participants', [QuizController::class, 'assignParticipants']);
     Route::apiResource('quizzes', QuizController::class);
+    Route::apiResource('quiz-booklets', QuizBookletController::class);
+    Route::get('quizzes/{quiz}/booklets', [QuizBookletController::class, 'indexByQuiz']);
+    Route::post('quizzes/{quiz}/booklets/sync', [QuizBookletController::class, 'sync']);
     Route::apiResource('quiz-assignments', QuizClassAssignmentController::class);
 
     Route::prefix('quiz-sessions')->group(function () {

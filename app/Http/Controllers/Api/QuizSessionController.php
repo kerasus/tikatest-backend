@@ -195,6 +195,7 @@ class QuizSessionController extends Controller
 
                     $lockedSession->update([
                         'percent' => $scoreData['percent'],
+                        'booklet_scores' => $scoreData['booklet_scores'],
                         'answer_status' => 'sent',
                         'ended_at' => now(),
                     ]);
