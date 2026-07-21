@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\StudentClassRegistration;
@@ -9,7 +12,6 @@ use App\Models\StudySession;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class StudentController extends Controller
 {
@@ -18,19 +20,18 @@ class StudentController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:students.view')->only(['index', 'show']);
-        $this->middleware('permission:students.create')->only(['store']);
-        $this->middleware('permission:students.update')->only(['update']);
-        $this->middleware('permission:students.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:students.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:students.create')->only(['store']);
+        $this->middleware('admin_or_permission:students.update')->only(['update']);
+        $this->middleware('admin_or_permission:students.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
     {
         $config = [
             'filterKeys' => [
-                'name',
+                'firstname',
                 'lastname',
-                'full_name',
                 'username',
                 'student_phone',
                 'melli_code',
@@ -39,7 +40,7 @@ class StudentController extends Controller
             'filterOnMultipleColumnKeys' => [
                 [
                     'requestKey' => 'full_name_search',
-                    'columns' => ['name', 'lastname', 'full_name'],
+                    'columns' => ['firstname', 'lastname'],
                 ],
             ],
             'filterRelationKeys' => [
@@ -71,7 +72,7 @@ class StudentController extends Controller
             ],
         ];
 
-        $modelQuery = User::query()->where('user_type', 'student')->orWhere('user_type', null);
+        $modelQuery = User::query()->whereHas('roles', fn($q) => $q->where('name', 'student'));
         $perPage = $request->has('length') ? $request->get('length') : 10;
 
         $this->buildFilterQuery($request, $modelQuery, User::class, $this->getConfigArray($config));
@@ -82,7 +83,7 @@ class StudentController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'name' => 'required|string|max:255',
+            'firstname' => 'required|string|max:255',
             'lastname' => 'required|string|max:255',
             'username' => 'required|string|unique:users,username',
             'password' => 'required|string|min:6',
@@ -99,13 +100,13 @@ class StudentController extends Controller
             'mother_phone' => 'nullable|string|max:20',
             'mother_email' => 'nullable|email|max:255',
             'school_id' => 'nullable|exists:schools,id',
-            'class_id' => 'nullable|exists:classes,id',
         ]);
 
         $data = $request->all();
-        $data['user_type'] = 'student';
+        $data['mobile'] = $request->input('student_phone');
 
         $user = User::create($data);
+        $user->assignRole('student');
 
         if ($request->filled('class_id')) {
             StudentClassRegistration::create([
@@ -118,12 +119,10 @@ class StudentController extends Controller
         return $this->jsonResponseOk($user->load('studentClassRegistrations.schoolClass'));
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $student = User::where('id', $id)
-            ->where(function ($query) {
-                $query->where('user_type', 'student')->orWhereNull('user_type');
-            })
+            ->whereHas('roles', fn($q) => $q->where('name', 'student'))
             ->with([
                 'studentClassRegistrations.schoolClass.academicField',
                 'studentClassRegistrations.schoolClass.academicLevel',
@@ -138,7 +137,7 @@ class StudentController extends Controller
     public function update(Request $request, User $student): JsonResponse
     {
         $request->validate([
-            'name' => 'sometimes|required|string|max:255',
+            'firstname' => 'sometimes|required|string|max:255',
             'lastname' => 'sometimes|required|string|max:255',
             'username' => 'sometimes|required|string|unique:users,username,' . $student->id,
             'password' => 'nullable|string|min:6',
@@ -155,10 +154,14 @@ class StudentController extends Controller
             'mother_phone' => 'nullable|string|max:20',
             'mother_email' => 'nullable|email|max:255',
             'school_id' => 'nullable|exists:schools,id',
-            'class_id' => 'nullable|exists:classes,id',
         ]);
 
-        $student->fill($request->all());
+        $data = $request->all();
+        if ($request->filled('student_phone')) {
+            $data['mobile'] = $request->input('student_phone');
+        }
+
+        $student->fill($data);
         $student->save();
 
         if ($request->filled('class_id')) {
@@ -173,7 +176,7 @@ class StudentController extends Controller
 
     public function destroy(User $student): JsonResponse
     {
-        if ($student->user_type !== 'student') {
+        if (!$student->hasRole('student')) {
             return $this->jsonResponseServerError([
                 'errors' => ['student' => ['این کاربر دانش آموز نیست.']]
             ]);

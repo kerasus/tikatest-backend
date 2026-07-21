@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\AcademicLevel;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class AcademicLevelController extends Controller
 {
@@ -16,10 +18,10 @@ class AcademicLevelController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:academic_levels.view')->only(['index', 'show']);
-        $this->middleware('permission:academic_levels.create')->only(['store']);
-        $this->middleware('permission:academic_levels.update')->only(['update']);
-        $this->middleware('permission:academic_levels.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:academic_levels.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:academic_levels.create')->only(['store']);
+        $this->middleware('admin_or_permission:academic_levels.update')->only(['update']);
+        $this->middleware('admin_or_permission:academic_levels.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -51,7 +53,7 @@ class AcademicLevelController extends Controller
         return $this->commonStore($request, AcademicLevel::class);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $level = AcademicLevel::with(['school', 'academicField'])->findOrFail($id);
 

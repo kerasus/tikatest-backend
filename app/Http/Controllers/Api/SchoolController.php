@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\School;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class SchoolController extends Controller
 {
@@ -16,10 +18,10 @@ class SchoolController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:schools.view')->only(['index', 'show']);
-        $this->middleware('permission:schools.create')->only(['store']);
-        $this->middleware('permission:schools.update')->only(['update']);
-        $this->middleware('permission:schools.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:schools.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:schools.create')->only(['store']);
+        $this->middleware('admin_or_permission:schools.update')->only(['update']);
+        $this->middleware('admin_or_permission:schools.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -53,7 +55,7 @@ class SchoolController extends Controller
         return $this->commonStore($request, School::class);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $school = School::findOrFail($id);
 

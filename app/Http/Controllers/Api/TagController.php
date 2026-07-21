@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\Tag;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class TagController extends Controller
@@ -17,10 +19,10 @@ class TagController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:tags.view')->only(['index', 'show']);
-        $this->middleware('permission:tags.create')->only(['store']);
-        $this->middleware('permission:tags.update')->only(['update']);
-        $this->middleware('permission:tags.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:tags.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:tags.create')->only(['store']);
+        $this->middleware('admin_or_permission:tags.update')->only(['update']);
+        $this->middleware('admin_or_permission:tags.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -56,7 +58,7 @@ class TagController extends Controller
         return $this->commonStore($request, Tag::class);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $tag = Tag::with('places')->findOrFail($id);
 

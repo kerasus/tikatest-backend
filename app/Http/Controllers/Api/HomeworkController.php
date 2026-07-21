@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\Homework;
 use App\Models\HomeworkOwner;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class HomeworkController extends Controller
 {
@@ -17,10 +19,10 @@ class HomeworkController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:homework.view')->only(['index', 'show', 'listSubmissions']);
-        $this->middleware('permission:homework.create')->only(['store']);
-        $this->middleware('permission:homework.update')->only(['update']);
-        $this->middleware('permission:homework.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:homework.view')->only(['index', 'show', 'listSubmissions']);
+        $this->middleware('admin_or_permission:homework.create')->only(['store']);
+        $this->middleware('admin_or_permission:homework.update')->only(['update']);
+        $this->middleware('admin_or_permission:homework.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -81,7 +83,7 @@ class HomeworkController extends Controller
         return $this->commonStore($request, Homework::class);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $homework = Homework::with(['school', 'lesson', 'schoolClass', 'createdBy', 'owners.student', 'submissions'])->findOrFail($id);
 

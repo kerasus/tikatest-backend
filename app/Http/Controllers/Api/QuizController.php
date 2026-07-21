@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\Quiz;
 use App\Models\QuizClassAssignment;
@@ -9,7 +12,6 @@ use App\Services\QuizScoringService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
 class QuizController extends Controller
@@ -22,10 +24,10 @@ class QuizController extends Controller
     {
         $this->scoringService = $scoringService;
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:quizzes.view')->only(['index', 'show']);
-        $this->middleware('permission:quizzes.create')->only(['store']);
-        $this->middleware('permission:quizzes.update')->only(['update']);
-        $this->middleware('permission:quizzes.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:quizzes.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:quizzes.create')->only(['store']);
+        $this->middleware('admin_or_permission:quizzes.update')->only(['update']);
+        $this->middleware('admin_or_permission:quizzes.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -61,10 +63,13 @@ class QuizController extends Controller
             'description' => 'nullable|string',
             'is_visible' => 'boolean',
             'quiz_type' => 'nullable|string|max:50',
-            'contentType' => 'nullable|in:text,image,pdf',
-            'contentValue' => 'nullable',
-            'solutionType' => 'nullable|in:text,image,pdf',
-            'solutionValue' => 'nullable',
+            'question_type' => 'nullable|in:text,image',
+            'questions_text' => 'nullable|string',
+            'questions_images' => 'nullable|array',
+            'questions_images.*' => 'nullable|file|mimetypes:image/*',
+            'solution_type' => 'nullable|in:text,image',
+            'solution_text' => 'nullable|string',
+            'solution_image' => 'nullable|file|mimetypes:image/*',
             'show_answer_date' => 'nullable|date',
             'no_score_questions' => 'nullable|string',
         ]);
@@ -82,14 +87,14 @@ class QuizController extends Controller
             'no_score_questions',
         ]);
 
-        // Handle content
-        if ($request->filled('contentType')) {
-            $data['content'] = $this->buildContentPayload($request->contentType, $request->contentValue);
+        $schoolCode = $this->getSchoolCode($request->input('school_id'));
+
+        if ($request->filled('question_type')) {
+            $data['content'] = $this->buildQuestionPayload($request, $request->input('question_type'), $schoolCode);
         }
 
-        // Handle solution
-        if ($request->filled('solutionType')) {
-            $data['solution'] = $this->buildContentPayload($request->solutionType, $request->solutionValue);
+        if ($request->filled('solution_type')) {
+            $data['solution'] = $this->buildSolutionPayload($request, $request->input('solution_type'), $schoolCode);
         }
 
         $quiz = Quiz::create($data);
@@ -97,7 +102,7 @@ class QuizController extends Controller
         return $this->jsonResponseOk($quiz->load(['quizClassAssignments.schoolClass', 'answerKeys', 'booklets', 'sessions']));
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $quiz = Quiz::with([
             'quizClassAssignments.schoolClass',
@@ -121,10 +126,13 @@ class QuizController extends Controller
             'description' => 'nullable|string',
             'is_visible' => 'boolean',
             'quiz_type' => 'nullable|string|max:50',
-            'contentType' => 'nullable|in:text,image,pdf',
-            'contentValue' => 'nullable',
-            'solutionType' => 'nullable|in:text,image,pdf',
-            'solutionValue' => 'nullable',
+            'question_type' => 'nullable|in:text,image',
+            'questions_text' => 'nullable|string',
+            'questions_images' => 'nullable|array',
+            'questions_images.*' => 'nullable|file|mimetypes:image/*',
+            'solution_type' => 'nullable|in:text,image',
+            'solution_text' => 'nullable|string',
+            'solution_image' => 'nullable|file|mimetypes:image/*',
             'show_answer_date' => 'nullable|date',
             'no_score_questions' => 'nullable|string',
         ]);
@@ -142,14 +150,14 @@ class QuizController extends Controller
             'no_score_questions',
         ]);
 
-        // Handle content if provided
-        if ($request->has('contentType')) {
-            $data['content'] = $this->buildContentPayload($request->contentType, $request->contentValue);
+        $schoolCode = $this->getSchoolCode($request->input('school_id'));
+
+        if ($request->has('question_type')) {
+            $data['content'] = $this->buildQuestionPayload($request, $request->input('question_type'), $schoolCode);
         }
 
-        // Handle solution if provided
-        if ($request->has('solutionType')) {
-            $data['solution'] = $this->buildContentPayload($request->solutionType, $request->solutionValue);
+        if ($request->has('solution_type')) {
+            $data['solution'] = $this->buildSolutionPayload($request, $request->input('solution_type'), $schoolCode);
         }
 
         $quiz->update($data);
@@ -222,34 +230,87 @@ class QuizController extends Controller
         return $this->jsonResponseOk($query->paginate($request->get('length', 20)));
     }
 
-    private function buildContentPayload(string $type, $value): array
+    private function getSchoolCode(?int $schoolId): string
+    {
+        if (!$schoolId) {
+            return 'default';
+        }
+
+        $school = \App\Models\School::find($schoolId);
+        if (!$school || empty($school->code)) {
+            return 'default';
+        }
+
+        return $school->code;
+    }
+
+    private function storeUploadedFile(\Illuminate\Http\UploadedFile $file, string $schoolCode, string $prefix): string
+    {
+        $extension = $file->getClientOriginalExtension();
+        $filename = sprintf('%s_%s_%s.%s', $prefix, $schoolCode, time(), $extension);
+        $directory = 'quiz-content/' . $schoolCode;
+
+        return $file->storeAs($directory, $filename, 'public');
+    }
+
+    private function buildQuestionPayload(Request $request, string $type, string $schoolCode): array
     {
         if ($type === 'text') {
+            $text = $request->input('questions_text', '');
             return [
-                'type' => 'text',
-                'body' => $value,
+                [
+                    'type' => 'text',
+                    'body' => $text,
+                ],
             ];
         }
 
-        // For image or pdf - store file if uploaded
-        if ($type === 'image' || $type === 'pdf') {
-            if ($value instanceof \Illuminate\Http\UploadedFile) {
-                $path = $value->store('quiz-content', 'public');
+        if ($type === 'image') {
+            $files = $request->file('questions_images', []);
+            $paths = [];
+            foreach ($files as $file) {
+                if ($file instanceof \Illuminate\Http\UploadedFile) {
+                    $paths[] = $this->storeUploadedFile($file, $schoolCode, 'question');
+                }
+            }
+
+            return array_map(function ($path) {
                 return [
-                    'type' => $type,
+                    'type' => 'image',
                     'path' => $path,
                 ];
-            }
-            // If path already provided
+            }, $paths);
+        }
+
+        return [];
+    }
+
+    private function buildSolutionPayload(Request $request, string $type, string $schoolCode): array
+    {
+        if ($type === 'text') {
+            $text = $request->input('solution_text', '');
             return [
-                'type' => $type,
-                'path' => $value,
+                [
+                    'type' => 'text',
+                    'body' => $text,
+                ],
             ];
         }
 
-        return [
-            'type' => $type,
-            'body' => $value,
-        ];
+        if ($type === 'image') {
+            $file = $request->file('solution_image');
+            if ($file instanceof \Illuminate\Http\UploadedFile) {
+                $path = $this->storeUploadedFile($file, $schoolCode, 'solution');
+
+                return [
+                    [
+                        'type' => 'image',
+                        'path' => $path,
+                    ],
+                ];
+            }
+        }
+
+        return [];
     }
 }

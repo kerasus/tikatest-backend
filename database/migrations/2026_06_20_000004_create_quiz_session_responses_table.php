@@ -22,7 +22,10 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['quiz_session_id', 'question_number']);
-            $table->index(['quiz_id', 'user_id', 'quiz_session_id', 'question_number']);
+            $table->index(
+                ['quiz_id', 'user_id', 'quiz_session_id', 'question_number'],
+                'qs_responses_composite_index'
+            );
         });
     }
 

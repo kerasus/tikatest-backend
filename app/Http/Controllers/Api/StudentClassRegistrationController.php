@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\StudentClassRegistration;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class StudentClassRegistrationController extends Controller
 {
@@ -16,9 +18,9 @@ class StudentClassRegistrationController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:student_registrations.view')->only(['index', 'show']);
-        $this->middleware('permission:student_registrations.create')->only(['store']);
-        $this->middleware('permission:student_registrations.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:student_registrations.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:student_registrations.create')->only(['store']);
+        $this->middleware('admin_or_permission:student_registrations.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -53,7 +55,7 @@ class StudentClassRegistrationController extends Controller
         return $this->jsonResponseOk($registration->load(['student', 'schoolClass', 'school']));
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $registration = StudentClassRegistration::with(['student', 'schoolClass', 'school'])->findOrFail($id);
 

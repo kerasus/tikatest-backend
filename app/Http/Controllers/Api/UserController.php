@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class UserController extends Controller
 {
@@ -16,11 +18,11 @@ class UserController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:users.view')->only(['index', 'show']);
-        $this->middleware('permission:users.create')->only(['store']);
-        $this->middleware('permission:users.update')->only(['update']);
-        $this->middleware('permission:users.delete')->only(['destroy']);
-        $this->middleware('permission:users.manage-roles')->only(['assignRole', 'removeRole']);
+        $this->middleware('admin_or_permission:users.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:users.create')->only(['store']);
+        $this->middleware('admin_or_permission:users.update')->only(['update']);
+        $this->middleware('admin_or_permission:users.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:users.manage-roles')->only(['assignRole', 'removeRole']);
     }
 
     public function index(Request $request): JsonResponse
@@ -67,7 +69,7 @@ class UserController extends Controller
         return $this->commonStore($request, User::class);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $user = User::with(['roles', 'permissions'])->findOrFail($id);
 

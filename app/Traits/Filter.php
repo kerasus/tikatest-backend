@@ -155,45 +155,15 @@ trait Filter
 //        $createdTillDate   = $request->get('createdTillDate');
 //        if (strlen($createdSinceDate) > 0 && strlen($createdTillDate) > 0) {
 //            $createdSinceDate = Carbon::parse($createdSinceDate)->format('Y-m-d H:m:s');
-//            $createdTillDate  = Carbon::parse($createdTillDate)->format('Y-m-d H:m:s');
+//            $createdTillDate = Carbon::parse($createdTillDate)->format('Y-m-d H:m:s');
 //            $modelQuery       = $modelQuery->whereBetween('created_at', [$createdSinceDate, $createdTillDate]);
 //        } else if (strlen($createdSinceDate) > 0) {
 //            $createdSinceDate = Carbon::parse($createdSinceDate)->format('Y-m-d H:m:s');
 //            $modelQuery       = $modelQuery->where('created_at', '>=', $createdSinceDate);
 //        } else if (strlen($createdTillDate) > 0) {
-//            $createdTillDate  = Carbon::parse($createdTillDate)->format('Y-m-d H:m:s');
+//            $createdTillDate = Carbon::parse($createdTillDate)->format('Y-m-d H:m:s');
 //            $modelQuery       = $modelQuery->where('created_at', '<=', $createdTillDate);
 //        }
-    }
-
-    /**
-     * Return a successful JSON response.
-     *
-     * @param mixed $data
-     * @return JsonResponse
-     */
-    private function jsonResponseOk($data): JsonResponse {
-        return response()->json($data, Response::HTTP_OK);
-    }
-
-    /**
-     * Return a validation error JSON response.
-     *
-     * @param mixed $errors
-     * @return JsonResponse
-     */
-    private function jsonResponseValidateError($errors): JsonResponse {
-        return response()->json($errors, Response::HTTP_UNPROCESSABLE_ENTITY);
-    }
-
-    /**
-     * Return a server error JSON response.
-     *
-     * @param mixed $errors
-     * @return JsonResponse
-     */
-    private function jsonResponseServerError($errors): JsonResponse {
-        return response()->json($errors, Response::HTTP_INTERNAL_SERVER_ERROR);
     }
 
     private function checkOwner ($userOwnerId) {

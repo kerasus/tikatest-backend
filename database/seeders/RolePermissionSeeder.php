@@ -3,9 +3,7 @@
 namespace Database\Seeders;
 
 use App\Enums\UserRoleType;
-use App\Models\User;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -65,6 +63,14 @@ class RolePermissionSeeder extends Seeder
             'homework.create',
             'homework.update',
             'homework.delete',
+            'homework_submissions.view',
+            'homework_submissions.create',
+            'homework_submissions.update',
+            'homework_submissions.delete',
+            'quiz_assignments.view',
+            'quiz_assignments.create',
+            'quiz_assignments.update',
+            'quiz_assignments.delete',
             'disciplinary_cases.view',
             'disciplinary_cases.create',
             'disciplinary_cases.update',
@@ -77,10 +83,27 @@ class RolePermissionSeeder extends Seeder
             'messages.create',
             'messages.update',
             'messages.delete',
+            'academic_fields.view',
+            'academic_fields.create',
+            'academic_fields.update',
+            'academic_fields.delete',
+            'academic_levels.view',
+            'academic_levels.create',
+            'academic_levels.update',
+            'academic_levels.delete',
+            'schools.view',
+            'schools.create',
+            'schools.update',
+            'schools.delete',
+            'student_registrations.view',
+            'student_registrations.create',
+            'student_registrations.delete',
+            'pre_registrations.view',
+            'pre_registrations.create',
         ];
 
         foreach ($permissions as $permission) {
-            Permission::findOrCreate($permission, 'web');
+            Permission::firstOrCreate(['name' => $permission], ['guard_name' => 'web']);
         }
 
         $admin = Role::findOrCreate(UserRoleType::Admin->value, 'web');
@@ -132,10 +155,18 @@ class RolePermissionSeeder extends Seeder
             'quiz_sessions.create',
             'quiz_sessions.update',
             'quiz_sessions.delete',
+            'quiz_assignments.view',
+            'quiz_assignments.create',
+            'quiz_assignments.update',
+            'quiz_assignments.delete',
             'homework.view',
             'homework.create',
             'homework.update',
             'homework.delete',
+            'homework_submissions.view',
+            'homework_submissions.create',
+            'homework_submissions.update',
+            'homework_submissions.delete',
             'disciplinary_cases.view',
             'disciplinary_cases.create',
             'disciplinary_cases.update',
@@ -148,6 +179,23 @@ class RolePermissionSeeder extends Seeder
             'messages.create',
             'messages.update',
             'messages.delete',
+            'academic_fields.view',
+            'academic_fields.create',
+            'academic_fields.update',
+            'academic_fields.delete',
+            'academic_levels.view',
+            'academic_levels.create',
+            'academic_levels.update',
+            'academic_levels.delete',
+            'schools.view',
+            'schools.create',
+            'schools.update',
+            'schools.delete',
+            'student_registrations.view',
+            'student_registrations.create',
+            'student_registrations.delete',
+            'pre_registrations.view',
+            'pre_registrations.create',
         ]);
 
         $teacher->syncPermissions([
@@ -169,10 +217,18 @@ class RolePermissionSeeder extends Seeder
             'quiz_sessions.create',
             'quiz_sessions.update',
             'quiz_sessions.delete',
+            'quiz_assignments.view',
+            'quiz_assignments.create',
+            'quiz_assignments.update',
+            'quiz_assignments.delete',
             'homework.view',
             'homework.create',
             'homework.update',
             'homework.delete',
+            'homework_submissions.view',
+            'homework_submissions.create',
+            'homework_submissions.update',
+            'homework_submissions.delete',
             'disciplinary_cases.view',
             'disciplinary_cases.create',
             'disciplinary_cases.update',
@@ -193,6 +249,8 @@ class RolePermissionSeeder extends Seeder
             'quizzes.view',
             'quiz_sessions.view',
             'homework.view',
+            'homework_submissions.view',
+            'homework_submissions.create',
             'disciplinary_cases.view',
             'disciplinary_records.view',
             'messages.view',
@@ -204,18 +262,5 @@ class RolePermissionSeeder extends Seeder
             'places.view',
             'places.manage-tags',
         ]);
-
-        $adminUser = User::query()->firstOrCreate(
-            ['username' => 'admin'],
-            [
-                'firstname' => 'Admin',
-                'lastname' => 'User',
-                'mobile' => '09000000000',
-                'email' => 'admin@example.com',
-                'password' => Hash::make('password'),
-            ]
-        );
-
-        $adminUser->syncRoles([UserRoleType::Admin->value]);
     }
 }

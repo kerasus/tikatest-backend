@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\ExamSession;
 use App\Models\Grade;
@@ -10,7 +13,6 @@ use App\Services\GradeService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class GradeController extends Controller
 {
@@ -23,10 +25,10 @@ class GradeController extends Controller
         $this->gradeService = new GradeService();
 
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:grades.view')->only(['index', 'show', 'lessonReport', 'multipleLessonsReport', 'studentReport', 'statistics']);
-        $this->middleware('permission:grades.create')->only(['store', 'bulkStore', 'createExamSessionWithGrades']);
-        $this->middleware('permission:grades.update')->only(['update', 'updateZScores']);
-        $this->middleware('permission:grades.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:grades.view')->only(['index', 'show', 'lessonReport', 'multipleLessonsReport', 'studentReport', 'statistics']);
+        $this->middleware('admin_or_permission:grades.create')->only(['store', 'bulkStore', 'createExamSessionWithGrades']);
+        $this->middleware('admin_or_permission:grades.update')->only(['update', 'updateZScores']);
+        $this->middleware('admin_or_permission:grades.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -122,7 +124,7 @@ class GradeController extends Controller
         return $this->show($grade->id);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $grade = Grade::with(['school', 'examSession', 'lesson', 'student', 'schoolClass'])->findOrFail($id);
 

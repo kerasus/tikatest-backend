@@ -1,57 +1,123 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+## Setup & Development
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+This project uses [Laravel Sail](https://laravel.com/docs/sail), a Docker-based local development environment. Docker must be installed and running on your machine before you can use Sail.
 
-## About Laravel
+### 1. Install and configure Docker
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS/Windows) or Docker Engine (Linux), and make sure the Docker daemon is running.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- On **Ubuntu / Debian**, install Docker Engine from the official repository, then add your user to the `docker` group:
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+  ```bash
+  sudo apt update
+  sudo apt install -y ca-certificates curl
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-## Learning Laravel
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+    $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+  sudo apt update
+  sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+  sudo systemctl enable --now docker
+  sudo usermod -aG docker $USER
+  newgrp docker
+  ```
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+- On **openSUSE**, install the Docker package, enable the service, then add your user to the `docker` group (the group is created automatically by the package):
 
-## Agentic Development
+  ```bash
+  sudo zypper install docker          # or: docker-stable
+  ```
+  ```bash
+  sudo systemctl enable --now docker
+  ```
+  ```bash
+  sudo usermod -aG docker $USER
+  ```
+  ```bash
+  newgrp docker
+  ```
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+  Alternatively, openSUSE offers Podman as a Docker-compatible runtime — install `podman` and `podman-docker` (which provides a `docker` shim) instead.
+
+- Verify the installation with:
+
+  ```bash
+  docker --version
+  ```
+  ```bash
+  docker ps
+  ```
+
+### 2. Set up the `sail` alias
+
+Laravel Sail is run through the local `vendor/bin/sail` binary. Typing that path every time is tedious, so set a shell alias. For Bash/Zsh, add this to your `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+alias sail='[ -f sail ] && sh sail || sh vendor/bin/sail'
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+This alias runs `sail` from the project root if a `sail` script exists, otherwise falls back to `vendor/bin/sail`. Reload your shell afterwards:
 
-## Contributing
+```bash
+source ~/.bashrc   # or: source ~/.zshrc
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+### 3. Install PHP dependencies
 
-## Code of Conduct
+From the project root (`tikatest-backend`), install Composer dependencies. If you have PHP/Composer locally you can run `composer install` directly; otherwise use the Composer Docker image:
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+```bash
+docker run --rm \
+    -u "$(id -u):$(id -g)" \
+    -v "$(pwd):/var/www/html" \
+    -w /var/www/html \
+    laravelsail/php84-composer:latest \
+    composer install --ignore-platform-reqs
+```
 
-## Security Vulnerabilities
+### 4. Configure environment
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Copy the example environment file and generate the application key:
+
+```bash
+cp .env.example .env
+sail artisan key:generate
+```
+
+### 5. Build and run the services
+
+Start the Sail containers (this builds the images on first run):
+
+```bash
+sail up -d
+```
+
+Run database migrations and seed the database:
+
+```bash
+sail artisan migrate --seed
+```
+
+The application will be available at [http://localhost](http://localhost).
+
+### Useful Sail commands
+
+```bash
+sail up -d            # start containers in the background
+sail down             # stop containers
+sail restart          # restart containers
+sail artisan <cmd>    # run any Artisan command
+sail composer <cmd>   # run Composer commands
+sail npm <cmd>        # run npm commands
+sail shell            # open a bash shell inside the application container
+sail mysql            # open a MySQL shell
+```
 
 ## License
 

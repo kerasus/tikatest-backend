@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\Quiz;
 use App\Models\QuizBooklet;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class QuizBookletController extends Controller
 {
@@ -17,10 +19,10 @@ class QuizBookletController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:quizzes.view')->only(['index', 'show', 'indexByQuiz']);
-        $this->middleware('permission:quizzes.create')->only(['store', 'sync']);
-        $this->middleware('permission:quizzes.update')->only(['update']);
-        $this->middleware('permission:quizzes.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:quizzes.view')->only(['index', 'show', 'indexByQuiz']);
+        $this->middleware('admin_or_permission:quizzes.create')->only(['store', 'sync']);
+        $this->middleware('admin_or_permission:quizzes.update')->only(['update']);
+        $this->middleware('admin_or_permission:quizzes.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -59,7 +61,7 @@ class QuizBookletController extends Controller
         return $this->jsonResponseOk($booklet);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $booklet = QuizBooklet::with('quiz')->findOrFail($id);
 

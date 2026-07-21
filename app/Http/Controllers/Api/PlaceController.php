@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\Place;
 use App\Services\PlaceImporter;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class PlaceController extends Controller
 {
@@ -17,12 +19,12 @@ class PlaceController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:places.view')->only(['index', 'show']);
-        $this->middleware('permission:places.create')->only(['store']);
-        $this->middleware('permission:places.update')->only(['update']);
-        $this->middleware('permission:places.delete')->only(['destroy']);
-        $this->middleware('permission:places.import')->only(['import']);
-        $this->middleware('permission:places.manage-tags')->only(['syncTags', 'attachTags', 'detachTags']);
+        $this->middleware('admin_or_permission:places.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:places.create')->only(['store']);
+        $this->middleware('admin_or_permission:places.update')->only(['update']);
+        $this->middleware('admin_or_permission:places.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:places.import')->only(['import']);
+        $this->middleware('admin_or_permission:places.manage-tags')->only(['syncTags', 'attachTags', 'detachTags']);
     }
 
     public function index(Request $request): JsonResponse
@@ -84,7 +86,7 @@ class PlaceController extends Controller
         return $this->show($place->id);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $place = Place::with('tags')->findOrFail($id);
 

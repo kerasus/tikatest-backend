@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\DisciplinaryCase;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class DisciplinaryCaseController extends Controller
 {
@@ -16,10 +18,10 @@ class DisciplinaryCaseController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:disciplinary_cases.view')->only(['index', 'show']);
-        $this->middleware('permission:disciplinary_cases.create')->only(['store']);
-        $this->middleware('permission:disciplinary_cases.update')->only(['update']);
-        $this->middleware('permission:disciplinary_cases.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:disciplinary_cases.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:disciplinary_cases.create')->only(['store']);
+        $this->middleware('admin_or_permission:disciplinary_cases.update')->only(['update']);
+        $this->middleware('admin_or_permission:disciplinary_cases.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -43,7 +45,7 @@ class DisciplinaryCaseController extends Controller
         return $this->commonStore($request, DisciplinaryCase::class);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $case = DisciplinaryCase::with('school')->findOrFail($id);
 

@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\Message;
 use App\Models\MessageOwner;
@@ -9,7 +12,6 @@ use App\Models\User;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class MessageController extends Controller
@@ -19,10 +21,10 @@ class MessageController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:messages.view')->only(['index', 'show', 'sent', 'received', 'myMessages']);
-        $this->middleware('permission:messages.create')->only(['store', 'send', 'sendToClass', 'sendToStudent']);
-        $this->middleware('permission:messages.update')->only(['update']);
-        $this->middleware('permission:messages.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:messages.view')->only(['index', 'show', 'sent', 'received', 'myMessages']);
+        $this->middleware('admin_or_permission:messages.create')->only(['store', 'send', 'sendToClass', 'sendToStudent']);
+        $this->middleware('admin_or_permission:messages.update')->only(['update']);
+        $this->middleware('admin_or_permission:messages.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -95,7 +97,7 @@ class MessageController extends Controller
         }
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $message = Message::with(['school', 'sender', 'owners.user'])->findOrFail($id);
 

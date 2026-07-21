@@ -16,8 +16,8 @@ class PreRegistrationController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:pre_registrations.view')->only(['index']);
-        $this->middleware('permission:pre_registrations.create')->only(['store']);
+        $this->middleware('admin_or_permission:pre_registrations.view')->only(['index']);
+        $this->middleware('admin_or_permission:pre_registrations.create')->only(['store']);
     }
 
     public function index(Request $request): JsonResponse

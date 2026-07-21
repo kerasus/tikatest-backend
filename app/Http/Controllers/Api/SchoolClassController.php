@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\SchoolClass;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class SchoolClassController extends Controller
 {
@@ -16,10 +18,10 @@ class SchoolClassController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:classes.view')->only(['index', 'show']);
-        $this->middleware('permission:classes.create')->only(['store']);
-        $this->middleware('permission:classes.update')->only(['update']);
-        $this->middleware('permission:classes.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:classes.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:classes.create')->only(['store']);
+        $this->middleware('admin_or_permission:classes.update')->only(['update']);
+        $this->middleware('admin_or_permission:classes.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -58,7 +60,7 @@ class SchoolClassController extends Controller
         return $this->commonStore($request, SchoolClass::class);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $class = SchoolClass::with(['school', 'academicField', 'academicLevel'])->findOrFail($id);
 

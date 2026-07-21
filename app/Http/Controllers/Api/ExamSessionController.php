@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use Illuminate\Http\Request;
+
+
 use App\Http\Controllers\Controller;
 use App\Models\ExamSession;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 
 class ExamSessionController extends Controller
 {
@@ -16,10 +18,10 @@ class ExamSessionController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('permission:exam_sessions.view')->only(['index', 'show']);
-        $this->middleware('permission:exam_sessions.create')->only(['store', 'bulkStore']);
-        $this->middleware('permission:exam_sessions.update')->only(['update']);
-        $this->middleware('permission:exam_sessions.delete')->only(['destroy']);
+        $this->middleware('admin_or_permission:exam_sessions.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:exam_sessions.create')->only(['store', 'bulkStore']);
+        $this->middleware('admin_or_permission:exam_sessions.update')->only(['update']);
+        $this->middleware('admin_or_permission:exam_sessions.delete')->only(['destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -67,7 +69,7 @@ class ExamSessionController extends Controller
         return $this->commonStore($request, ExamSession::class);
     }
 
-    public function show(int $id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         $session = ExamSession::with(['school', 'lesson', 'schoolClass', 'createdBy', 'quizSession'])->findOrFail($id);
 
