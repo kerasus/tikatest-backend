@@ -47,12 +47,20 @@ class SchoolController extends Controller
             'name' => 'required|string|max:255',
             'address' => 'nullable|string',
             'website' => 'nullable|url|max:255',
-            'logo_url' => 'nullable|string|max:255',
+            'logo' => 'nullable|file|mimetypes:image/*',
             'type' => 'nullable|string|in:school,institute',
             'account_url' => 'nullable|string|max:255',
         ]);
 
-        return $this->commonStore($request, School::class);
+        $data = $request->except('logo');
+
+        if ($request->hasFile('logo')) {
+            $data['logo_url'] = $this->storeLogo($request->file('logo'), $request->input('code'));
+        }
+
+        $school = School::create($data);
+
+        return $this->jsonResponseOk($school);
     }
 
     public function show(Request $request, $id): JsonResponse
@@ -69,16 +77,34 @@ class SchoolController extends Controller
             'name' => 'sometimes|required|string|max:255',
             'address' => 'nullable|string',
             'website' => 'nullable|url|max:255',
-            'logo_url' => 'nullable|string|max:255',
+            'logo' => 'nullable|file|mimetypes:image/*',
             'type' => 'nullable|string|in:school,institute',
             'account_url' => 'nullable|string|max:255',
         ]);
 
-        return $this->commonUpdate($request, $school);
+        $data = $request->except('logo');
+
+        if ($request->hasFile('logo')) {
+            $data['logo_url'] = $this->storeLogo($request->file('logo'), $school->code ?? 'default');
+        }
+
+        $school->update($data);
+
+        return $this->jsonResponseOk($school);
     }
 
     public function destroy(School $school): JsonResponse
     {
         return $this->commonDestroy($school);
+    }
+
+    private function storeLogo(\Illuminate\Http\UploadedFile $file, ?string $schoolCode): string
+    {
+        $extension = $file->getClientOriginalExtension();
+        $schoolCode = $schoolCode ?: 'default';
+        $filename = sprintf('%s_%s.%s', $schoolCode, time(), $extension);
+        $directory = 'school-logos';
+
+        return $file->storeAs($directory, $filename, 'public');
     }
 }

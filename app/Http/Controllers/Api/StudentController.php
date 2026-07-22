@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\StudentClassRegistration;
 use App\Models\StudySession;
+use App\Enums\UserRoleType;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
@@ -106,7 +107,7 @@ class StudentController extends Controller
         $data['mobile'] = $request->input('student_phone');
 
         $user = User::create($data);
-        $user->assignRole('student');
+        $user->assignRole(UserRoleType::Student->value);
 
         if ($request->filled('class_id')) {
             StudentClassRegistration::create([
@@ -176,7 +177,7 @@ class StudentController extends Controller
 
     public function destroy(User $student): JsonResponse
     {
-        if (!$student->hasRole('student')) {
+        if (!$student->hasRole(UserRoleType::Student->value)) {
             return $this->jsonResponseServerError([
                 'errors' => ['student' => ['این کاربر دانش آموز نیست.']]
             ]);

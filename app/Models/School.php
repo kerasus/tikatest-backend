@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class School extends Model
 {
@@ -98,5 +99,12 @@ class School extends Model
     public function preRegistrations(): HasMany
     {
         return $this->hasMany(PreRegistration::class);
+    }
+
+    public function users(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'school_user')
+            ->withPivot('role')
+            ->withTimestamps();
     }
 }

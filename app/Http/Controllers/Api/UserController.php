@@ -48,10 +48,23 @@ class UserController extends Controller
             'scopes' => [
                 'role',
             ],
-            'eagerLoads' => ['roles', 'permissions'],
+            'eagerLoads' => ['roles', 'permissions', 'schools'],
         ];
 
         return $this->commonIndex($request, User::class, $config);
+    }
+
+    public function getByRole(Request $request, string $role): JsonResponse
+    {
+        $request->validate([
+            'role' => 'required|string|exists:roles,name',
+        ]);
+
+        $users = User::whereHas('roles', function ($query) use ($role) {
+            $query->where('name', $role);
+        })->with(['roles', 'permissions', 'schools'])->get();
+
+        return $this->jsonResponseOk($users);
     }
 
     public function store(Request $request): JsonResponse
@@ -71,7 +84,7 @@ class UserController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $user = User::with(['roles', 'permissions'])->findOrFail($id);
+        $user = User::with(['roles', 'permissions', 'schools'])->findOrFail($id);
 
         return $this->jsonResponseOk($user);
     }
@@ -124,6 +137,48 @@ class UserController extends Controller
             'message' => 'نقش کاربر با موفقیت حذف شد.',
             'data' => [
                 'user' => $user->load('roles', 'permissions'),
+            ],
+        ]);
+    }
+
+    public function getSchools(Request $request, User $user): JsonResponse
+    {
+        $schools = $user->schools()->get();
+
+        return $this->jsonResponseOk($schools);
+    }
+
+    public function assignSchool(Request $request, User $user): JsonResponse
+    {
+        $request->validate([
+            'school_id' => 'required|exists:schools,id',
+            'role' => 'nullable|string|max:50',
+        ]);
+
+        $user->schools()->attach($request->input('school_id'), [
+            'role' => $request->input('role'),
+        ]);
+
+        return response()->json([
+            'message' => 'مدرسه با موفقیت به کاربر اضافه شد.',
+            'data' => [
+                'user' => $user->load('roles', 'permissions', 'schools'),
+            ],
+        ]);
+    }
+
+    public function removeSchool(Request $request, User $user): JsonResponse
+    {
+        $request->validate([
+            'school_id' => 'required|exists:schools,id',
+        ]);
+
+        $user->schools()->detach($request->input('school_id'));
+
+        return response()->json([
+            'message' => 'مدرسه با موفقیت از کاربر حذف شد.',
+            'data' => [
+                'user' => $user->load('roles', 'permissions', 'schools'),
             ],
         ]);
     }

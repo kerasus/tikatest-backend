@@ -9,6 +9,7 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class User extends Authenticatable
 {
@@ -143,5 +144,12 @@ class User extends Authenticatable
     public function homeworkGraded(): HasMany
     {
         return $this->hasMany(HomeworkSubmission::class, 'graded_by');
+    }
+
+    public function schools(): BelongsToMany
+    {
+        return $this->belongsToMany(School::class, 'school_user')
+            ->withPivot('role')
+            ->withTimestamps();
     }
 }

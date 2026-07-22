@@ -5,12 +5,13 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Spatie\Permission\Middleware\PermissionMiddleware;
+use App\Enums\UserRoleType;
 
 class AdminOrPermissionMiddleware extends PermissionMiddleware
 {
     public function handle(Request $request, Closure $next, $permission, $guard = null)
     {
-        if ($request->user() && $request->user()->hasRole('admin')) {
+        if ($request->user() && $request->user()->hasRole(UserRoleType::Admin->value)) {
             return $next($request);
         }
 

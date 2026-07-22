@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Models\Homework;
 use App\Models\HomeworkOwner;
+use App\Enums\UserRoleType;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
@@ -135,7 +136,7 @@ class HomeworkController extends Controller
         $studentId = auth()->id();
         $perPage = $request->get('length', 20);
 
-        if (!auth()->user()->hasRole('student') && !auth()->user()->hasPermissionTo('homework.view')) {
+        if (!auth()->user()->hasRole(UserRoleType::Student->value) && !auth()->user()->hasPermissionTo('homework.view')) {
             abort(403, 'Access denied');
         }
 

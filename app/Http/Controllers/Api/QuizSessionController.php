@@ -34,7 +34,7 @@ class QuizSessionController extends Controller
         $studentId = $request->user()->id;
         $attemptNumber = $request->input('attempt_number', 1);
 
-        if (!$quiz->is_visible) {
+        if ($quiz->visible_at && now()->lt($quiz->visible_at)) {
             return $this->jsonResponseError('Quiz is not available', 403);
         }
 

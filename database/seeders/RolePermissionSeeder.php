@@ -108,9 +108,9 @@ class RolePermissionSeeder extends Seeder
 
         $admin = Role::findOrCreate(UserRoleType::Admin->value, 'web');
         $manager = Role::findOrCreate(UserRoleType::Manager->value, 'web');
-        $user = Role::findOrCreate(UserRoleType::User->value, 'web');
-        $teacher = Role::findOrCreate('teacher', 'web');
-        $student = Role::findOrCreate('student', 'web');
+        $teacher = Role::findOrCreate(UserRoleType::Teacher->value, 'web');
+        $student = Role::findOrCreate(UserRoleType::Student->value, 'web');
+        $staff = Role::findOrCreate(UserRoleType::Staff->value, 'web');
 
         $admin->syncPermissions($permissions);
 
@@ -257,7 +257,20 @@ class RolePermissionSeeder extends Seeder
             'messages.create',
         ]);
 
-        $user->syncPermissions([
+        $staff->syncPermissions([
+            'students.view',
+            'classes.view',
+            'lessons.view',
+            'exams.view',
+            'grades.view',
+            'quizzes.view',
+            'quiz_sessions.view',
+            'homework.view',
+            'homework_submissions.view',
+            'disciplinary_cases.view',
+            'disciplinary_records.view',
+            'messages.view',
+            'messages.create',
             'tags.view',
             'places.view',
             'places.manage-tags',

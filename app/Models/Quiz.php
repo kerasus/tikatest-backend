@@ -20,12 +20,12 @@ class Quiz extends Model
         'start_time',
         'end_time',
         'description',
-        'is_visible',
         'quiz_type',
         'content',
         'solution',
         'solution_file_path',
         'show_answer_date',
+        'visible_at',
         'no_score_questions',
     ];
 
@@ -36,12 +36,12 @@ class Quiz extends Model
     ];
 
     protected $casts = [
-        'is_visible' => 'boolean',
         'content' => 'array',
         'solution' => 'array',
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
         'show_answer_date' => 'datetime',
+        'visible_at' => 'datetime',
     ];
 
     public function getStartTimeAttribute(): ?Carbon

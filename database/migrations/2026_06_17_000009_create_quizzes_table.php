@@ -16,7 +16,7 @@ return new class extends Migration
             $table->dateTime('starts_at')->nullable();
             $table->dateTime('ends_at')->nullable();
             $table->text('description')->nullable();
-            $table->boolean('is_visible')->default(true);
+            $table->dateTime('visible_at')->nullable();
             $table->string('quiz_type', 50)->nullable();
             $table->json('content')->nullable();
             $table->json('solution')->nullable();

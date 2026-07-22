@@ -38,7 +38,7 @@ class QuizController extends Controller
                 'quiz_type',
             ],
             'filterKeysExact' => [
-                'is_visible',
+                'visible_at',
                 'quiz_type',
             ],
             'filterDate' => [
@@ -61,7 +61,6 @@ class QuizController extends Controller
             'start_time' => 'nullable|date',
             'end_time' => 'nullable|date',
             'description' => 'nullable|string',
-            'is_visible' => 'boolean',
             'quiz_type' => 'nullable|string|max:50',
             'question_type' => 'nullable|in:text,image',
             'questions_text' => 'nullable|string',
@@ -71,6 +70,7 @@ class QuizController extends Controller
             'solution_text' => 'nullable|string',
             'solution_image' => 'nullable|file|mimetypes:image/*',
             'show_answer_date' => 'nullable|date',
+            'visible_at' => 'nullable|date',
             'no_score_questions' => 'nullable|string',
         ]);
 
@@ -81,9 +81,9 @@ class QuizController extends Controller
             'start_time',
             'end_time',
             'description',
-            'is_visible',
             'quiz_type',
             'show_answer_date',
+            'visible_at',
             'no_score_questions',
         ]);
 
@@ -124,7 +124,6 @@ class QuizController extends Controller
             'start_time' => 'nullable|date',
             'end_time' => 'nullable|date',
             'description' => 'nullable|string',
-            'is_visible' => 'boolean',
             'quiz_type' => 'nullable|string|max:50',
             'question_type' => 'nullable|in:text,image',
             'questions_text' => 'nullable|string',
@@ -134,6 +133,7 @@ class QuizController extends Controller
             'solution_text' => 'nullable|string',
             'solution_image' => 'nullable|file|mimetypes:image/*',
             'show_answer_date' => 'nullable|date',
+            'visible_at' => 'nullable|date',
             'no_score_questions' => 'nullable|string',
         ]);
 
@@ -144,9 +144,9 @@ class QuizController extends Controller
             'start_time',
             'end_time',
             'description',
-            'is_visible',
             'quiz_type',
             'show_answer_date',
+            'visible_at',
             'no_score_questions',
         ]);
 
@@ -216,7 +216,10 @@ class QuizController extends Controller
         $classIds = $student->studentClassRegistrations->pluck('class_id')->filter()->values();
 
         $query = Quiz::query()
-            ->where('is_visible', true)
+            ->where(function ($q) {
+                $q->where('visible_at', '<=', now())
+                  ->orWhereNull('visible_at');
+            })
             ->with(['quizClassAssignments.schoolClass'])
             ->where(function ($q) use ($classIds) {
                 $q->whereDoesntHave('quizClassAssignments')
