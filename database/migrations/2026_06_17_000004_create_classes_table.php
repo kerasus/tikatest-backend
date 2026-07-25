@@ -11,13 +11,12 @@ return new class extends Migration
         Schema::create('classes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('school_id')->nullable()->constrained('schools')->nullOnDelete();
-            $table->foreignId('field_id')->constrained('academic_fields')->cascadeOnDelete();
             $table->foreignId('level_id')->constrained('academic_levels')->cascadeOnDelete();
             $table->string('name');
             $table->softDeletes();
             $table->timestamps();
 
-            $table->index(['field_id', 'level_id', 'name']);
+            $table->index(['level_id', 'name']);
         });
     }
 

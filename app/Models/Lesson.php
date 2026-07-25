@@ -18,6 +18,7 @@ class Lesson extends Model
         'field_id',
         'level_id',
         'class_id',
+        'order',
         'coefficient',
         'is_report_card',
     ];

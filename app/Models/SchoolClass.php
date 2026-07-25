@@ -16,7 +16,6 @@ class SchoolClass extends Model
 
     protected $fillable = [
         'school_id',
-        'field_id',
         'level_id',
         'name',
     ];
@@ -24,11 +23,6 @@ class SchoolClass extends Model
     public function school(): BelongsTo
     {
         return $this->belongsTo(School::class);
-    }
-
-    public function academicField(): BelongsTo
-    {
-        return $this->belongsTo(AcademicField::class, 'field_id');
     }
 
     public function academicLevel(): BelongsTo

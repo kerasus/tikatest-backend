@@ -28,13 +28,8 @@ class SchoolClassController extends Controller
     {
         $config = [
             'filterKeys' => ['name'],
+            'filterKeysExact' => ['school_id'],
             'filterRelationKeys' => [
-                [
-                    'requestKey' => 'field_name',
-                    'relationName' => 'academicField',
-                    'relationColumn' => 'name',
-                    'exact' => false,
-                ],
                 [
                     'requestKey' => 'level_name',
                     'relationName' => 'academicLevel',
@@ -42,7 +37,7 @@ class SchoolClassController extends Controller
                     'exact' => false,
                 ],
             ],
-            'eagerLoads' => ['school', 'academicField', 'academicLevel'],
+            'eagerLoads' => ['school', 'academicLevel'],
         ];
 
         return $this->commonIndex($request, SchoolClass::class, $config);
@@ -52,7 +47,6 @@ class SchoolClassController extends Controller
     {
         $request->validate([
             'school_id' => 'nullable|exists:schools,id',
-            'field_id' => 'required|exists:academic_fields,id',
             'level_id' => 'required|exists:academic_levels,id',
             'name' => 'required|string|max:255',
         ]);
@@ -62,7 +56,7 @@ class SchoolClassController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $class = SchoolClass::with(['school', 'academicField', 'academicLevel'])->findOrFail($id);
+        $class = SchoolClass::with(['school', 'academicLevel'])->findOrFail($id);
 
         return $this->jsonResponseOk($class);
     }
@@ -71,7 +65,6 @@ class SchoolClassController extends Controller
     {
         $request->validate([
             'school_id' => 'nullable|exists:schools,id',
-            'field_id' => 'sometimes|required|exists:academic_fields,id',
             'level_id' => 'sometimes|required|exists:academic_levels,id',
             'name' => 'sometimes|required|string|max:255',
         ]);

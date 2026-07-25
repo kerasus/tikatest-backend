@@ -28,6 +28,7 @@ class AcademicLevelController extends Controller
     {
         $config = [
             'filterKeys' => ['name'],
+            'filterKeysExact' => ['school_id', 'field_id'],
             'filterRelationKeys' => [
                 [
                     'requestKey' => 'field_name',

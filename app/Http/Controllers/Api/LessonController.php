@@ -28,6 +28,7 @@ class LessonController extends Controller
     {
         $config = [
             'filterKeys' => ['name'],
+            'filterKeysExact' => ['school_id', 'field_id', 'level_id', 'class_id'],
             'filterRelationKeys' => [
                 [
                     'requestKey' => 'field_name',

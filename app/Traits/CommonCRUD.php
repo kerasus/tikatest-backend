@@ -212,7 +212,7 @@ trait CommonCRUD
     public function commonStore(Request $request, $modelClass)
     {
         $createdModel = $modelClass::create($request->all());
-        return $this->show($createdModel->id);
+        return $this->show($request, $createdModel->id);
     }
 
     /**
@@ -227,7 +227,7 @@ trait CommonCRUD
         $model->fill($request->all());
 
         if ($model->save()) {
-            return $this->show($model->id);
+            return $this->show($request, $model->id);
         } else {
             return $this->jsonResponseServerError([
                 'errors' => [

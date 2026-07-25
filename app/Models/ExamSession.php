@@ -21,14 +21,16 @@ class ExamSession extends Model
         'is_descriptive',
         'is_report_card',
         'quiz_session_id',
-        'min_grade',
+        'min_passing_score',
+        'max_score',
         'created_by',
     ];
 
     protected $casts = [
         'is_descriptive' => 'boolean',
         'is_report_card' => 'boolean',
-        'min_grade' => 'decimal:2',
+        'min_passing_score' => 'decimal:2',
+        'max_score' => 'decimal:2',
         'exam_date' => 'date',
     ];
 
