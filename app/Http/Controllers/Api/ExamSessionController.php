@@ -44,7 +44,7 @@ class ExamSessionController extends Controller
                     'exact' => false,
                 ],
             ],
-            'eagerLoads' => ['school', 'lesson', 'schoolClass', 'createdBy', 'quizSession'],
+            'eagerLoads' => ['lesson', 'schoolClass', 'createdBy', 'quizSession'],
         ];
 
         return $this->commonIndex($request, ExamSession::class, $config);
@@ -53,7 +53,6 @@ class ExamSessionController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'lesson_id' => 'required|exists:lessons,id',
             'class_id' => 'required|exists:classes,id',
             'exam_date' => 'required|date',
@@ -62,7 +61,8 @@ class ExamSessionController extends Controller
             'is_descriptive' => 'boolean',
             'is_report_card' => 'boolean',
             'quiz_session_id' => 'nullable|exists:quiz_sessions,id',
-            'min_grade' => 'nullable|numeric|min:0',
+            'min_passing_score' => 'nullable|numeric|min:0',
+            'max_score' => 'nullable|numeric|min:0',
             'created_by' => 'nullable|exists:users,id',
         ]);
 
@@ -79,7 +79,6 @@ class ExamSessionController extends Controller
     public function update(Request $request, ExamSession $examSession): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'lesson_id' => 'sometimes|required|exists:lessons,id',
             'class_id' => 'sometimes|required|exists:classes,id',
             'exam_date' => 'sometimes|required|date',
@@ -88,7 +87,8 @@ class ExamSessionController extends Controller
             'is_descriptive' => 'boolean',
             'is_report_card' => 'boolean',
             'quiz_session_id' => 'nullable|exists:quiz_sessions,id',
-            'min_grade' => 'nullable|numeric|min:0',
+            'min_passing_score' => 'nullable|numeric|min:0',
+            'max_score' => 'nullable|numeric|min:0',
             'created_by' => 'nullable|exists:users,id',
         ]);
 
@@ -112,8 +112,9 @@ class ExamSessionController extends Controller
             'sessions.*.is_descriptive' => 'boolean',
             'sessions.*.is_report_card' => 'boolean',
             'sessions.*.quiz_session_id' => 'nullable|exists:quiz_sessions,id',
-            'sessions.*.min_grade' => 'nullable|numeric|min:0',
-            'school_id' => 'nullable|exists:schools,id',
+            'sessions.*.min_passing_score' => 'nullable|numeric|min:0',
+            'sessions.*.max_score' => 'nullable|numeric|min:0',
+            'sessions.*.created_by' => 'nullable|exists:users,id',
         ]);
 
         $createdSessions = [];
@@ -128,7 +129,7 @@ class ExamSessionController extends Controller
 
     public function participants(Request $request, $sessionId): JsonResponse
     {
-        $session = ExamSession::with(['school', 'lesson', 'schoolClass', 'createdBy', 'quizSession', 'grades.student'])->findOrFail($sessionId);
+        $session = ExamSession::with(['lesson', 'schoolClass', 'createdBy', 'quizSession', 'grades.student'])->findOrFail($sessionId);
 
         return $this->jsonResponseOk($session);
     }

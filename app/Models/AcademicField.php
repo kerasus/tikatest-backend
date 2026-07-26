@@ -26,14 +26,4 @@ class AcademicField extends Model
     {
         return $this->hasMany(AcademicLevel::class, "field_id");
     }
-
-    public function classes(): HasMany
-    {
-        return $this->hasMany(SchoolClass::class);
-    }
-
-    public function lessons(): HasMany
-    {
-        return $this->hasMany(Lesson::class);
-    }
 }

@@ -12,7 +12,6 @@ class ExamSession extends Model
     use HasFactory;
 
     protected $fillable = [
-        'school_id',
         'lesson_id',
         'class_id',
         'exam_date',
@@ -33,11 +32,6 @@ class ExamSession extends Model
         'max_score' => 'decimal:2',
         'exam_date' => 'date',
     ];
-
-    public function school(): BelongsTo
-    {
-        return $this->belongsTo(School::class);
-    }
 
     public function lesson(): BelongsTo
     {

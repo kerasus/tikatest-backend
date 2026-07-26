@@ -28,7 +28,7 @@ class SchoolClassController extends Controller
     {
         $config = [
             'filterKeys' => ['name'],
-            'filterKeysExact' => ['school_id'],
+            'filterKeysExact' => ['school_id', 'level_id'],
             'filterRelationKeys' => [
                 [
                     'requestKey' => 'level_name',

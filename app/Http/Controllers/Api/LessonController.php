@@ -28,14 +28,8 @@ class LessonController extends Controller
     {
         $config = [
             'filterKeys' => ['name'],
-            'filterKeysExact' => ['school_id', 'field_id', 'level_id', 'class_id'],
+            'filterKeysExact' => ['level_id'],
             'filterRelationKeys' => [
-                [
-                    'requestKey' => 'field_name',
-                    'relationName' => 'academicField',
-                    'relationColumn' => 'name',
-                    'exact' => false,
-                ],
                 [
                     'requestKey' => 'level_name',
                     'relationName' => 'academicLevel',
@@ -43,7 +37,7 @@ class LessonController extends Controller
                     'exact' => false,
                 ],
             ],
-            'eagerLoads' => ['school', 'academicField', 'academicLevel', 'schoolClass'],
+            'eagerLoads' => ['academicLevel'],
         ];
 
         return $this->commonIndex($request, Lesson::class, $config);
@@ -52,11 +46,8 @@ class LessonController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'name' => 'required|string|max:255',
-            'field_id' => 'nullable|exists:academic_fields,id',
             'level_id' => 'nullable|exists:academic_levels,id',
-            'class_id' => 'nullable|exists:classes,id',
             'coefficient' => 'nullable|numeric|min:0',
         ]);
 
@@ -65,7 +56,7 @@ class LessonController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $lesson = Lesson::with(['school', 'academicField', 'academicLevel', 'schoolClass'])->findOrFail($id);
+        $lesson = Lesson::with(['academicLevel'])->findOrFail($id);
 
         return $this->jsonResponseOk($lesson);
     }
@@ -73,11 +64,8 @@ class LessonController extends Controller
     public function update(Request $request, Lesson $lesson): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'name' => 'sometimes|required|string|max:255',
-            'field_id' => 'nullable|exists:academic_fields,id',
             'level_id' => 'nullable|exists:academic_levels,id',
-            'class_id' => 'nullable|exists:classes,id',
             'coefficient' => 'nullable|numeric|min:0',
         ]);
 

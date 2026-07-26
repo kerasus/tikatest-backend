@@ -13,6 +13,7 @@ use App\Services\GradeService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\ValidationException;
 
 class GradeController extends Controller
 {
@@ -39,6 +40,7 @@ class GradeController extends Controller
                 'is_visible',
                 'is_report_card',
                 'is_descriptive',
+                'school_id',
             ],
             'filterDate' => [
                 'grade_date',
@@ -72,16 +74,42 @@ class GradeController extends Controller
                     'relationName' => 'examSession',
                 ],
             ],
-            'eagerLoads' => ['school', 'examSession', 'lesson', 'student', 'schoolClass'],
+            'eagerLoads' => ['examSession', 'lesson', 'student', 'schoolClass'],
+            'returnModelQuery' => true,
         ];
 
-        return $this->commonIndex($request, Grade::class, $config);
+        $result = $this->commonIndex($request, Grade::class, $config);
+
+        if (is_array($result) && isset($result['modelQuery'])) {
+            $modelQuery = $result['modelQuery'];
+
+            if ($request->has('field_id')) {
+                $modelQuery->whereHas('schoolClass', function ($query) use ($request) {
+                    $query->whereHas('academicLevel', function ($q) use ($request) {
+                        $q->where('field_id', $request->get('field_id'));
+                    });
+                });
+            }
+
+            if ($request->has('level_id')) {
+                $modelQuery->where(function ($query) use ($request) {
+                    $query->whereHas('schoolClass', function ($q) use ($request) {
+                        $q->where('level_id', $request->get('level_id'));
+                    })->orWhereHas('lesson', function ($q) use ($request) {
+                        $q->where('level_id', $request->get('level_id'));
+                    });
+                });
+            }
+
+            return $result['responseWithAttachedCollection']($modelQuery);
+        }
+
+        return $result;
     }
 
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'exam_session_id' => 'nullable|exists:exam_sessions,id',
             'lesson_id' => 'required|exists:lessons,id',
             'student_id' => 'required|exists:users,id',
@@ -101,12 +129,23 @@ class GradeController extends Controller
             'explanation' => 'nullable|string',
         ]);
 
+        if (!$request->is_descriptive) {
+            if (!$request->filled('max_score')) {
+                throw ValidationException::withMessages(['max_score' => 'حداکثر نمره الزامی است.']);
+            }
+            if ($request->filled('min_passing_score') && $request->min_passing_score >= $request->max_score) {
+                throw ValidationException::withMessages(['min_passing_score' => 'حداقل نمره قبولی باید از حداکثر نمره کمتر باشد.']);
+            }
+            if ($request->filled('raw_grade') && is_numeric($request->raw_grade) && $request->raw_grade >= $request->max_score) {
+                throw ValidationException::withMessages(['raw_grade' => 'نمره باید کمتر از حداکثر نمره باشد.']);
+            }
+        }
+
         $isReportCard = in_array($request->grade_type, ['mid_term_1', 'continuous_1', 'final_1', 'mid_term_2', 'continuous_2', 'final_2']);
 
         $examSession = null;
         if (!$request->filled('exam_session_id')) {
             $examSession = ExamSession::create([
-                'school_id' => $request->school_id,
                 'lesson_id' => $request->lesson_id,
                 'class_id' => $request->class_id,
                 'exam_date' => $request->exam_date ?? $request->grade_date,
@@ -128,7 +167,7 @@ class GradeController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $grade = Grade::with(['school', 'examSession', 'lesson', 'student', 'schoolClass'])->findOrFail($id);
+        $grade = Grade::with(['examSession', 'lesson', 'student', 'schoolClass'])->findOrFail($id);
 
         return $this->jsonResponseOk($grade);
     }
@@ -136,7 +175,6 @@ class GradeController extends Controller
     public function update(Request $request, Grade $grade): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'exam_session_id' => 'sometimes|required|exists:exam_sessions,id',
             'lesson_id' => 'sometimes|required|exists:lessons,id',
             'student_id' => 'sometimes|required|exists:users,id',
@@ -155,6 +193,15 @@ class GradeController extends Controller
             'grade_date' => 'sometimes|required|date',
             'explanation' => 'nullable|string',
         ]);
+
+        if (!$request->is_descriptive) {
+            if ($request->filled('max_score') && $request->filled('min_passing_score') && $request->min_passing_score >= $request->max_score) {
+                throw ValidationException::withMessages(['min_passing_score' => 'حداقل نمره قبولی باید از حداکثر نمره کمتر باشد.']);
+            }
+            if ($request->filled('raw_grade') && is_numeric($request->raw_grade) && $request->filled('max_score') && $request->raw_grade >= $request->max_score) {
+                throw ValidationException::withMessages(['raw_grade' => 'نمره باید کمتر از حداکثر نمره باشد.']);
+            }
+        }
 
         return $this->commonUpdate($request, $grade);
     }
@@ -181,21 +228,34 @@ class GradeController extends Controller
             'grades.*.descriptive_value' => 'nullable|integer|min:1|max:4',
         ]);
 
+        if (!$request->is_descriptive) {
+            if (!$request->filled('max_score')) {
+                throw ValidationException::withMessages(['max_score' => 'حداکثر نمره الزامی است.']);
+            }
+            if ($request->filled('min_passing_score') && $request->min_passing_score >= $request->max_score) {
+                throw ValidationException::withMessages(['min_passing_score' => 'حداقل نمره قبولی باید از حداکثر نمره کمتر باشد.']);
+            }
+            foreach ($request->grades as $index => $gradeData) {
+                if (isset($gradeData['raw_grade']) && is_numeric($gradeData['raw_grade']) && $gradeData['raw_grade'] >= $request->max_score) {
+                    throw ValidationException::withMessages(["grades.$index.raw_grade" => 'نمره باید کمتر از حداکثر نمره باشد.']);
+                }
+            }
+        }
+
         $isReportCard = in_array($request->grade_type, ['mid_term_1', 'continuous_1', 'final_1', 'mid_term_2', 'continuous_2', 'final_2']);
 
-        $examSession = ExamSession::create([
-            'school_id' => $request->user()->school_id,
-            'lesson_id' => $request->lesson_id,
-            'class_id' => $request->class_id,
-            'exam_date' => $request->exam_date,
-            'grade_type' => $request->grade_type,
-            'grade_name_for_other_type' => $request->grade_name_for_other_type,
-            'is_descriptive' => $request->is_descriptive ?? false,
-            'is_report_card' => $isReportCard,
-            'min_passing_score' => $request->min_passing_score,
-            'max_score' => $request->max_score,
-            'created_by' => $request->user()->id,
-        ]);
+$examSession = ExamSession::create([
+                'lesson_id' => $request->lesson_id,
+                'class_id' => $request->class_id,
+                'exam_date' => $request->exam_date,
+                'grade_type' => $request->grade_type,
+                'grade_name_for_other_type' => $request->grade_name_for_other_type,
+                'is_descriptive' => $request->is_descriptive ?? false,
+                'is_report_card' => $isReportCard,
+                'min_passing_score' => $request->min_passing_score,
+                'max_score' => $request->max_score,
+                'created_by' => $request->user()->id,
+            ]);
 
         $createdGrades = [];
         $errors = [];
@@ -342,6 +402,20 @@ class GradeController extends Controller
             'grades.*.grade_date' => 'required|date',
             'grades.*.explanation' => 'nullable|string',
         ]);
+
+        foreach ($request->grades as $index => $gradeData) {
+            if (!$gradeData['is_descriptive']) {
+                if (!$gradeData['max_grade']) {
+                    throw ValidationException::withMessages(["grades.$index.max_grade" => 'حداکثر نمره الزامی است.']);
+                }
+                if ($gradeData['min_grade'] >= $gradeData['max_grade']) {
+                    throw ValidationException::withMessages(["grades.$index.min_grade" => 'حداقل نمره قبولی باید از حداکثر نمره کمتر باشد.']);
+                }
+                if (isset($gradeData['raw_grade']) && is_numeric($gradeData['raw_grade']) && $gradeData['raw_grade'] >= $gradeData['max_grade']) {
+                    throw ValidationException::withMessages(["grades.$index.raw_grade" => 'نمره باید کمتر از حداکثر نمره باشد.']);
+                }
+            }
+        }
 
         $createdGrades = [];
         $errors = [];

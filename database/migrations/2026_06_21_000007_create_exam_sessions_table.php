@@ -11,7 +11,6 @@ return new class extends Migration
     // alternate `resultOfDars`
         Schema::create('exam_sessions', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('school_id')->nullable()->constrained('schools')->nullOnDelete();
             $table->foreignId('lesson_id')->constrained('lessons')->cascadeOnDelete();
             $table->foreignId('class_id')->constrained('classes')->cascadeOnDelete();
             $table->date('exam_date');

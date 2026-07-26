@@ -46,11 +46,6 @@ class School extends Model
         return $this->hasMany(StudentClassRegistration::class);
     }
 
-    public function lessons(): HasMany
-    {
-        return $this->hasMany(Lesson::class);
-    }
-
     public function examSessions(): HasMany
     {
         return $this->hasMany(ExamSession::class);
@@ -101,10 +96,4 @@ class School extends Model
         return $this->hasMany(PreRegistration::class);
     }
 
-    public function users(): BelongsToMany
-    {
-        return $this->belongsToMany(User::class, 'school_user')
-            ->withPivot('role')
-            ->withTimestamps();
-    }
 }

@@ -38,6 +38,9 @@ class StudentController extends Controller
                 'melli_code',
                 'student_code',
             ],
+            'filterKeysExact' => [
+                'school_id',
+            ],
             'filterOnMultipleColumnKeys' => [
                 [
                     'requestKey' => 'full_name_search',
@@ -60,6 +63,10 @@ class StudentController extends Controller
             ],
             'filterRelationIds' => [
                 [
+                    'requestKey' => 'class_id',
+                    'relationName' => 'studentClassRegistrations',
+                ],
+                [
                     'requestKey' => 'class_ids',
                     'relationName' => 'studentClassRegistrations',
                     'relationNames' => ['studentClassRegistrations'],
@@ -77,6 +84,18 @@ class StudentController extends Controller
         $perPage = $request->has('length') ? $request->get('length') : 10;
 
         $this->buildFilterQuery($request, $modelQuery, User::class, $this->getConfigArray($config));
+
+        if ($request->filled('field_id')) {
+            $modelQuery->whereHas('studentClassRegistrations.schoolClass.academicLevel.academicField', function ($query) use ($request) {
+                $query->where('academic_fields.id', $request->get('field_id'));
+            });
+        }
+
+        if ($request->filled('level_id')) {
+            $modelQuery->whereHas('studentClassRegistrations.schoolClass', function ($query) use ($request) {
+                $query->where('level_id', $request->get('level_id'));
+            });
+        }
 
         return $this->jsonResponseOk($modelQuery->paginate($perPage));
     }
@@ -113,7 +132,6 @@ class StudentController extends Controller
             StudentClassRegistration::create([
                 'student_id' => $user->id,
                 'class_id' => $request->class_id,
-                'school_id' => $request->school_id,
             ]);
         }
 
@@ -127,6 +145,7 @@ class StudentController extends Controller
             ->with([
                 'studentClassRegistrations.schoolClass.academicField',
                 'studentClassRegistrations.schoolClass.academicLevel',
+                'studentClassRegistrations.schoolClass.school',
                 'roles',
                 'permissions',
             ])

@@ -38,9 +38,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('users/{user}/assign-role', [UserController::class, 'assignRole']);
     Route::post('users/{user}/remove-role', [UserController::class, 'removeRole']);
     Route::get('users/role/{role}', [UserController::class, 'getByRole']);
-    Route::get('users/{user}/schools', [UserController::class, 'getSchools']);
-    Route::post('users/{user}/schools', [UserController::class, 'assignSchool']);
-    Route::delete('users/{user}/schools', [UserController::class, 'removeSchool']);
     Route::apiResource('users', UserController::class);
 
     Route::apiResource('tags', TagController::class);

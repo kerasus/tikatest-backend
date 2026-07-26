@@ -10,12 +10,13 @@ class StudentClassRegistration extends Model
 {
     use HasFactory;
 
+    protected $table = 'student_class';
+
     public $timestamps = true;
 
     protected $fillable = [
         'student_id',
         'class_id',
-        'school_id',
     ];
 
     public function student(): BelongsTo
@@ -26,10 +27,5 @@ class StudentClassRegistration extends Model
     public function schoolClass(): BelongsTo
     {
         return $this->belongsTo(SchoolClass::class, 'class_id');
-    }
-
-    public function school(): BelongsTo
-    {
-        return $this->belongsTo(School::class);
     }
 }

@@ -146,10 +146,4 @@ class User extends Authenticatable
         return $this->hasMany(HomeworkSubmission::class, 'graded_by');
     }
 
-    public function schools(): BelongsToMany
-    {
-        return $this->belongsToMany(School::class, 'school_user')
-            ->withPivot('role')
-            ->withTimestamps();
-    }
 }
