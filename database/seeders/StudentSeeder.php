@@ -30,7 +30,9 @@ class StudentSeeder extends Seeder
         $globalIndex = 0;
 
         foreach ($schools as $school) {
-            $classes = SchoolClass::where('school_id', $school->id)->get();
+            $classes = SchoolClass::whereHas('academicLevel', function ($query) use ($school) {
+                $query->where('school_id', $school->id);
+            })->get();
 
             foreach ($classes as $class) {
                 for ($i = 1; $i <= $studentsPerClass; $i++) {

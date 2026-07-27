@@ -19,12 +19,10 @@ class ClassSeeder extends Seeder
             if ($school) {
                 SchoolClass::firstOrCreate(
                     [
-                        'school_id' => $school->id,
                         'level_id' => $level->id,
                         'name' => 'کلاس ' . $level->name,
                     ],
                     [
-                        'school_id' => $school->id,
                         'level_id' => $level->id,
                         'name' => 'کلاس ' . $level->name,
                     ]

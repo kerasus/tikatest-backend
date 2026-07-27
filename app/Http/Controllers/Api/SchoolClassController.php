@@ -28,7 +28,7 @@ class SchoolClassController extends Controller
     {
         $config = [
             'filterKeys' => ['name'],
-            'filterKeysExact' => ['school_id', 'level_id'],
+            'filterKeysExact' => ['level_id'],
             'filterRelationKeys' => [
                 [
                     'requestKey' => 'level_name',
@@ -37,16 +37,23 @@ class SchoolClassController extends Controller
                     'exact' => false,
                 ],
             ],
-            'eagerLoads' => ['school', 'academicLevel'],
+            'eagerLoads' => ['academicLevel'],
         ];
 
-        return $this->commonIndex($request, SchoolClass::class, $config);
+        $result = $this->commonIndex($request, SchoolClass::class, $config);
+
+        if (is_array($result) && isset($result['modelQuery']) && $request->filled('school_id')) {
+            $result['modelQuery']->whereHas('academicLevel', function ($query) use ($request) {
+                $query->where('school_id', $request->get('school_id'));
+            });
+        }
+
+        return $result;
     }
 
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'level_id' => 'required|exists:academic_levels,id',
             'name' => 'required|string|max:255',
         ]);
@@ -56,7 +63,7 @@ class SchoolClassController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $class = SchoolClass::with(['school', 'academicLevel'])->findOrFail($id);
+        $class = SchoolClass::with(['academicLevel'])->findOrFail($id);
 
         return $this->jsonResponseOk($class);
     }
@@ -64,7 +71,6 @@ class SchoolClassController extends Controller
     public function update(Request $request, SchoolClass $schoolClass): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'level_id' => 'sometimes|required|exists:academic_levels,id',
             'name' => 'sometimes|required|string|max:255',
         ]);
