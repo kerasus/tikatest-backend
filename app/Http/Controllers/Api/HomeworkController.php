@@ -50,7 +50,7 @@ class HomeworkController extends Controller
                 ],
                 [
                     'requestKey' => 'field_id',
-                    'relationName' => 'schoolClass.academicField',
+                    'relationName' => 'schoolClass.academicLevel.academicField',
                     'relationColumn' => 'id',
                     'exact' => true,
                 ],
@@ -119,8 +119,8 @@ class HomeworkController extends Controller
         $perPage = $request->get('length', 20);
 
         $homeworks = Homework::where(function ($query) use ($studentId) {
-                $query->whereHas('schoolClass.studentClassRegistrations', function ($q) use ($studentId) {
-                    $q->where('student_id', $studentId);
+                $query->whereHas('schoolClass.userClassRegistrations', function ($q) use ($studentId) {
+                    $q->where('user_id', $studentId);
                 })
                 ->orWhereNull('class_id');
             })
@@ -155,7 +155,7 @@ class HomeworkController extends Controller
         $homework = Homework::with(['lesson', 'schoolClass', 'owners'])->findOrFail($homeworkId);
 
         if ($homework->class_id) {
-            $isEnrolled = \App\Models\StudentClassRegistration::where('student_id', $studentId)
+            $isEnrolled = \App\Models\UserClassRegistration::where('user_id', $studentId)
                 ->where('class_id', $homework->class_id)
                 ->exists();
 
@@ -199,7 +199,7 @@ class HomeworkController extends Controller
         $homework = Homework::findOrFail($homeworkId);
 
         if ($homework->class_id) {
-            $isEnrolled = \App\Models\StudentClassRegistration::where('student_id', $studentId)
+            $isEnrolled = \App\Models\UserClassRegistration::where('user_id', $studentId)
                 ->where('class_id', $homework->class_id)
                 ->exists();
 

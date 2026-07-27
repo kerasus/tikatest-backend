@@ -9,7 +9,6 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class User extends Authenticatable
 {
@@ -86,9 +85,9 @@ class User extends Authenticatable
         return $query->role($role);
     }
 
-    public function studentClassRegistrations(): HasMany
+    public function userClassRegistrations(): HasMany
     {
-        return $this->hasMany(StudentClassRegistration::class, 'student_id');
+        return $this->hasMany(UserClassRegistration::class, 'user_id');
     }
 
     public function grades(): HasMany

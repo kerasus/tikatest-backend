@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Enums\UserRoleType;
+use App\Models\School;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -20,7 +21,7 @@ class ManagerSeeder extends Seeder
                 'email' => 'alavi@example.com',
                 'mobile' => '09351234575',
                 'employee_code' => 'MGR-001',
-                'schools' => ['SCH-001'],
+                'school_code' => 'SCH-001',
             ],
             [
                 'firstname' => 'رئیس',
@@ -30,13 +31,18 @@ class ManagerSeeder extends Seeder
                 'email' => 'hosseini@example.com',
                 'mobile' => '09351234576',
                 'employee_code' => 'MGR-002',
-                'schools' => ['SCH-002'],
+                'school_code' => 'SCH-002',
             ],
         ];
 
         foreach ($managers as $managerData) {
-            $schools = $managerData['schools'];
-            unset($managerData['schools']);
+            $schoolCode = $managerData['school_code'];
+            unset($managerData['school_code']);
+
+            $school = School::where('code', $schoolCode)->first();
+            if ($school) {
+                $managerData['school_id'] = $school->id;
+            }
 
             $manager = User::firstOrCreate(
                 ['username' => $managerData['username']],
@@ -44,13 +50,6 @@ class ManagerSeeder extends Seeder
             );
 
             $manager->syncRoles([UserRoleType::Manager->value]);
-
-            if (!empty($schools)) {
-                $schoolModels = \App\Models\School::whereIn('code', $schools)->get();
-                foreach ($schoolModels as $school) {
-                    $manager->schools()->attach($school->id, ['role' => UserRoleType::Manager->value]);
-                }
-            }
         }
     }
 }

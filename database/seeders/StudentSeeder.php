@@ -5,7 +5,7 @@ namespace Database\Seeders;
 use App\Enums\UserRoleType;
 use App\Models\School;
 use App\Models\SchoolClass;
-use App\Models\StudentClassRegistration;
+use App\Models\UserClassRegistration;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -26,7 +26,7 @@ class StudentSeeder extends Seeder
             'سلیمانی', 'میرزایی', 'نوری', 'حیدری', 'منصوری', 'باقری', 'علوی', 'اصغری', 'کاظمی', 'فرهادی',
         ];
 
-        $studentsPerClass = 20;
+        $studentsPerClass = 5;
         $globalIndex = 0;
 
         foreach ($schools as $school) {
@@ -70,8 +70,8 @@ class StudentSeeder extends Seeder
 
                     $user->syncRoles([UserRoleType::Student->value]);
 
-                    StudentClassRegistration::firstOrCreate([
-                        'student_id' => $user->id,
+                    UserClassRegistration::firstOrCreate([
+                        'user_id' => $user->id,
                         'class_id' => $class->id,
                     ]);
                 }

@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Enums\UserRoleType;
+use App\Models\School;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -20,7 +21,7 @@ class TeacherSeeder extends Seeder
                 'email' => 'ahmadi@example.com',
                 'mobile' => '09351234573',
                 'employee_code' => 'TCH-001',
-                'schools' => ['SCH-001'],
+                'school_code' => 'SCH-001',
             ],
             [
                 'firstname' => 'معلم',
@@ -30,13 +31,18 @@ class TeacherSeeder extends Seeder
                 'email' => 'karimi@example.com',
                 'mobile' => '09351234574',
                 'employee_code' => 'TCH-002',
-                'schools' => ['SCH-001', 'SCH-002'],
+                'school_code' => 'SCH-001',
             ],
         ];
 
         foreach ($teachers as $teacherData) {
-            $schools = $teacherData['schools'];
-            unset($teacherData['schools']);
+            $schoolCode = $teacherData['school_code'];
+            unset($teacherData['school_code']);
+
+            $school = School::where('code', $schoolCode)->first();
+            if ($school) {
+                $teacherData['school_id'] = $school->id;
+            }
 
             $teacher = User::firstOrCreate(
                 ['username' => $teacherData['username']],
@@ -44,13 +50,6 @@ class TeacherSeeder extends Seeder
             );
 
             $teacher->syncRoles([UserRoleType::Teacher->value]);
-
-            if (!empty($schools)) {
-                $schoolModels = \App\Models\School::whereIn('code', $schools)->get();
-                foreach ($schoolModels as $school) {
-                    $teacher->schools()->attach($school->id, ['role' => UserRoleType::Teacher->value]);
-                }
-            }
         }
     }
 }

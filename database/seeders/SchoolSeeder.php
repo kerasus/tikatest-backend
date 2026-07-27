@@ -28,15 +28,6 @@ class SchoolSeeder extends Seeder
                 'type' => 'school',
                 'account_url' => 'https://school2.example.com/account',
             ],
-            [
-                'code' => 'SCH-003',
-                'name' => 'موسسه آموزشی نمونه',
-                'address' => 'تهران، خیابان آزادی، پلاک 3',
-                'website' => 'https://institute1.example.com',
-                'logo_url' => '/uploads/schools/institute1-logo.png',
-                'type' => 'institute',
-                'account_url' => 'https://institute1.example.com/account',
-            ],
         ];
 
         foreach ($schools as $school) {

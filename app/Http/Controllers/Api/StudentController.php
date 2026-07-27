@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Models\StudentClassRegistration;
+use App\Models\UserClassRegistration;
 use App\Models\StudySession;
 use App\Enums\UserRoleType;
 use App\Traits\CommonCRUD;
@@ -38,9 +38,7 @@ class StudentController extends Controller
                 'melli_code',
                 'student_code',
             ],
-            'filterKeysExact' => [
-                'school_id',
-            ],
+            'filterKeysExact' => [],
             'filterOnMultipleColumnKeys' => [
                 [
                     'requestKey' => 'full_name_search',
@@ -50,13 +48,13 @@ class StudentController extends Controller
             'filterRelationKeys' => [
                 [
                     'requestKey' => 'class_name',
-                    'relationName' => 'studentClassRegistrations.schoolClass',
+                    'relationName' => 'userClassRegistrations.schoolClass',
                     'relationColumn' => 'name',
                     'exact' => false,
                 ],
                 [
-                    'requestKey' => 'field_name',
-                    'relationName' => 'studentClassRegistrations.schoolClass.academicField',
+                    'requestKey' => 'level_name',
+                    'relationName' => 'userClassRegistrations.schoolClass.academicLevel',
                     'relationColumn' => 'name',
                     'exact' => false,
                 ],
@@ -64,17 +62,17 @@ class StudentController extends Controller
             'filterRelationIds' => [
                 [
                     'requestKey' => 'class_id',
-                    'relationName' => 'studentClassRegistrations',
+                    'relationName' => 'userClassRegistrations',
                 ],
                 [
                     'requestKey' => 'class_ids',
-                    'relationName' => 'studentClassRegistrations',
-                    'relationNames' => ['studentClassRegistrations'],
+                    'relationName' => 'userClassRegistrations',
+                    'relationNames' => ['userClassRegistrations'],
                 ],
             ],
             'eagerLoads' => [
-                'studentClassRegistrations.schoolClass.academicField',
-                'studentClassRegistrations.schoolClass.academicLevel',
+                'userClassRegistrations.schoolClass.academicLevel',
+                'userClassRegistrations.schoolClass.school',
                 'roles',
                 'permissions',
             ],
@@ -86,14 +84,23 @@ class StudentController extends Controller
         $this->buildFilterQuery($request, $modelQuery, User::class, $this->getConfigArray($config));
 
         if ($request->filled('field_id')) {
-            $modelQuery->whereHas('studentClassRegistrations.schoolClass.academicLevel.academicField', function ($query) use ($request) {
+            $modelQuery->whereHas('userClassRegistrations.schoolClass.academicLevel.academicField', function ($query) use ($request) {
                 $query->where('academic_fields.id', $request->get('field_id'));
             });
         }
 
         if ($request->filled('level_id')) {
-            $modelQuery->whereHas('studentClassRegistrations.schoolClass', function ($query) use ($request) {
+            $modelQuery->whereHas('userClassRegistrations.schoolClass', function ($query) use ($request) {
                 $query->where('level_id', $request->get('level_id'));
+            });
+        }
+
+        if ($request->filled('school_id')) {
+            $modelQuery->where(function ($query) use ($request) {
+                $query->where('users.school_id', $request->get('school_id'))
+                      ->orWhereHas('userClassRegistrations.schoolClass.academicLevel.academicField', function ($q) use ($request) {
+                          $q->where('academic_fields.school_id', $request->get('school_id'));
+                      });
             });
         }
 
@@ -129,13 +136,13 @@ class StudentController extends Controller
         $user->assignRole(UserRoleType::Student->value);
 
         if ($request->filled('class_id')) {
-            StudentClassRegistration::create([
-                'student_id' => $user->id,
+            UserClassRegistration::create([
+                'user_id' => $user->id,
                 'class_id' => $request->class_id,
             ]);
         }
 
-        return $this->jsonResponseOk($user->load('studentClassRegistrations.schoolClass'));
+        return $this->jsonResponseOk($user->load('userClassRegistrations.schoolClass'));
     }
 
     public function show(Request $request, $id): JsonResponse
@@ -143,9 +150,8 @@ class StudentController extends Controller
         $student = User::where('id', $id)
             ->whereHas('roles', fn($q) => $q->where('name', 'student'))
             ->with([
-                'studentClassRegistrations.schoolClass.academicField',
-                'studentClassRegistrations.schoolClass.academicLevel',
-                'studentClassRegistrations.schoolClass.school',
+                'userClassRegistrations.schoolClass.academicLevel.academicField',
+                'userClassRegistrations.schoolClass.school',
                 'roles',
                 'permissions',
             ])
@@ -185,13 +191,13 @@ class StudentController extends Controller
         $student->save();
 
         if ($request->filled('class_id')) {
-            StudentClassRegistration::updateOrCreate(
-                ['student_id' => $student->id],
+            UserClassRegistration::updateOrCreate(
+                ['user_id' => $student->id],
                 ['class_id' => $request->class_id, 'school_id' => $request->school_id]
             );
         }
 
-        return $this->jsonResponseOk($student->load('studentClassRegistrations.schoolClass'));
+        return $this->jsonResponseOk($student->load('userClassRegistrations.schoolClass'));
     }
 
     public function destroy(User $student): JsonResponse
@@ -445,7 +451,7 @@ class StudentController extends Controller
         });
 
         $query->when($request->filled('class_id'), function ($q) use ($request) {
-            $q->whereHas('student.studentClassRegistrations', function ($subQ) use ($request) {
+            $q->whereHas('student.userClassRegistrations', function ($subQ) use ($request) {
                 $subQ->where('class_id', $request->class_id);
             });
         });

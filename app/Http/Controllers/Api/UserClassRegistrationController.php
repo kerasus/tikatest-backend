@@ -6,12 +6,12 @@ use Illuminate\Http\Request;
 
 
 use App\Http\Controllers\Controller;
-use App\Models\StudentClassRegistration;
+use App\Models\UserClassRegistration;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
 
-class StudentClassRegistrationController extends Controller
+class UserClassRegistrationController extends Controller
 {
     use Filter, CommonCRUD;
 
@@ -28,41 +28,41 @@ class StudentClassRegistrationController extends Controller
         $config = [
             'filterRelationIds' => [
                 [
-                    'requestKey' => 'student_ids',
-                    'relationName' => 'student',
+                    'requestKey' => 'user_ids',
+                    'relationName' => 'user',
                 ],
                 [
                     'requestKey' => 'class_ids',
                     'relationName' => 'schoolClass',
                 ],
             ],
-            'eagerLoads' => ['student', 'schoolClass', 'school'],
+            'eagerLoads' => ['user', 'schoolClass', 'school'],
         ];
 
-        return $this->commonIndex($request, StudentClassRegistration::class, $config);
+        return $this->commonIndex($request, UserClassRegistration::class, $config);
     }
 
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'student_id' => 'required|exists:users,id',
+            'user_id' => 'required|exists:users,id',
             'class_id' => 'required|exists:classes,id',
             'school_id' => 'nullable|exists:schools,id',
         ]);
 
-        $registration = StudentClassRegistration::create($request->all());
+        $registration = UserClassRegistration::create($request->all());
 
-        return $this->jsonResponseOk($registration->load(['student', 'schoolClass', 'school']));
+        return $this->jsonResponseOk($registration->load(['user', 'schoolClass', 'school']));
     }
 
     public function show(Request $request, $id): JsonResponse
     {
-        $registration = StudentClassRegistration::with(['student', 'schoolClass', 'school'])->findOrFail($id);
+        $registration = UserClassRegistration::with(['user', 'schoolClass', 'school'])->findOrFail($id);
 
         return $this->jsonResponseOk($registration);
     }
 
-    public function destroy(StudentClassRegistration $registration): JsonResponse
+    public function destroy(UserClassRegistration $registration): JsonResponse
     {
         return $this->commonDestroy($registration);
     }

@@ -30,9 +30,9 @@ class SchoolClass extends Model
         return $this->belongsTo(AcademicLevel::class, 'level_id');
     }
 
-    public function studentClassRegistrations(): HasMany
+    public function userClassRegistrations(): HasMany
     {
-        return $this->hasMany(StudentClassRegistration::class);
+        return $this->hasMany(UserClassRegistration::class);
     }
 
     public function examSessions(): HasMany
