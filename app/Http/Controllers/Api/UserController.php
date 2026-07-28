@@ -29,8 +29,8 @@ class UserController extends Controller
     {
         $config = [
             'filterKeys' => [
-                'firstname',
-                'lastname',
+                'first_name',
+                'last_name',
                 'username',
                 'employee_code',
                 'email',
@@ -40,8 +40,8 @@ class UserController extends Controller
                 [
                     'requestKey' => 'full_name',
                     'columns' => [
-                        'firstname',
-                        'lastname',
+                        'first_name',
+                        'last_name',
                     ],
                 ],
             ],
@@ -70,8 +70,8 @@ class UserController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'firstname' => 'required|string|max:255',
-            'lastname' => 'required|string|max:255',
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
             'username' => 'required|string|unique:users',
             'mobile' => 'required|string|unique:users',
             'email' => 'nullable|string|email|unique:users',
@@ -92,8 +92,8 @@ class UserController extends Controller
     public function update(Request $request, User $user): JsonResponse
     {
         $request->validate([
-            'firstname' => 'sometimes|required|string|max:255',
-            'lastname' => 'sometimes|required|string|max:255',
+            'first_name' => 'sometimes|required|string|max:255',
+            'last_name' => 'sometimes|required|string|max:255',
             'username' => 'sometimes|required|string|unique:users,username,' . $user->id,
             'mobile' => 'sometimes|required|string|unique:users,mobile,' . $user->id,
             'email' => 'nullable|string|email|unique:users,email,' . $user->id,

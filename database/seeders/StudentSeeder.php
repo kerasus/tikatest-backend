@@ -5,7 +5,7 @@ namespace Database\Seeders;
 use App\Enums\UserRoleType;
 use App\Models\School;
 use App\Models\SchoolClass;
-use App\Models\UserClassRegistration;
+use App\Models\UserClass;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -30,7 +30,7 @@ class StudentSeeder extends Seeder
         $globalIndex = 0;
 
         foreach ($schools as $school) {
-            $classes = SchoolClass::whereHas('academicLevel', function ($query) use ($school) {
+            $classes = SchoolClass::whereHas('academicLevel.academicField', function ($query) use ($school) {
                 $query->where('school_id', $school->id);
             })->get();
 
@@ -39,9 +39,9 @@ class StudentSeeder extends Seeder
                     $globalIndex++;
                     $firstName = $firstNames[($i - 1) % count($firstNames)];
                     $lastName = $lastNames[($i - 1) % count($lastNames)];
-                    $username = strtolower($school->code) . '_' . strtolower(str_replace(' ', '_', $class->name)) . '_student_' . $i;
-                    $mobile = '0935' . str_pad((string) ($globalIndex * 111111 + 1000000), 7, '0', STR_PAD_LEFT);
                     $melliCode = str_pad((string) ($globalIndex * 137 + 1000000000), 10, '0', STR_PAD_LEFT);
+                    $username = $melliCode;
+                    $mobile = '0935' . str_pad((string) ($globalIndex * 111111 + 1000000), 7, '0', STR_PAD_LEFT);
                     $studentCode = strtoupper($school->code) . '-' . strtoupper(str_replace(' ', '_', $class->name)) . '-STU-' . str_pad((string) $i, 3, '0', STR_PAD_LEFT);
                     $birthYear = rand(2000, 2010);
                     $birthMonth = rand(1, 12);
@@ -51,12 +51,12 @@ class StudentSeeder extends Seeder
                     $user = User::firstOrCreate(
                         ['username' => $username],
                         [
-                            'firstname' => $firstName,
-                            'lastname' => $lastName,
+                            'first_name' => $firstName,
+                            'last_name' => $lastName,
                             'password' => Hash::make('password'),
                             'mobile' => $mobile,
                             'student_phone' => $mobile,
-                            'melli_code' => $melliCode,
+                            'national_id' => $melliCode,
                             'student_code' => $studentCode,
                             'birth_date' => $birthDate,
                             'student_email' => $username . '@example.com',
@@ -72,7 +72,7 @@ class StudentSeeder extends Seeder
 
                     $user->syncRoles([UserRoleType::Student->value]);
 
-                    UserClassRegistration::firstOrCreate([
+                    UserClass::firstOrCreate([
                         'user_id' => $user->id,
                         'class_id' => $class->id,
                     ]);

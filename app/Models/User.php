@@ -15,15 +15,15 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable, HasRoles;
 
     protected $fillable = [
-        'firstname',
-        'lastname',
+        'first_name',
+        'last_name',
         'email',
         'username',
         'employee_code',
         'mobile',
         'password',
         'mobile_verification_code',
-        'melli_code',
+        'national_id',
         'student_code',
         'birth_date',
         'student_email',
@@ -37,14 +37,14 @@ class User extends Authenticatable
         'father_phone',
         'father_email',
         'father_job',
-        'father_melli_code',
+        'father_national_id',
         'father_password',
         'mother_name',
-        'mother_lastname',
+        'mother_last_name',
         'mother_phone',
         'mother_email',
         'mother_job',
-        'mother_melli_code',
+        'mother_national_id',
         'mother_password',
     ];
 
@@ -77,7 +77,7 @@ class User extends Authenticatable
 
     public function getFullNameAttribute(): string
     {
-        return trim(($this->firstname ?? '') . ' ' . ($this->lastname ?? ''));
+        return trim(($this->first_name ?? '') . ' ' . ($this->last_name ?? ''));
     }
 
     public function scopeRole(Builder $query, string $role): Builder
@@ -87,7 +87,7 @@ class User extends Authenticatable
 
     public function userClassRegistrations(): HasMany
     {
-        return $this->hasMany(UserClassRegistration::class, 'user_id');
+        return $this->hasMany(UserClass::class, 'user_id');
     }
 
     public function grades(): HasMany

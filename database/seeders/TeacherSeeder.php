@@ -14,8 +14,8 @@ class TeacherSeeder extends Seeder
     {
         $teachers = [
             [
-                'firstname' => 'استاد',
-                'lastname' => 'احمدی',
+                'first_name' => 'استاد',
+                'last_name' => 'احمدی',
                 'username' => 'ahmadi',
                 'password' => Hash::make('password'),
                 'email' => 'ahmadi@example.com',
@@ -24,8 +24,8 @@ class TeacherSeeder extends Seeder
                 'school_code' => 'SCH-001',
             ],
             [
-                'firstname' => 'معلم',
-                'lastname' => 'کریمی',
+                'first_name' => 'معلم',
+                'last_name' => 'کریمی',
                 'username' => 'karimi',
                 'password' => Hash::make('password'),
                 'email' => 'karimi@example.com',

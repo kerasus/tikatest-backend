@@ -10,7 +10,6 @@ return new class extends Migration
     {
         Schema::create('academic_levels', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('school_id')->nullable()->constrained('schools')->nullOnDelete();
             $table->foreignId('field_id')->constrained('academic_fields')->cascadeOnDelete();
             $table->string('name');
             $table->softDeletes();

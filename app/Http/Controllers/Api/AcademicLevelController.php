@@ -28,7 +28,7 @@ class AcademicLevelController extends Controller
     {
         $config = [
             'filterKeys' => ['name'],
-            'filterKeysExact' => ['school_id', 'field_id'],
+            'filterKeysExact' => ['field_id'],
             'filterRelationKeys' => [
                 [
                     'requestKey' => 'field_name',
@@ -37,7 +37,7 @@ class AcademicLevelController extends Controller
                     'exact' => false,
                 ],
             ],
-            'eagerLoads' => ['school', 'academicField'],
+            'eagerLoads' => ['academicField.school', 'academicField'],
         ];
 
         return $this->commonIndex($request, AcademicLevel::class, $config);
@@ -46,7 +46,6 @@ class AcademicLevelController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'field_id' => 'required|exists:academic_fields,id',
             'name' => 'required|string|max:255',
         ]);
@@ -56,7 +55,7 @@ class AcademicLevelController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $level = AcademicLevel::with(['school', 'academicField'])->findOrFail($id);
+        $level = AcademicLevel::with(['academicField.school', 'academicField'])->findOrFail($id);
 
         return $this->jsonResponseOk($level);
     }
@@ -64,7 +63,6 @@ class AcademicLevelController extends Controller
     public function update(Request $request, AcademicLevel $academicLevel): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'field_id' => 'sometimes|required|exists:academic_fields,id',
             'name' => 'sometimes|required|string|max:255',
         ]);

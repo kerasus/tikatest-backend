@@ -266,14 +266,14 @@ $examSession = ExamSession::create([
             $calculatedGrade = null;
 
             if (!$request->is_descriptive) {
-                $minGrade = $request->min_grade;
+                $minGrade = $request->min_passing_score;
                 if ($rawGrade !== null && $minGrade !== null && $rawGrade > $minGrade) {
                     $errors[] = "Row " . ($index + 1) . ": Student grade cannot exceed base grade";
                     continue;
                 }
 
-                $calculatedGrade = $request->min_grade
-                    ? round(($rawGrade / $request->min_grade) * 20, 2)
+                $calculatedGrade = $request->min_passing_score
+                    ? round(($rawGrade / $request->min_passing_score) * 20, 2)
                     : $rawGrade;
             }
 
@@ -390,7 +390,7 @@ $examSession = ExamSession::create([
             'grades.*.class_id' => 'required|exists:classes,id',
             'grades.*.raw_grade' => 'nullable|numeric|min:0',
             'grades.*.calculated_grade' => 'nullable|numeric|min:0',
-            'grades.*.min_grade' => 'nullable|numeric|min:0',
+            'grades.*.min_passing_score' => 'nullable|numeric|min:0',
             'grades.*.max_grade' => 'nullable|numeric|min:0',
             'grades.*.grade_type' => 'required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
             'grades.*.grade_name_for_other_type' => 'nullable|string|max:255',
@@ -408,8 +408,8 @@ $examSession = ExamSession::create([
                 if (!$gradeData['max_grade']) {
                     throw ValidationException::withMessages(["grades.$index.max_grade" => 'حداکثر نمره الزامی است.']);
                 }
-                if ($gradeData['min_grade'] >= $gradeData['max_grade']) {
-                    throw ValidationException::withMessages(["grades.$index.min_grade" => 'حداقل نمره قبولی باید از حداکثر نمره کمتر باشد.']);
+                if ($gradeData['min_passing_score'] >= $gradeData['max_grade']) {
+                    throw ValidationException::withMessages(["grades.$index.min_passing_score" => 'حداقل نمره قبولی باید از حداکثر نمره کمتر باشد.']);
                 }
                 if (isset($gradeData['raw_grade']) && is_numeric($gradeData['raw_grade']) && $gradeData['raw_grade'] >= $gradeData['max_grade']) {
                     throw ValidationException::withMessages(["grades.$index.raw_grade" => 'نمره باید کمتر از حداکثر نمره باشد.']);
@@ -476,7 +476,7 @@ $examSession = ExamSession::create([
         $stdDev = $calculatedGrades->count() > 1 ? round($calculatedGrades->std(1), 4) : 0;
 
         $passGrades = $grades->filter(function ($grade) {
-            return $grade->raw_grade >= ($grade->min_grade ?? 10);
+            return $grade->raw_grade >= ($grade->min_passing_score ?? 10);
         });
         $passRate = round(($passGrades->count() / $grades->count()) * 100, 2);
 
@@ -560,7 +560,7 @@ $examSession = ExamSession::create([
         $stdDev = $calculatedGrades->count() > 1 ? round($calculatedGrades->std(1), 4) : 0;
 
         $passGrades = $grades->filter(function ($grade) {
-            return $grade->raw_grade >= ($grade->min_grade ?? 10);
+            return $grade->raw_grade >= ($grade->min_passing_score ?? 10);
         });
         $passRate = $grades->count() > 0 ? round(($passGrades->count() / $grades->count()) * 100, 2) : 0;
 
@@ -610,7 +610,7 @@ $examSession = ExamSession::create([
             $stdDev = $calculatedGrades->count() > 1 ? round($calculatedGrades->std(1), 4) : 0;
 
             $passGrades = $grades->filter(function ($grade) {
-                return $grade->raw_grade >= ($grade->min_grade ?? 10);
+                return $grade->raw_grade >= ($grade->min_passing_score ?? 10);
             });
             $passRate = $grades->count() > 0 ? round(($passGrades->count() / $grades->count()) * 100, 2) : 0;
 

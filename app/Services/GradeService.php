@@ -38,7 +38,7 @@ class GradeService
                 'grade_name_for_other_type' => $gradeNameForOtherType,
                 'is_descriptive' => $firstGrade['is_descriptive'] ?? false,
                 'is_report_card' => $isReportCard,
-                'min_grade' => $firstGrade['min_grade'] ?? null,
+                'min_passing_score' => $firstGrade['min_passing_score'] ?? null,
                 'created_by' => $createdBy,
             ]);
 
@@ -104,7 +104,7 @@ class GradeService
 
         if (!$isDescriptive) {
             $rawGrade = $gradeData['raw_grade'] ?? null;
-            $minGrade = $examSession->min_grade;
+            $minGrade = $examSession->min_passing_score;
 
             if ($rawGrade === null) {
                 return ['valid' => false, 'error' => 'Raw grade is required for non-descriptive grades'];
@@ -179,10 +179,10 @@ class GradeService
                 'id' => $grade->id,
                 'student_id' => $grade->student_id,
                 'student_name' => $grade->student->full_name ?? '',
-                'student_lastname' => $grade->student->lastname ?? '',
+                'student_last_name' => $grade->student->last_name ?? '',
                 'grade' => $grade->calculated_grade,
                 'raw_grade' => $grade->raw_grade,
-                'min_grade' => $grade->min_grade,
+                'min_passing_score' => $grade->min_passing_score,
                 'grade_type' => $grade->grade_type,
                 'grade_type_label' => $this->getGradeTypeLabel($grade->grade_type, $grade->grade_name_for_other_type),
                 'descriptive_value' => $grade->descriptive_value,

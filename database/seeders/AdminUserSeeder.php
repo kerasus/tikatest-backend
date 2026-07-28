@@ -14,8 +14,8 @@ class AdminUserSeeder extends Seeder
         $adminUser = User::query()->updateOrCreate(
             ['username' => 'admin'],
             [
-                'firstname' => 'Admin',
-                'lastname' => 'User',
+                'first_name' => 'Admin',
+                'last_name' => 'User',
                 'mobile' => '09000000000',
                 'password' => Hash::make('password')
             ]

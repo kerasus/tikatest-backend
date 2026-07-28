@@ -14,8 +14,8 @@ class ManagerSeeder extends Seeder
     {
         $managers = [
             [
-                'firstname' => 'مدیر',
-                'lastname' => 'علوی',
+                'first_name' => 'مدیر',
+                'last_name' => 'علوی',
                 'username' => 'alavi',
                 'password' => Hash::make('password'),
                 'email' => 'alavi@example.com',
@@ -24,8 +24,8 @@ class ManagerSeeder extends Seeder
                 'school_code' => 'SCH-001',
             ],
             [
-                'firstname' => 'رئیس',
-                'lastname' => 'حسینی',
+                'first_name' => 'رئیس',
+                'last_name' => 'حسینی',
                 'username' => 'hosseini',
                 'password' => Hash::make('password'),
                 'email' => 'hosseini@example.com',

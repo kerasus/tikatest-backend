@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('class_id')->constrained('classes')->cascadeOnDelete();
             $table->decimal('raw_grade', 5, 2)->nullable();
             $table->decimal('calculated_grade', 5, 2)->nullable();
-            $table->decimal('min_grade', 5, 2)->nullable();
+            $table->decimal('min_passing_score', 5, 2)->nullable();
             $table->enum('grade_type', [
                 'class_quiz',
                 'monthly_quiz',

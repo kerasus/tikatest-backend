@@ -44,8 +44,8 @@ class ReportService
             if (!isset($reportData[$studentId])) {
                 $reportData[$studentId] = [
                     'student_id' => $grade->student_id,
-                    'student_name' => $grade->student->firstname ?? '',
-                    'student_lastname' => $grade->student->lastname ?? '',
+                    'student_name' => $grade->student->first_name ?? '',
+                    'student_last_name' => $grade->student->last_name ?? '',
                     'full_name' => $grade->student->full_name ?? '',
                 ];
             }
@@ -104,8 +104,8 @@ class ReportService
                 if (!isset($reportData[$studentId])) {
                     $reportData[$studentId] = [
                         'id_user' => $studentId,
-                        'name' => $grade->student->firstname ?? '',
-                        'lastname' => $grade->student->lastname ?? '',
+                        'name' => $grade->student->first_name ?? '',
+                        'last_name' => $grade->student->last_name ?? '',
                         'full_name' => $grade->student->full_name ?? '',
                     ];
                 }
@@ -119,7 +119,7 @@ class ReportService
         $avgArrayForTable = [];
         foreach ($reportData as $studentId => $studentGrades) {
             foreach ($studentGrades as $key => $value) {
-                if (!in_array($key, ['id_user', 'name', 'lastname', 'full_name'])) {
+                if (!in_array($key, ['id_user', 'name', 'last_name', 'full_name'])) {
                     if (!isset($averages[$key])) {
                         $averages[$key] = ['total' => 0, 'count' => 0];
                     }
@@ -139,7 +139,7 @@ class ReportService
         }
         $processedData[] = [
             'name' => '',
-            'lastname' => '',
+            'last_name' => '',
             'id_user' => '',
             'full_name' => 'میانگین نمرات',
         ] + $avgArrayForTable;
@@ -205,7 +205,7 @@ class ReportService
                 'is_descriptive' => $grade->is_descriptive,
                 'descriptive_value' => $grade->descriptive_value,
                 'descriptive_label' => $grade->descriptive_label,
-                'min_grade' => $grade->min_grade,
+                'min_passing_score' => $grade->min_passing_score,
                 'z_score' => $grade->z_score,
                 'is_visible' => $grade->is_visible,
                 'explanation' => $grade->explanation,
@@ -288,8 +288,8 @@ class ReportService
             'message' => 'Student report card retrieved successfully',
             'data' => [
                 'student_id' => $studentId,
-                'student_name' => $student->firstname ?? '',
-                'student_lastname' => $student->lastname ?? '',
+                'student_name' => $student->first_name ?? '',
+                'student_last_name' => $student->last_name ?? '',
                 'grades_by_lesson' => array_values($gradesByLesson),
                 'term_averages' => $averagesByTerm,
             ],

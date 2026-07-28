@@ -32,12 +32,10 @@ class AcademicLevelSeeder extends Seeder
                 foreach ($levelNames as $levelName) {
                     AcademicLevel::firstOrCreate(
                         [
-                            'school_id' => $school->id,
                             'field_id' => $field->id,
                             'name' => $levelName,
                         ],
                         [
-                            'school_id' => $school->id,
                             'field_id' => $field->id,
                             'name' => $levelName,
                         ]

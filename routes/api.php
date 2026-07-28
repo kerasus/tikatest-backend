@@ -22,7 +22,7 @@ use App\Http\Controllers\Api\HomeworkController;
 use App\Http\Controllers\Api\HomeworkSubmissionController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\PreRegistrationController;
-use App\Http\Controllers\Api\UserClassRegistrationController;
+use App\Http\Controllers\Api\UserClassController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -98,7 +98,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('study-sessions/report/general', [StudentController::class, 'studyHoursGeneralReport']);
     Route::get('study-sessions/report/student/{studentId}', [StudentController::class, 'studyHoursStudentReport']);
     Route::apiResource('pre-registrations', PreRegistrationController::class)->only(['index', 'store']);
-    Route::apiResource('user-class-registrations', UserClassRegistrationController::class)->except(['update']);
+    Route::apiResource('user-class-registrations', UserClassController::class)->except(['update']);
 
     Route::prefix('student-portal')->group(function () {
         Route::get('grades', [StudentController::class, 'myGrades']);

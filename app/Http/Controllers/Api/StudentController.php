@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Models\UserClassRegistration;
+use App\Models\UserClass;
 use App\Models\StudySession;
 use App\Enums\UserRoleType;
 use App\Traits\CommonCRUD;
@@ -31,18 +31,18 @@ class StudentController extends Controller
     {
         $config = [
             'filterKeys' => [
-                'firstname',
-                'lastname',
+                'first_name',
+                'last_name',
                 'username',
                 'student_phone',
-                'melli_code',
+                'national_id',
                 'student_code',
             ],
             'filterKeysExact' => [],
             'filterOnMultipleColumnKeys' => [
                 [
                     'requestKey' => 'full_name_search',
-                    'columns' => ['firstname', 'lastname'],
+                    'columns' => ['first_name', 'last_name'],
                 ],
             ],
             'filterRelationKeys' => [
@@ -71,8 +71,7 @@ class StudentController extends Controller
                 ],
             ],
             'eagerLoads' => [
-                'userClassRegistrations.schoolClass.academicLevel',
-                'userClassRegistrations.schoolClass.school',
+                'userClassRegistrations.schoolClass.academicLevel.academicField.school',
                 'roles',
                 'permissions',
             ],
@@ -110,12 +109,12 @@ class StudentController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'firstname' => 'required|string|max:255',
-            'lastname' => 'required|string|max:255',
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
             'username' => 'required|string|unique:users,username',
             'password' => 'required|string|min:6',
             'student_phone' => 'nullable|string|max:20',
-            'melli_code' => 'nullable|string|max:20',
+            'national_id' => 'nullable|string|max:20',
             'student_code' => 'nullable|string|max:50',
             'birth_date' => 'nullable|date',
             'student_email' => 'nullable|email|max:255',
@@ -136,7 +135,7 @@ class StudentController extends Controller
         $user->assignRole(UserRoleType::Student->value);
 
         if ($request->filled('class_id')) {
-            UserClassRegistration::create([
+            UserClass::create([
                 'user_id' => $user->id,
                 'class_id' => $request->class_id,
             ]);
@@ -150,8 +149,7 @@ class StudentController extends Controller
         $student = User::where('id', $id)
             ->whereHas('roles', fn($q) => $q->where('name', 'student'))
             ->with([
-                'userClassRegistrations.schoolClass.academicLevel.academicField',
-                'userClassRegistrations.schoolClass.school',
+                'userClassRegistrations.schoolClass.academicLevel.academicField.school',
                 'roles',
                 'permissions',
             ])
@@ -163,12 +161,12 @@ class StudentController extends Controller
     public function update(Request $request, User $student): JsonResponse
     {
         $request->validate([
-            'firstname' => 'sometimes|required|string|max:255',
-            'lastname' => 'sometimes|required|string|max:255',
+            'first_name' => 'sometimes|required|string|max:255',
+            'last_name' => 'sometimes|required|string|max:255',
             'username' => 'sometimes|required|string|unique:users,username,' . $student->id,
             'password' => 'nullable|string|min:6',
             'student_phone' => 'nullable|string|max:20',
-            'melli_code' => 'nullable|string|max:20',
+            'national_id' => 'nullable|string|max:20',
             'student_code' => 'nullable|string|max:50',
             'birth_date' => 'nullable|date',
             'student_email' => 'nullable|email|max:255',
@@ -191,7 +189,7 @@ class StudentController extends Controller
         $student->save();
 
         if ($request->filled('class_id')) {
-            UserClassRegistration::updateOrCreate(
+            UserClass::updateOrCreate(
                 ['user_id' => $student->id],
                 ['class_id' => $request->class_id, 'school_id' => $request->school_id]
             );

@@ -6,12 +6,12 @@ use Illuminate\Http\Request;
 
 
 use App\Http\Controllers\Controller;
-use App\Models\UserClassRegistration;
+use App\Models\UserClass;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
 
-class UserClassRegistrationController extends Controller
+class UserClassController extends Controller
 {
     use Filter, CommonCRUD;
 
@@ -39,7 +39,7 @@ class UserClassRegistrationController extends Controller
             'eagerLoads' => ['user', 'schoolClass', 'school'],
         ];
 
-        return $this->commonIndex($request, UserClassRegistration::class, $config);
+        return $this->commonIndex($request, UserClass::class, $config);
     }
 
     public function store(Request $request): JsonResponse
@@ -50,19 +50,19 @@ class UserClassRegistrationController extends Controller
             'school_id' => 'nullable|exists:schools,id',
         ]);
 
-        $registration = UserClassRegistration::create($request->all());
+        $registration = UserClass::create($request->all());
 
         return $this->jsonResponseOk($registration->load(['user', 'schoolClass', 'school']));
     }
 
     public function show(Request $request, $id): JsonResponse
     {
-        $registration = UserClassRegistration::with(['user', 'schoolClass', 'school'])->findOrFail($id);
+        $registration = UserClass::with(['user', 'schoolClass', 'school'])->findOrFail($id);
 
         return $this->jsonResponseOk($registration);
     }
 
-    public function destroy(UserClassRegistration $registration): JsonResponse
+    public function destroy(UserClass $registration): JsonResponse
     {
         return $this->commonDestroy($registration);
     }

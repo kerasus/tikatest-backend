@@ -13,15 +13,9 @@ class AcademicLevel extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'school_id',
         'field_id',
         'name',
     ];
-
-    public function school(): BelongsTo
-    {
-        return $this->belongsTo(School::class);
-    }
 
     public function academicField(): BelongsTo
     {

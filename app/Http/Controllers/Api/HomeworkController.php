@@ -155,7 +155,7 @@ class HomeworkController extends Controller
         $homework = Homework::with(['lesson', 'schoolClass', 'owners'])->findOrFail($homeworkId);
 
         if ($homework->class_id) {
-            $isEnrolled = \App\Models\UserClassRegistration::where('user_id', $studentId)
+            $isEnrolled = \App\Models\UserClass::where('user_id', $studentId)
                 ->where('class_id', $homework->class_id)
                 ->exists();
 
@@ -199,7 +199,7 @@ class HomeworkController extends Controller
         $homework = Homework::findOrFail($homeworkId);
 
         if ($homework->class_id) {
-            $isEnrolled = \App\Models\UserClassRegistration::where('user_id', $studentId)
+            $isEnrolled = \App\Models\UserClass::where('user_id', $studentId)
                 ->where('class_id', $homework->class_id)
                 ->exists();
 

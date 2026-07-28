@@ -11,20 +11,31 @@ class ClassSeeder extends Seeder
 {
     public function run(): void
     {
-        $levels = AcademicLevel::all();
+        $levels = AcademicLevel::with('academicField.school')->get();
 
         foreach ($levels as $level) {
-            $school = $level->school;
+            $school = $level->academicField->school ?? null;
 
             if ($school) {
                 SchoolClass::firstOrCreate(
                     [
                         'level_id' => $level->id,
-                        'name' => 'کلاس ' . $level->name,
+                        'name' => 'کلاس الف',
                     ],
                     [
                         'level_id' => $level->id,
-                        'name' => 'کلاس ' . $level->name,
+                        'name' => 'کلاس ب',
+                    ]
+                );
+
+                SchoolClass::firstOrCreate(
+                    [
+                        'level_id' => $level->id,
+                        'name' => 'کلاس ب',
+                    ],
+                    [
+                        'level_id' => $level->id,
+                        'name' => 'کلاس ب',
                     ]
                 );
             }

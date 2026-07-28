@@ -26,7 +26,7 @@ class SchoolClass extends Model
 
     public function userClassRegistrations(): HasMany
     {
-        return $this->hasMany(UserClassRegistration::class);
+        return $this->hasMany(UserClass::class);
     }
 
     public function examSessions(): HasMany
