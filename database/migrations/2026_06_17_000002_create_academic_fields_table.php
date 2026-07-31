@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('academic_fields', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('school_id')->nullable()->constrained('schools')->nullOnDelete();
+            $table->foreignId('school_id')->constrained('schools');
             $table->string('name');
             $table->softDeletes();
             $table->timestamps();

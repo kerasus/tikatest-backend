@@ -8,19 +8,19 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('classes', function (Blueprint $table) {
+        Schema::create('exam_academic_levels', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('exam_id')->constrained('exams')->cascadeOnDelete();
             $table->foreignId('academic_level_id')->constrained('academic_levels')->cascadeOnDelete();
-            $table->string('name');
-            $table->softDeletes();
             $table->timestamps();
 
-            $table->index(['academic_level_id', 'name']);
+            $table->unique(['exam_id', 'academic_level_id']);
+            $table->index('academic_level_id');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('classes');
+        Schema::dropIfExists('exam_academic_levels');
     }
 };
