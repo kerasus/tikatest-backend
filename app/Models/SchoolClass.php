@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SchoolClass extends Model
 {
@@ -29,14 +29,9 @@ class SchoolClass extends Model
         return $this->hasMany(UserClass::class);
     }
 
-    public function examSessions(): HasMany
+    public function exams(): HasMany
     {
-        return $this->hasMany(ExamSession::class);
-    }
-
-    public function grades(): HasMany
-    {
-        return $this->hasMany(Grade::class);
+        return $this->hasMany(Exam::class);
     }
 
     public function quizClassAssignments(): HasMany

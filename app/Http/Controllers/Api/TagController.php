@@ -2,19 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Http\Request;
-
-
 use App\Http\Controllers\Controller;
 use App\Models\Tag;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class TagController extends Controller
 {
-    use Filter, CommonCRUD;
+    use CommonCRUD, Filter;
 
     public function __construct()
     {
@@ -51,7 +49,7 @@ class TagController extends Controller
             'description' => 'nullable|string',
         ]);
 
-        if (!$request->filled('slug')) {
+        if (! $request->filled('slug')) {
             $request->merge(['slug' => Str::slug($request->name)]);
         }
 
@@ -69,12 +67,12 @@ class TagController extends Controller
     {
         $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'slug' => 'nullable|string|max:255|unique:tags,slug,' . $tag->id,
+            'slug' => 'nullable|string|max:255|unique:tags,slug,'.$tag->id,
             'color' => 'nullable|string|max:50',
             'description' => 'nullable|string',
         ]);
 
-        if ($request->has('name') && !$request->filled('slug')) {
+        if ($request->has('name') && ! $request->filled('slug')) {
             $request->merge(['slug' => Str::slug($request->name)]);
         }
 

@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 
 class PreRegistrationController extends Controller
 {
-    use Filter, CommonCRUD;
+    use CommonCRUD, Filter;
 
     public function __construct()
     {

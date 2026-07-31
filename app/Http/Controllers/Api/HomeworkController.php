@@ -2,20 +2,19 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Http\Request;
-
-
+use App\Enums\UserRoleType;
 use App\Http\Controllers\Controller;
 use App\Models\Homework;
 use App\Models\HomeworkOwner;
-use App\Enums\UserRoleType;
+use App\Models\UserClass;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class HomeworkController extends Controller
 {
-    use Filter, CommonCRUD;
+    use CommonCRUD, Filter;
 
     public function __construct()
     {
@@ -119,11 +118,11 @@ class HomeworkController extends Controller
         $perPage = $request->get('length', 20);
 
         $homeworks = Homework::where(function ($query) use ($studentId) {
-                $query->whereHas('schoolClass.userClassRegistrations', function ($q) use ($studentId) {
-                    $q->where('user_id', $studentId);
-                })
-                ->orWhereNull('class_id');
+            $query->whereHas('schoolClass.userClassRegistrations', function ($q) use ($studentId) {
+                $q->where('user_id', $studentId);
             })
+                ->orWhereNull('class_id');
+        })
             ->with(['lesson', 'schoolClass', 'owners'])
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
@@ -136,7 +135,7 @@ class HomeworkController extends Controller
         $studentId = auth()->id();
         $perPage = $request->get('length', 20);
 
-        if (!auth()->user()->hasRole(UserRoleType::Student->value) && !auth()->user()->hasPermissionTo('homework.view')) {
+        if (! auth()->user()->hasRole(UserRoleType::Student->value) && ! auth()->user()->hasPermissionTo('homework.view')) {
             abort(403, 'Access denied');
         }
 
@@ -155,11 +154,11 @@ class HomeworkController extends Controller
         $homework = Homework::with(['lesson', 'schoolClass', 'owners'])->findOrFail($homeworkId);
 
         if ($homework->class_id) {
-            $isEnrolled = \App\Models\UserClass::where('user_id', $studentId)
+            $isEnrolled = UserClass::where('user_id', $studentId)
                 ->where('class_id', $homework->class_id)
                 ->exists();
 
-            if (!$isEnrolled) {
+            if (! $isEnrolled) {
                 abort(403, 'You are not enrolled in this class');
             }
         }
@@ -168,7 +167,7 @@ class HomeworkController extends Controller
             ->where('user_id', $studentId)
             ->first();
 
-        if (!$owner) {
+        if (! $owner) {
             HomeworkOwner::create([
                 'homework_id' => $homeworkId,
                 'user_id' => $studentId,
@@ -199,11 +198,11 @@ class HomeworkController extends Controller
         $homework = Homework::findOrFail($homeworkId);
 
         if ($homework->class_id) {
-            $isEnrolled = \App\Models\UserClass::where('user_id', $studentId)
+            $isEnrolled = UserClass::where('user_id', $studentId)
                 ->where('class_id', $homework->class_id)
                 ->exists();
 
-            if (!$isEnrolled) {
+            if (! $isEnrolled) {
                 abort(403, 'You are not enrolled in this class');
             }
         }
@@ -216,7 +215,7 @@ class HomeworkController extends Controller
             ->where('user_id', $studentId)
             ->first();
 
-        if (!$owner) {
+        if (! $owner) {
             $owner = HomeworkOwner::create([
                 'homework_id' => $homeworkId,
                 'user_id' => $studentId,

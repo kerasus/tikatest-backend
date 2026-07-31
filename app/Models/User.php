@@ -4,15 +4,15 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable, HasRoles;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     protected $fillable = [
         'first_name',
@@ -77,7 +77,7 @@ class User extends Authenticatable
 
     public function getFullNameAttribute(): string
     {
-        return trim(($this->first_name ?? '') . ' ' . ($this->last_name ?? ''));
+        return trim(($this->first_name ?? '').' '.($this->last_name ?? ''));
     }
 
     public function scopeRole(Builder $query, string $role): Builder
@@ -90,9 +90,14 @@ class User extends Authenticatable
         return $this->hasMany(UserClass::class, 'user_id');
     }
 
-    public function grades(): HasMany
+    public function inPersonExamResults(): HasMany
     {
-        return $this->hasMany(Grade::class, 'student_id');
+        return $this->hasMany(InPersonExamResult::class, 'user_id');
+    }
+
+    public function grades()
+    {
+        return $this->inPersonExamResults();
     }
 
     public function quizSessions(): HasMany
@@ -125,9 +130,9 @@ class User extends Authenticatable
         return $this->hasMany(Message::class, 'receiver_id');
     }
 
-    public function examSessionsCreated(): HasMany
+    public function examsCreated(): HasMany
     {
-        return $this->hasMany(ExamSession::class, 'created_by');
+        return $this->hasMany(Exam::class, 'created_by');
     }
 
     public function homeworkCreated(): HasMany
@@ -144,5 +149,4 @@ class User extends Authenticatable
     {
         return $this->hasMany(HomeworkSubmission::class, 'graded_by');
     }
-
 }

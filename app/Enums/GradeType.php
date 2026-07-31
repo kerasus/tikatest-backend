@@ -16,7 +16,7 @@ enum GradeType: string
 
     public function label(): string
     {
-        return match($this) {
+        return match ($this) {
             self::CLASS_QUIZ => 'آزمون کلاسی',
             self::MONTHLY_QUIZ => 'آزمون ماهانه',
             self::MID_TERM_1 => 'میان ترم اول',

@@ -47,19 +47,19 @@ class PlaceImporter
     private function resolveFiles(string $dataPath, ?string $provider, ?string $file): array
     {
         if ($file) {
-            $path = str_starts_with($file, '/') ? $file : $dataPath . '/' . ltrim($file, '/');
+            $path = str_starts_with($file, '/') ? $file : $dataPath.'/'.ltrim($file, '/');
 
             return File::exists($path) ? [$path] : [];
         }
 
         if ($provider) {
-            $path = $dataPath . '/' . $provider . '-places.ndjson';
+            $path = $dataPath.'/'.$provider.'-places.ndjson';
 
             return File::exists($path) ? [$path] : [];
         }
 
         return File::exists($dataPath)
-            ? File::glob($dataPath . '/*-places.ndjson') ?: []
+            ? File::glob($dataPath.'/*-places.ndjson') ?: []
             : [];
     }
 
@@ -84,8 +84,9 @@ class PlaceImporter
 
             $payload = json_decode($line, true);
 
-            if (!is_array($payload)) {
+            if (! is_array($payload)) {
                 $skipped++;
+
                 continue;
             }
 
@@ -93,12 +94,13 @@ class PlaceImporter
 
             if (empty($attributes['provider'])) {
                 $skipped++;
+
                 continue;
             }
 
             $place = null;
 
-            if (!empty($attributes['external_id'])) {
+            if (! empty($attributes['external_id'])) {
                 $place = Place::query()
                     ->where('provider', $attributes['provider'])
                     ->where('external_id', $attributes['external_id'])

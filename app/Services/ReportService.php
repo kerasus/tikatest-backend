@@ -2,66 +2,71 @@
 
 namespace App\Services;
 
-use App\Models\Grade;
+use App\Models\InPersonExamResult;
 use App\Models\User;
 
 class ReportService
 {
     public function getSingleLessonReport(int $lessonId, int $classId, ?int $gradeBase = 20): array
     {
-        $query = Grade::where('lesson_id', $lessonId)
-            ->where('class_id', $classId)
-            ->where('is_report_card', false)
-            ->whereNull('deleted_at')
-            ->with('student')
-            ->get();
+        $query = InPersonExamResult::whereHas('inPersonExamDetail.exam.lesson', function ($q) use ($lessonId) {
+            $q->where('id', $lessonId);
+        })
+            ->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($classId) {
+                $q->where('class_id', $classId);
+            })
+            ->where('scaled_score', '!=', null)
+            ->with(['student', 'inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.classes']);
 
-        if ($query->isEmpty()) {
+        $results = $query->get();
+
+        if ($results->isEmpty()) {
             return [
                 'success' => false,
-                'message' => 'No grades found for this lesson',
+                'message' => 'No results found for this lesson',
                 'data' => [],
             ];
         }
 
         $reportData = [];
-        $gradeGroups = [];
+        $resultGroups = [];
 
-        foreach ($query as $grade) {
-            $studentId = $grade->student_id;
-            $gradeTypeLabel = $this->getGradeTypeLabel($grade->grade_type, $grade->grade_name_for_other_type);
-            $groupKey = $grade->grade_date . '|' . $grade->grade_type . '|' . ($grade->grade_name_for_other_type ?? '');
+        foreach ($results as $result) {
+            $studentId = $result->user_id;
+            $categoryTitle = $result->grade_type ?? '';
+            $examDate = $result->exam_date ?? '';
+            $isDescriptive = $result->is_descriptive ?? false;
+            $groupKey = $examDate.'|'.$categoryTitle;
 
-            if (!isset($gradeGroups[$groupKey])) {
-                $gradeGroups[$groupKey] = [
-                    'grade_date' => $grade->grade_date,
-                    'grade_type' => $grade->grade_type,
-                    'grade_type_label' => $gradeTypeLabel,
-                    'is_descriptive' => $grade->is_descriptive,
+            if (! isset($resultGroups[$groupKey])) {
+                $resultGroups[$groupKey] = [
+                    'exam_date' => $examDate,
+                    'grade_type' => $categoryTitle,
+                    'is_descriptive' => $isDescriptive,
                 ];
             }
 
-            if (!isset($reportData[$studentId])) {
+            if (! isset($reportData[$studentId])) {
                 $reportData[$studentId] = [
-                    'student_id' => $grade->student_id,
-                    'student_name' => $grade->student->first_name ?? '',
-                    'student_last_name' => $grade->student->last_name ?? '',
-                    'full_name' => $grade->student->full_name ?? '',
+                    'student_id' => $result->user_id,
+                    'student_name' => $result->student->first_name ?? '',
+                    'student_last_name' => $result->student->last_name ?? '',
+                    'full_name' => $result->student->full_name ?? '',
                 ];
             }
 
             $displayGrade = $this->convertGradeBase(
-                $grade->is_descriptive ? $grade->descriptive_value : $grade->calculated_grade,
+                $isDescriptive ? $result->raw_score : $result->scaled_score,
                 20,
                 $gradeBase
             );
 
-            $reportData[$studentId][$gradeTypeLabel . '<br>' . $grade->grade_date] = $displayGrade;
+            $reportData[$studentId][$categoryTitle.'<br>'.$examDate] = $displayGrade;
         }
 
         $averages = [];
-        foreach ($gradeGroups as $group) {
-            $displayKey = $group['grade_type_label'] . '<br>' . $group['grade_date'];
+        foreach ($resultGroups as $group) {
+            $displayKey = $group['grade_type'].'<br>'.$group['exam_date'];
             $average = 0;
             $count = 0;
             foreach ($reportData as $studentGrades) {
@@ -70,7 +75,7 @@ class ReportService
                     $count++;
                 }
             }
-            $averages[$group['grade_type'] . '|' . $group['grade_date']] = $count > 0 ? round($average / $count, 2) : 0;
+            $averages[$group['grade_type'].'|'.$group['exam_date']] = $count > 0 ? round($average / $count, 2) : 0;
         }
 
         $reportData[] = [
@@ -82,7 +87,7 @@ class ReportService
             'success' => true,
             'message' => 'Report generated successfully',
             'data' => array_values($reportData),
-            'grade_groups' => array_values($gradeGroups),
+            'grade_groups' => array_values($resultGroups),
         ];
     }
 
@@ -91,27 +96,35 @@ class ReportService
         $reportData = [];
 
         foreach ($lessonIds as $lessonId) {
-            $query = Grade::where('lesson_id', $lessonId)
-                ->where('class_id', $classId)
-                ->where('is_report_card', false)
-                ->whereNull('deleted_at')
-                ->with(['student', 'lesson'])
-                ->get();
+            $query = InPersonExamResult::whereHas('inPersonExamDetail.exam.lesson', function ($q) use ($lessonId) {
+                $q->where('id', $lessonId);
+            })
+                ->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($classId) {
+                    $q->where('class_id', $classId);
+                })
+                ->where('scaled_score', '!=', null)
+                ->with(['student', 'lesson', 'inPersonExamDetail.exam.lesson']);
 
-            foreach ($query as $grade) {
-                $studentId = $grade->student_id;
+            $results = $query->get();
 
-                if (!isset($reportData[$studentId])) {
+            if ($results->isEmpty()) {
+                continue;
+            }
+
+            foreach ($results as $result) {
+                $studentId = $result->user_id;
+
+                if (! isset($reportData[$studentId])) {
                     $reportData[$studentId] = [
                         'id_user' => $studentId,
-                        'name' => $grade->student->first_name ?? '',
-                        'last_name' => $grade->student->last_name ?? '',
-                        'full_name' => $grade->student->full_name ?? '',
+                        'name' => $result->student->first_name ?? '',
+                        'last_name' => $result->student->last_name ?? '',
+                        'full_name' => $result->student->full_name ?? '',
                     ];
                 }
 
-                $gradeTypeLabel = $this->getGradeTypeLabel($grade->grade_type, $grade->grade_name_for_other_type);
-                $reportData[$studentId][$gradeTypeLabel . '<br>' . $grade->lesson->name ?? ''] = $grade->calculated_grade;
+                $categoryTitle = $result->grade_type ?? '';
+                $reportData[$studentId][$categoryTitle.'<br>'.($result->inPersonExamDetail?->exam?->lesson?->name ?? '')] = $result->scaled_score;
             }
         }
 
@@ -119,8 +132,8 @@ class ReportService
         $avgArrayForTable = [];
         foreach ($reportData as $studentId => $studentGrades) {
             foreach ($studentGrades as $key => $value) {
-                if (!in_array($key, ['id_user', 'name', 'last_name', 'full_name'])) {
-                    if (!isset($averages[$key])) {
+                if (! in_array($key, ['id_user', 'name', 'last_name', 'full_name'])) {
+                    if (! isset($averages[$key])) {
                         $averages[$key] = ['total' => 0, 'count' => 0];
                     }
                     $averages[$key]['total'] += $value;
@@ -152,136 +165,164 @@ class ReportService
         ];
     }
 
-    public function getClassGradeSessions(int $classId, int $lessonId): array
+    public function getClassExamSessions(int $classId, int $lessonId): array
     {
-        $query = Grade::where('class_id', $classId)
-            ->where('lesson_id', $lessonId)
-            ->where('is_report_card', false)
-            ->whereNull('deleted_at')
-            ->select('grade_date', 'grade_type', 'grade_name_for_other_type', 'is_descriptive', 'is_visible')
+        $query = InPersonExamResult::whereHas('inPersonExamDetail.exam.lesson', function ($q) use ($lessonId) {
+            $q->where('id', $lessonId);
+        })
+            ->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($classId) {
+                $q->where('class_id', $classId);
+            })
+            ->with(['inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category'])
+            ->select('in_person_exam_details.exam_id', 'in_person_exam_details.held_at', 'in_person_exam_details.is_descriptive', 'exams.name', 'exams.exam_category_id', 'exam_categories.title as category_title')
+            ->join('in_person_exam_details', 'in_person_exam_results.in_person_exam_id', '=', 'in_person_exam_details.id')
+            ->join('exams', 'in_person_exam_details.exam_id', '=', 'exams.id')
+            ->leftJoin('exam_categories', 'exams.exam_category_id', '=', 'exam_categories.id')
             ->distinct()
-            ->orderBy('grade_date', 'desc')
+            ->orderBy('in_person_exam_details.held_at', 'desc')
             ->get();
 
         $sessions = [];
-        foreach ($query as $grade) {
+        foreach ($query as $result) {
             $sessions[] = [
-                'grade_date' => $grade->grade_date,
-                'grade_type' => $grade->grade_type,
-                'grade_type_label' => $this->getGradeTypeLabel($grade->grade_type, $grade->grade_name_for_other_type),
-                'is_descriptive' => $grade->is_descriptive,
-                'is_visible' => $grade->is_visible,
+                'exam_id' => $result->exam_id ?? $result->inPersonExamDetail?->exam?->id,
+                'exam_date' => $result->held_at ?? $result->inPersonExamDetail?->held_at?->toDateString(),
+                'exam_name' => $result->name ?? $result->inPersonExamDetail?->exam?->name,
+                'grade_type' => $result->category_title ?? $result->inPersonExamDetail?->exam?->category?->title,
+                'is_descriptive' => $result->is_descriptive ?? $result->inPersonExamDetail?->is_descriptive,
+                'is_visible' => true,
             ];
         }
 
         return [
             'success' => true,
-            'message' => 'Grade sessions retrieved successfully',
+            'message' => 'Exam sessions retrieved successfully',
             'data' => $sessions,
         ];
     }
 
-    public function getStudentGradesForLesson(int $studentId, int $lessonId, int $classId): array
+    public function getStudentResultsForLesson(int $studentId, int $lessonId, int $classId): array
     {
-        $grades = Grade::where('student_id', $studentId)
-            ->where('lesson_id', $lessonId)
-            ->where('class_id', $classId)
-            ->where('is_report_card', false)
-            ->whereNull('deleted_at')
-            ->with('examSession')
-            ->orderBy('grade_date', 'desc')
-            ->get();
+        $query = InPersonExamResult::where('user_id', $studentId)
+            ->whereHas('inPersonExamDetail.exam.lesson', function ($q) use ($lessonId) {
+                $q->where('id', $lessonId);
+            })
+            ->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($classId) {
+                $q->where('class_id', $classId);
+            })
+            ->with(['inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.classes'])
+            ->orderBy('in_person_exam_details.held_at', 'desc');
 
-        $processedGrades = $grades->map(function ($grade) {
+        $results = $query->get();
+
+        $processedResults = $results->map(function ($result) {
             return [
-                'id' => $grade->id,
-                'grade_session_id' => $grade->exam_session_id,
-                'grade' => $grade->is_descriptive ? $grade->descriptive_value : $grade->calculated_grade,
-                'raw_grade' => $grade->raw_grade,
-                'calculated_grade' => $grade->calculated_grade,
-                'grade_type' => $grade->grade_type,
-                'grade_type_label' => $this->getGradeTypeLabel($grade->grade_type, $grade->grade_name_for_other_type),
-                'grade_date' => $grade->grade_date,
-                'is_descriptive' => $grade->is_descriptive,
-                'descriptive_value' => $grade->descriptive_value,
-                'descriptive_label' => $grade->descriptive_label,
-                'min_passing_score' => $grade->min_passing_score,
-                'z_score' => $grade->z_score,
-                'is_visible' => $grade->is_visible,
-                'explanation' => $grade->explanation,
+                'id' => $result->id,
+                'in_person_exam_id' => $result->in_person_exam_id,
+                'exam_id' => $result->exam_id,
+                'grade' => $result->scaled_score,
+                'raw_grade' => $result->raw_score,
+                'grade_type' => $result->grade_type,
+                'exam_date' => $result->exam_date,
+                'is_descriptive' => $result->is_descriptive,
+                'descriptive_value' => $result->raw_score,
+                'descriptive_label' => $this->getDescriptiveLabel($result->raw_score),
+                'min_passing_score' => $result->inPersonExamDetail?->exam?->min_passing_score,
+                'z_score' => $result->z_score,
+                'is_visible' => true,
+                'explanation' => null,
             ];
         });
 
         return [
             'success' => true,
-            'message' => 'Student grades retrieved successfully',
-            'data' => $processedGrades->values(),
+            'message' => 'Student results retrieved successfully',
+            'data' => $processedResults->values(),
         ];
+    }
+
+    private function getDescriptiveLabel(?float $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        return match ((int) $value) {
+            1 => 'خیلی خوب',
+            2 => 'خوب',
+            3 => 'قابل قبول',
+            4 => 'نیاز به آموزش و تلاش بیشتر',
+            default => null,
+        };
     }
 
     public function getStudentReportCard(int $studentId, int $classId): array
     {
-        $grades = Grade::where('student_id', $studentId)
-            ->where('class_id', $classId)
-            ->where('is_report_card', true)
-            ->where('is_descriptive', false)
-            ->whereNull('deleted_at')
-            ->with(['lesson', 'examSession'])
-            ->orderBy('grade_date', 'desc')
+        $reportCardTypes = [
+            'mid_term_1' => 'میان ترم اول',
+            'continuous_1' => 'مستمر اول',
+            'final_1' => 'پایان ترم اول',
+            'mid_term_2' => 'میان ترم دوم',
+            'continuous_2' => 'مستمر دوم',
+            'final_2' => 'پایان ترم دوم',
+        ];
+
+        $results = InPersonExamResult::where('user_id', $studentId)
+            ->where('scaled_score', '!=', null)
+            ->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($classId) {
+                $q->where('class_id', $classId);
+            })
+            ->whereHas('inPersonExamDetail.exam.category', function ($q) use ($reportCardTypes) {
+                $q->whereIn('title', array_keys($reportCardTypes));
+            })
+            ->with(['inPersonExamDetail.exam.lesson', 'inPersonExamDetail.exam.category'])
+            ->orderBy('created_at', 'desc')
             ->get();
 
-        $student = User::find($studentId);
-
-        if ($grades->isEmpty()) {
+        if ($results->isEmpty()) {
             return [
                 'success' => false,
-                'message' => 'No report card grades found',
+                'message' => 'No report card results found',
                 'data' => [],
             ];
         }
 
-        $gradesByLesson = [];
+        $resultsByLesson = [];
         $averagesByTerm = [];
 
-        foreach ($grades as $grade) {
-            $lessonId = $grade->lesson_id;
-            $gradeType = $grade->grade_type;
+        foreach ($results as $result) {
+            $lessonId = $result->lesson_id;
+            $gradeType = $result->grade_type;
 
-            if (!isset($gradesByLesson[$lessonId])) {
-                $gradesByLesson[$lessonId] = [
+            if (! isset($resultsByLesson[$lessonId])) {
+                $resultsByLesson[$lessonId] = [
                     'lesson_id' => $lessonId,
-                    'lesson_name' => $grade->lesson->name ?? '',
+                    'lesson_name' => $result->inPersonExamDetail?->exam?->lesson?->name ?? '',
                     'grades' => [],
                 ];
             }
 
-            $gradesByLesson[$lessonId]['grades'][] = [
-                'grade_type' => $grade->grade_type,
-                'grade_type_label' => $this->getGradeTypeLabel($grade->grade_type, $grade->grade_name_for_other_type),
-                'calculated_grade' => $grade->calculated_grade,
-                'grade_date' => $grade->grade_date,
-                'z_score' => $grade->z_score,
+            $resultsByLesson[$lessonId]['grades'][] = [
+                'grade_type' => $gradeType,
+                'grade_type_label' => $this->getGradeTypeLabel($gradeType),
+                'calculated_grade' => $result->scaled_score,
+                'grade_date' => $result->exam_date,
+                'z_score' => $result->z_score,
             ];
 
             if (isset($averagesByTerm[$gradeType])) {
-                if (!is_array($averagesByTerm[$gradeType])) {
-                    $averagesByTerm[$gradeType] = [
-                        'total' => 0,
-                        'count' => 0,
-                    ];
-                }
-                $averagesByTerm[$gradeType]['total'] += $grade->calculated_grade ?? 0;
+                $averagesByTerm[$gradeType]['total'] += $result->scaled_score ?? 0;
                 $averagesByTerm[$gradeType]['count']++;
+            } else {
+                $averagesByTerm[$gradeType] = ['total' => $result->scaled_score ?? 0, 'count' => 1];
             }
         }
 
         foreach ($averagesByTerm as $type => $data) {
-            if (is_array($data) && $data['count'] > 0) {
-                $averagesByTerm[$type] = round($data['total'] / $data['count'], 2);
-            } else {
-                unset($averagesByTerm[$type]);
-            }
+            $averagesByTerm[$type] = $data['count'] > 0 ? round($data['total'] / $data['count'], 2) : 0;
         }
+
+        $student = User::find($studentId);
 
         return [
             'success' => true,
@@ -290,15 +331,15 @@ class ReportService
                 'student_id' => $studentId,
                 'student_name' => $student->first_name ?? '',
                 'student_last_name' => $student->last_name ?? '',
-                'grades_by_lesson' => array_values($gradesByLesson),
+                'grades_by_lesson' => array_values($resultsByLesson),
                 'term_averages' => $averagesByTerm,
             ],
         ];
     }
 
-    private function getGradeTypeLabel(string $gradeType, ?string $gradeNameForOtherType = null): string
+    private function getGradeTypeLabel(?string $gradeType): string
     {
-        return match($gradeType) {
+        return match ($gradeType) {
             'class_quiz' => 'آزمون کلاسی',
             'monthly_quiz' => 'آزمون ماهانه',
             'mid_term_1' => 'میان ترم اول',
@@ -307,8 +348,7 @@ class ReportService
             'mid_term_2' => 'میان ترم دوم',
             'continuous_2' => 'مستمر دوم',
             'final_2' => 'پایان ترم دوم',
-            'other' => $gradeNameForOtherType ?: 'سایر',
-            default => $gradeType,
+            default => $gradeType ?? 'ناشناخته',
         };
     }
 

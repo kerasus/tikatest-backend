@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Models\AcademicLevel;
-use App\Models\School;
 use App\Models\SchoolClass;
 use Illuminate\Database\Seeder;
 

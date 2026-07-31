@@ -3,22 +3,21 @@
 namespace App\Traits;
 
 use Carbon\Carbon;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Builder;
-use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 trait Filter
 {
-    private function filterByRelationId(Request $request, $filterData, & $modelQuery) {
+    private function filterByRelationId(Request $request, $filterData, &$modelQuery)
+    {
         $requestKey = $filterData['requestKey'];
         $relationName = (isset($filterData['relationName'])) ? $filterData['relationName'] : null;
         $relationNames = (isset($filterData['relationNames'])) ? $filterData['relationNames'] : null;
         $orWhereHas = isset($filterData['orWhereHas']) && $filterData['orWhereHas'];
 
         $relationIds = $request->get($requestKey);
-        if (!isset($relationIds)) {
+        if (! isset($relationIds)) {
             return;
         }
         if (is_array($relationIds) && count($relationIds) === 0) {
@@ -28,10 +27,10 @@ trait Filter
             return;
         }
 
-        if (!is_array($relationNames)) {
+        if (! is_array($relationNames)) {
             $relationNames = [$relationNames];
         }
-        if (!is_array($relationIds)) {
+        if (! is_array($relationIds)) {
             $relationIds = [$relationIds];
         }
 
@@ -50,7 +49,8 @@ trait Filter
         }
     }
 
-    private function filterByRelationKey(Request $request, $filterData, & $modelQuery) {
+    private function filterByRelationKey(Request $request, $filterData, &$modelQuery)
+    {
 
         $requestKey = $filterData['requestKey'];
         $exact = (isset($filterData['exact'])) ? $filterData['exact'] : false;
@@ -58,75 +58,82 @@ trait Filter
         $relationColumn = (isset($filterData['relationColumn'])) ? $filterData['relationColumn'] : null;
 
         $name = $request->get($requestKey);
-        if (!isset($name)) {
+        if (! isset($name)) {
             return;
         }
         $modelQuery->whereHas($relationName, function (Builder $query) use ($name, $relationColumn, $exact) {
             if ($exact) {
                 $query->where($relationColumn, '=', $name);
             } else {
-                $query->where($relationColumn, 'like', '%' . $name . '%');
+                $query->where($relationColumn, 'like', '%'.$name.'%');
             }
 
         });
     }
 
-    private function filterByKey($request, $key, & $modelQuery) {
+    private function filterByKey($request, $key, &$modelQuery)
+    {
         $keyValue = trim($request->get($key));
         if (strlen($keyValue) > 0) {
-            $modelQuery = $modelQuery->where($key, 'like', '%' . $keyValue . '%');
+            $modelQuery = $modelQuery->where($key, 'like', '%'.$keyValue.'%');
         }
     }
 
-    private function filterByMultipleColumnKey(Request $request, $filterData, & $modelQuery) {
+    private function filterByMultipleColumnKey(Request $request, $filterData, &$modelQuery)
+    {
         $columns = $filterData['columns'];
         $requestKey = $filterData['requestKey'];
         $name = $request->get($requestKey);
 
-        if (!isset($name) || strlen($name) == 0) {
+        if (! isset($name) || strlen($name) == 0) {
             return;
         }
 
         $modelQuery->where(function ($query) use ($name, $columns) {
             foreach ($columns as $column) {
-                $query->orWhere($column, 'like', '%' . $name . '%');
+                $query->orWhere($column, 'like', '%'.$name.'%');
             }
         });
     }
 
-    private function filterOrByKey($request, $key, & $modelQuery) {
+    private function filterOrByKey($request, $key, &$modelQuery)
+    {
         $keyValue = trim($request->get($key));
         if (strlen($keyValue) > 0) {
-            $modelQuery = $modelQuery->orWhere($key, 'like', '%' . $keyValue . '%');
+            $modelQuery = $modelQuery->orWhere($key, 'like', '%'.$keyValue.'%');
         }
     }
 
-    private function filterByKeyExact($request, $key, & $modelQuery) {
+    private function filterByKeyExact($request, $key, &$modelQuery)
+    {
         $keyValue = trim($request->get($key));
         if (strlen($keyValue) > 0) {
             $modelQuery = $modelQuery->where($key, '=', $keyValue);
         }
     }
 
-    private function filterOrByKeyExact($request, $key, & $modelQuery) {
+    private function filterOrByKeyExact($request, $key, &$modelQuery)
+    {
         $keyValue = trim($request->get($key));
         if (strlen($keyValue) > 0) {
             $modelQuery = $modelQuery->orWhere($key, '=', $keyValue);
         }
     }
 
-    private function filterByKeyIn($request, $key, & $modelQuery) {
-        $keyValue = trim($request->get($key . '_in'));
+    private function filterByKeyIn($request, $key, &$modelQuery)
+    {
+        $keyValue = trim($request->get($key.'_in'));
         if (isset($keyValue) && is_array($keyValue)) {
             $modelQuery = $modelQuery->whereIn($key, $keyValue);
         }
     }
 
-    private function filterByDate($request, & $modelQuery, &$filterDate) {
+    private function filterByDate($request, &$modelQuery, &$filterDate)
+    {
 
-        $filterDate []= 'created_at';
+        $filterDate[] = 'created_at';
 
-        foreach ($filterDate as $ke=>$value) {
+        foreach ($filterDate as $ke => $value) {
 
             if ($value === 'created_at') {
                 $sinceDateKey = 'createdSinceDate';
@@ -136,38 +143,39 @@ trait Filter
                 $tillDateKey = $value.'_till_date';
             }
 
-            $sinceDate  = $request->get($sinceDateKey);
-            $tillDate   = $request->get($tillDateKey);
+            $sinceDate = $request->get($sinceDateKey);
+            $tillDate = $request->get($tillDateKey);
             if (strlen($sinceDate) > 0 && strlen($tillDate) > 0) {
-                $sinceDate  = Carbon::parse($sinceDate)->format('Y-m-d H:m:s');
-                $tillDate   = Carbon::parse($tillDate)->format('Y-m-d H:m:s');
+                $sinceDate = Carbon::parse($sinceDate)->format('Y-m-d H:m:s');
+                $tillDate = Carbon::parse($tillDate)->format('Y-m-d H:m:s');
                 $modelQuery = $modelQuery->whereBetween($value, [$sinceDate, $tillDate]);
-            } else if (strlen($sinceDate) > 0) {
-                $sinceDate  = Carbon::parse($sinceDate)->format('Y-m-d H:m:s');
+            } elseif (strlen($sinceDate) > 0) {
+                $sinceDate = Carbon::parse($sinceDate)->format('Y-m-d H:m:s');
                 $modelQuery = $modelQuery->where($value, '>=', $sinceDate);
-            } else if (strlen($tillDate) > 0) {
-                $tillDate   = Carbon::parse($tillDate)->format('Y-m-d H:m:s');
+            } elseif (strlen($tillDate) > 0) {
+                $tillDate = Carbon::parse($tillDate)->format('Y-m-d H:m:s');
                 $modelQuery = $modelQuery->where($value, '<=', $tillDate);
             }
         }
 
-//        $createdSinceDate  = $request->get('createdSinceDate');
-//        $createdTillDate   = $request->get('createdTillDate');
-//        if (strlen($createdSinceDate) > 0 && strlen($createdTillDate) > 0) {
-//            $createdSinceDate = Carbon::parse($createdSinceDate)->format('Y-m-d H:m:s');
-//            $createdTillDate = Carbon::parse($createdTillDate)->format('Y-m-d H:m:s');
-//            $modelQuery       = $modelQuery->whereBetween('created_at', [$createdSinceDate, $createdTillDate]);
-//        } else if (strlen($createdSinceDate) > 0) {
-//            $createdSinceDate = Carbon::parse($createdSinceDate)->format('Y-m-d H:m:s');
-//            $modelQuery       = $modelQuery->where('created_at', '>=', $createdSinceDate);
-//        } else if (strlen($createdTillDate) > 0) {
-//            $createdTillDate = Carbon::parse($createdTillDate)->format('Y-m-d H:m:s');
-//            $modelQuery       = $modelQuery->where('created_at', '<=', $createdTillDate);
-//        }
+        //        $createdSinceDate  = $request->get('createdSinceDate');
+        //        $createdTillDate   = $request->get('createdTillDate');
+        //        if (strlen($createdSinceDate) > 0 && strlen($createdTillDate) > 0) {
+        //            $createdSinceDate = Carbon::parse($createdSinceDate)->format('Y-m-d H:m:s');
+        //            $createdTillDate = Carbon::parse($createdTillDate)->format('Y-m-d H:m:s');
+        //            $modelQuery       = $modelQuery->whereBetween('created_at', [$createdSinceDate, $createdTillDate]);
+        //        } else if (strlen($createdSinceDate) > 0) {
+        //            $createdSinceDate = Carbon::parse($createdSinceDate)->format('Y-m-d H:m:s');
+        //            $modelQuery       = $modelQuery->where('created_at', '>=', $createdSinceDate);
+        //        } else if (strlen($createdTillDate) > 0) {
+        //            $createdTillDate = Carbon::parse($createdTillDate)->format('Y-m-d H:m:s');
+        //            $modelQuery       = $modelQuery->where('created_at', '<=', $createdTillDate);
+        //        }
     }
 
-    private function checkOwner ($userOwnerId) {
-        if (!Auth::user()->hasRole('admin') && Auth::user()->id !== (int)$userOwnerId) {
+    private function checkOwner($userOwnerId)
+    {
+        if (! Auth::user()->hasRole('admin') && Auth::user()->id !== (int) $userOwnerId) {
             abort(403, 'Access denied');
         }
     }

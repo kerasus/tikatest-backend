@@ -2,10 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\UserRoleType;
 use Closure;
 use Illuminate\Http\Request;
 use Spatie\Permission\Middleware\PermissionMiddleware;
-use App\Enums\UserRoleType;
 
 class AdminOrPermissionMiddleware extends PermissionMiddleware
 {

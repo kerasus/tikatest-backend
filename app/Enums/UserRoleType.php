@@ -9,4 +9,5 @@ enum UserRoleType: string
     case Teacher = 'teacher';
     case Student = 'student';
     case Staff = 'staff';
+    case guardian = 'guardian';
 }

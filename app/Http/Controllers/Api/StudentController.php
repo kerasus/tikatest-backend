@@ -2,21 +2,23 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Http\Request;
-
-
+use App\Enums\UserRoleType;
 use App\Http\Controllers\Controller;
+use App\Models\DisciplinaryRecord;
+use App\Models\Homework;
+use App\Models\InPersonExamResult;
+use App\Models\StudySession;
 use App\Models\User;
 use App\Models\UserClass;
-use App\Models\StudySession;
-use App\Enums\UserRoleType;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class StudentController extends Controller
 {
-    use Filter, CommonCRUD;
+    use CommonCRUD, Filter;
 
     public function __construct()
     {
@@ -77,7 +79,7 @@ class StudentController extends Controller
             ],
         ];
 
-        $modelQuery = User::query()->whereHas('roles', fn($q) => $q->where('name', 'student'));
+        $modelQuery = User::query()->whereHas('roles', fn ($q) => $q->where('name', 'student'));
         $perPage = $request->has('length') ? $request->get('length') : 10;
 
         $this->buildFilterQuery($request, $modelQuery, User::class, $this->getConfigArray($config));
@@ -97,9 +99,9 @@ class StudentController extends Controller
         if ($request->filled('school_id')) {
             $modelQuery->where(function ($query) use ($request) {
                 $query->where('users.school_id', $request->get('school_id'))
-                      ->orWhereHas('userClassRegistrations.schoolClass.academicLevel.academicField', function ($q) use ($request) {
-                          $q->where('academic_fields.school_id', $request->get('school_id'));
-                      });
+                    ->orWhereHas('userClassRegistrations.schoolClass.academicLevel.academicField', function ($q) use ($request) {
+                        $q->where('academic_fields.school_id', $request->get('school_id'));
+                    });
             });
         }
 
@@ -147,7 +149,7 @@ class StudentController extends Controller
     public function show(Request $request, $id): JsonResponse
     {
         $student = User::where('id', $id)
-            ->whereHas('roles', fn($q) => $q->where('name', 'student'))
+            ->whereHas('roles', fn ($q) => $q->where('name', 'student'))
             ->with([
                 'userClassRegistrations.schoolClass.academicLevel.academicField.school',
                 'roles',
@@ -163,7 +165,7 @@ class StudentController extends Controller
         $request->validate([
             'first_name' => 'sometimes|required|string|max:255',
             'last_name' => 'sometimes|required|string|max:255',
-            'username' => 'sometimes|required|string|unique:users,username,' . $student->id,
+            'username' => 'sometimes|required|string|unique:users,username,'.$student->id,
             'password' => 'nullable|string|min:6',
             'student_phone' => 'nullable|string|max:20',
             'national_id' => 'nullable|string|max:20',
@@ -200,9 +202,9 @@ class StudentController extends Controller
 
     public function destroy(User $student): JsonResponse
     {
-        if (!$student->hasRole(UserRoleType::Student->value)) {
+        if (! $student->hasRole(UserRoleType::Student->value)) {
             return $this->jsonResponseServerError([
-                'errors' => ['student' => ['این کاربر دانش آموز نیست.']]
+                'errors' => ['student' => ['این کاربر دانش آموز نیست.']],
             ]);
         }
 
@@ -226,10 +228,10 @@ class StudentController extends Controller
             $query->where('lesson_id', $request->lesson_id);
         }
         if ($request->filled('date_from')) {
-            $query->where('started_at', '>=', $request->date_from . ' 00:00:00');
+            $query->where('started_at', '>=', $request->date_from.' 00:00:00');
         }
         if ($request->filled('date_to')) {
-            $query->where('started_at', '<=', $request->date_to . ' 23:59:59');
+            $query->where('started_at', '<=', $request->date_to.' 23:59:59');
         }
 
         $sessions = $query->orderBy('started_at', 'desc')->paginate(20);
@@ -251,8 +253,8 @@ class StudentController extends Controller
         $data['student_id'] = auth()->id();
 
         if ($request->filled('started_at') && $request->filled('ended_at')) {
-            $start = \Carbon\Carbon::parse($request->started_at);
-            $end = \Carbon\Carbon::parse($request->ended_at);
+            $start = Carbon::parse($request->started_at);
+            $end = Carbon::parse($request->ended_at);
             $data['duration_minutes'] = $start->diffInMinutes($end);
         }
 
@@ -288,8 +290,8 @@ class StudentController extends Controller
         $session->fill($request->all());
 
         if ($request->filled('started_at') && $request->filled('ended_at')) {
-            $start = \Carbon\Carbon::parse($request->started_at);
-            $end = \Carbon\Carbon::parse($request->ended_at);
+            $start = Carbon::parse($request->started_at);
+            $end = Carbon::parse($request->ended_at);
             $session->duration_minutes = $start->diffInMinutes($end);
         }
 
@@ -312,20 +314,22 @@ class StudentController extends Controller
     public function myReportCard(Request $request): JsonResponse
     {
         $request->validate([
-            'grade_type' => 'nullable|string',
+            'category_title' => 'nullable|string',
         ]);
 
-        $query = \App\Models\Grade::where('student_id', auth()->id())
-            ->where('is_report_card', true)
-            ->with(['lesson', 'schoolClass']);
+        $query = InPersonExamResult::where('user_id', auth()->id())
+            ->where('scaled_score', '!=', null)
+            ->with(['inPersonExamDetail.exam.lesson', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.classes']);
 
-        if ($request->filled('grade_type')) {
-            $query->where('grade_type', $request->grade_type);
+        if ($request->filled('category_title')) {
+            $query->whereHas('inPersonExamDetail.exam.category', function ($q) use ($request) {
+                $q->where('title', $request->category_title);
+            });
         }
 
-        $grades = $query->orderBy('created_at', 'desc')->get();
+        $results = $query->orderBy('created_at', 'desc')->get();
 
-        return $this->jsonResponseOk($grades);
+        return $this->jsonResponseOk($results);
     }
 
     public function myAbsences(Request $request): JsonResponse
@@ -335,7 +339,7 @@ class StudentController extends Controller
             'date_to' => 'nullable|date',
         ]);
 
-        $query = \App\Models\DisciplinaryRecord::where('student_id', auth()->id())
+        $query = DisciplinaryRecord::where('student_id', auth()->id())
             ->whereHas('disciplinaryCase', function ($q) {
                 $q->where('name', 'like', '%غیبت%')->orWhere('name', 'like', '%absence%');
             })
@@ -360,7 +364,7 @@ class StudentController extends Controller
             'date_to' => 'nullable|date',
         ]);
 
-        $query = \App\Models\DisciplinaryRecord::where('student_id', auth()->id())
+        $query = DisciplinaryRecord::where('student_id', auth()->id())
             ->with(['disciplinaryCase']);
 
         if ($request->filled('date_from')) {
@@ -378,31 +382,29 @@ class StudentController extends Controller
     public function myGrades(Request $request): JsonResponse
     {
         $request->validate([
-            'grade_type' => 'nullable|string',
-            'lesson_id' => 'nullable|exists:lessons,id',
+            'category_title' => 'nullable|string',
         ]);
 
-        $query = \App\Models\Grade::where('student_id', auth()->id())
-            ->with(['lesson', 'schoolClass', 'examSession']);
+        $query = InPersonExamResult::where('user_id', auth()->id())
+            ->with(['inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.lesson']);
 
-        if ($request->filled('grade_type')) {
-            $query->where('grade_type', $request->grade_type);
+        if ($request->filled('category_title')) {
+            $query->whereHas('inPersonExamDetail.exam.category', function ($q) use ($request) {
+                $q->where('title', $request->category_title);
+            });
         }
-        if ($request->filled('lesson_id')) {
-            $query->where('lesson_id', $request->lesson_id);
-        }
 
-        $grades = $query->orderBy('grade_date', 'desc')->paginate(20);
+        $results = $query->orderBy('created_at', 'desc')->paginate(20);
 
-        return $this->jsonResponseOk($grades);
+        return $this->jsonResponseOk($results);
     }
 
     public function dashboard(Request $request): JsonResponse
     {
         $studentId = auth()->id();
 
-        $recentGrades = \App\Models\Grade::where('student_id', $studentId)
-            ->with('lesson')
+        $recentResults = InPersonExamResult::where('user_id', $studentId)
+            ->with('inPersonExamDetail.exam.lesson')
             ->orderBy('created_at', 'desc')
             ->limit(5)
             ->get();
@@ -417,18 +419,18 @@ class StudentController extends Controller
             ->whereMonth('started_at', now()->month)
             ->sum('duration_minutes');
 
-        $recentDisciplinary = \App\Models\DisciplinaryRecord::where('student_id', $studentId)
+        $recentDisciplinary = DisciplinaryRecord::where('student_id', $studentId)
             ->with('disciplinaryCase')
             ->orderBy('incident_date', 'desc')
             ->limit(3)
             ->get();
 
-        $pendingHomework = \App\Models\Homework::whereHas('owners', function ($q) use ($studentId) {
+        $pendingHomework = Homework::whereHas('owners', function ($q) use ($studentId) {
             $q->where('user_id', $studentId)->whereNull('submitted_at');
         })->count();
 
         return $this->jsonResponseOk([
-            'recent_grades' => $recentGrades,
+            'recent_grades' => $recentResults,
             'recent_study_sessions' => $recentStudySessions,
             'total_study_minutes_this_month' => $totalStudyMinutes,
             'recent_disciplinary' => $recentDisciplinary,
@@ -441,11 +443,11 @@ class StudentController extends Controller
         $query = StudySession::with(['student', 'lesson']);
 
         $query->when($request->filled('date_from'), function ($q) use ($request) {
-            $q->where('started_at', '>=', $request->date_from . ' 00:00:00');
+            $q->where('started_at', '>=', $request->date_from.' 00:00:00');
         });
 
         $query->when($request->filled('date_to'), function ($q) use ($request) {
-            $q->where('started_at', '<=', $request->date_to . ' 23:59:59');
+            $q->where('started_at', '<=', $request->date_to.' 23:59:59');
         });
 
         $query->when($request->filled('class_id'), function ($q) use ($request) {
@@ -457,9 +459,9 @@ class StudentController extends Controller
         $sessions = $query->orderBy('started_at', 'desc')->paginate(20);
 
         $totalMinutes = StudySession::when($request->filled('date_from'), function ($q) use ($request) {
-            $q->where('started_at', '>=', $request->date_from . ' 00:00:00');
+            $q->where('started_at', '>=', $request->date_from.' 00:00:00');
         })->when($request->filled('date_to'), function ($q) use ($request) {
-            $q->where('started_at', '<=', $request->date_to . ' 23:59:59');
+            $q->where('started_at', '<=', $request->date_to.' 23:59:59');
         })->sum('duration_minutes');
 
         return $this->jsonResponseOk([
@@ -475,11 +477,11 @@ class StudentController extends Controller
             ->with(['lesson']);
 
         $query->when($request->filled('date_from'), function ($q) use ($request) {
-            $q->where('started_at', '>=', $request->date_from . ' 00:00:00');
+            $q->where('started_at', '>=', $request->date_from.' 00:00:00');
         });
 
         $query->when($request->filled('date_to'), function ($q) use ($request) {
-            $q->where('started_at', '<=', $request->date_to . ' 23:59:59');
+            $q->where('started_at', '<=', $request->date_to.' 23:59:59');
         });
 
         $query->when($request->filled('lesson_id'), function ($q) use ($request) {
@@ -490,9 +492,9 @@ class StudentController extends Controller
 
         $totalMinutes = StudySession::where('student_id', $studentId)
             ->when($request->filled('date_from'), function ($q) use ($request) {
-                $q->where('started_at', '>=', $request->date_from . ' 00:00:00');
+                $q->where('started_at', '>=', $request->date_from.' 00:00:00');
             })->when($request->filled('date_to'), function ($q) use ($request) {
-                $q->where('started_at', '<=', $request->date_to . ' 23:59:59');
+                $q->where('started_at', '<=', $request->date_to.' 23:59:59');
             })->sum('duration_minutes');
 
         return $this->jsonResponseOk([

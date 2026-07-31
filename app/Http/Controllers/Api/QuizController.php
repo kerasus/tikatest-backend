@@ -2,21 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Http\Request;
-
-
 use App\Http\Controllers\Controller;
 use App\Models\Quiz;
 use App\Models\QuizClassAssignment;
+use App\Models\School;
 use App\Services\QuizScoringService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 
 class QuizController extends Controller
 {
-    use Filter, CommonCRUD;
+    use CommonCRUD, Filter;
 
     private QuizScoringService $scoringService;
 
@@ -46,7 +45,7 @@ class QuizController extends Controller
                 'end_time',
                 'created_at',
             ],
-            'eagerLoads' => ['quizClassAssignments', 'booklets'],
+            'eagerLoads' => ['quizClassAssignments', 'answerKeys'],
         ];
 
         return $this->commonIndex($request, Quiz::class, $config);
@@ -99,7 +98,7 @@ class QuizController extends Controller
 
         $quiz = Quiz::create($data);
 
-        return $this->jsonResponseOk($quiz->load(['quizClassAssignments.schoolClass', 'answerKeys', 'booklets', 'sessions']));
+        return $this->jsonResponseOk($quiz->load(['quizClassAssignments.schoolClass', 'answerKeys', 'sessions']));
     }
 
     public function show(Request $request, $id): JsonResponse
@@ -108,8 +107,7 @@ class QuizController extends Controller
             'quizClassAssignments.schoolClass',
             'quizClassAssignments.academicLevel',
             'answerKeys',
-            'booklets',
-            'sessions'
+            'sessions',
         ])->findOrFail($id);
 
         return $this->jsonResponseOk($quiz);
@@ -198,7 +196,7 @@ class QuizController extends Controller
             $exists = QuizClassAssignment::where('quiz_id', $quizId)
                 ->where('class_id', $classId)
                 ->exists();
-            if (!$exists) {
+            if (! $exists) {
                 $assignment = QuizClassAssignment::create([
                     'quiz_id' => $quizId,
                     'class_id' => $classId,
@@ -218,7 +216,7 @@ class QuizController extends Controller
         $query = Quiz::query()
             ->where(function ($q) {
                 $q->where('visible_at', '<=', now())
-                  ->orWhereNull('visible_at');
+                    ->orWhereNull('visible_at');
             })
             ->with(['quizClassAssignments.schoolClass'])
             ->where(function ($q) use ($classIds) {
@@ -235,23 +233,23 @@ class QuizController extends Controller
 
     private function getSchoolCode(?int $schoolId): string
     {
-        if (!$schoolId) {
+        if (! $schoolId) {
             return 'default';
         }
 
-        $school = \App\Models\School::find($schoolId);
-        if (!$school || empty($school->code)) {
+        $school = School::find($schoolId);
+        if (! $school || empty($school->code)) {
             return 'default';
         }
 
         return $school->code;
     }
 
-    private function storeUploadedFile(\Illuminate\Http\UploadedFile $file, string $schoolCode, string $prefix): string
+    private function storeUploadedFile(UploadedFile $file, string $schoolCode, string $prefix): string
     {
         $extension = $file->getClientOriginalExtension();
         $filename = sprintf('%s_%s_%s.%s', $prefix, $schoolCode, time(), $extension);
-        $directory = 'quiz-content/' . $schoolCode;
+        $directory = 'quiz-content/'.$schoolCode;
 
         return $file->storeAs($directory, $filename, 'public');
     }
@@ -260,6 +258,7 @@ class QuizController extends Controller
     {
         if ($type === 'text') {
             $text = $request->input('questions_text', '');
+
             return [
                 [
                     'type' => 'text',
@@ -272,7 +271,7 @@ class QuizController extends Controller
             $files = $request->file('questions_images', []);
             $paths = [];
             foreach ($files as $file) {
-                if ($file instanceof \Illuminate\Http\UploadedFile) {
+                if ($file instanceof UploadedFile) {
                     $paths[] = $this->storeUploadedFile($file, $schoolCode, 'question');
                 }
             }
@@ -292,6 +291,7 @@ class QuizController extends Controller
     {
         if ($type === 'text') {
             $text = $request->input('solution_text', '');
+
             return [
                 [
                     'type' => 'text',
@@ -302,7 +302,7 @@ class QuizController extends Controller
 
         if ($type === 'image') {
             $file = $request->file('solution_image');
-            if ($file instanceof \Illuminate\Http\UploadedFile) {
+            if ($file instanceof UploadedFile) {
                 $path = $this->storeUploadedFile($file, $schoolCode, 'solution');
 
                 return [

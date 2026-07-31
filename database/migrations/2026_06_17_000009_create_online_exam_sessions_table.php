@@ -19,7 +19,6 @@ return new class extends Migration
 
             // وضعیت‌های بهبود یافته
             // ['not_started', 'in_progress', 'submitted', 'graded', 'expired']
-//            $table->string('status', 20)->default('not_started');
             $table->enum('status', ['not_started', 'in_progress', 'submitted', 'graded', 'expired'])->default('not_started');
 
             // زمان‌بندی‌ها

@@ -24,7 +24,7 @@ class Tag extends Model
         });
 
         static::updating(function (Tag $tag) {
-            if ($tag->isDirty('name') && !$tag->isDirty('slug')) {
+            if ($tag->isDirty('name') && ! $tag->isDirty('slug')) {
                 $tag->slug = Str::slug($tag->name);
             }
         });

@@ -31,9 +31,9 @@ class AppServiceProvider extends ServiceProvider
             $mean = $collection->avg();
 
             if ($mode === 1) {
-                $variance = $collection->map(fn($v) => pow($v - $mean, 2))->avg();
+                $variance = $collection->map(fn ($v) => pow($v - $mean, 2))->avg();
             } else {
-                $variance = $collection->map(fn($v) => pow($v - $mean, 2))->sum() / ($count - 1);
+                $variance = $collection->map(fn ($v) => pow($v - $mean, 2))->sum() / ($count - 1);
             }
 
             return sqrt($variance);

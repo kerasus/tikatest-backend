@@ -2,32 +2,29 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Http\Request;
-
-
 use App\Http\Controllers\Controller;
-use App\Models\ExamSession;
-use App\Models\Grade;
+use App\Models\Exam;
+use App\Models\ExamCategory;
+use App\Models\InPersonExamDetail;
+use App\Models\InPersonExamResult;
+use App\Models\Lesson;
 use App\Models\User;
-use App\Services\GradeService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class GradeController extends Controller
 {
-    use Filter, CommonCRUD;
-
-    protected GradeService $gradeService;
+    use CommonCRUD, Filter;
 
     public function __construct()
     {
-        $this->gradeService = new GradeService();
-
         $this->middleware('auth:sanctum');
-        $this->middleware('admin_or_permission:grades.view')->only(['index', 'show', 'lessonReport', 'multipleLessonsReport', 'studentReport', 'statistics']);
-        $this->middleware('admin_or_permission:grades.create')->only(['store', 'bulkStore', 'createExamSessionWithGrades']);
+        $this->middleware('admin_or_permission:grades.view')->only(['index', 'show', 'lessonReport', 'multipleLessonsReport', 'studentReport', 'statistics', 'reportCard']);
+        $this->middleware('admin_or_permission:grades.create')->only(['store', 'bulkStore', 'createExamWithGrades']);
         $this->middleware('admin_or_permission:grades.update')->only(['update', 'updateZScores']);
         $this->middleware('admin_or_permission:grades.delete')->only(['destroy']);
     }
@@ -35,16 +32,15 @@ class GradeController extends Controller
     public function index(Request $request): JsonResponse
     {
         $config = [
-            'filterKeys' => ['grade_type'],
+            'filterKeys' => ['raw_score', 'scaled_score'],
             'filterKeysExact' => [
-                'is_visible',
-                'is_report_card',
-                'is_descriptive',
-                'school_id',
+                'in_place_exam_id',
+                'user_id',
+                'recorded_by',
             ],
             'filterDate' => [
-                'grade_date',
                 'created_at',
+                'updated_at',
             ],
             'filterRelationKeys' => [
                 [
@@ -55,49 +51,80 @@ class GradeController extends Controller
                 ],
                 [
                     'requestKey' => 'lesson_name',
-                    'relationName' => 'lesson',
+                    'relationName' => 'inPersonExamDetail.exam.lesson',
                     'relationColumn' => 'name',
+                    'exact' => false,
+                ],
+                [
+                    'requestKey' => 'category_title',
+                    'relationName' => 'inPersonExamDetail.exam.category',
+                    'relationColumn' => 'title',
                     'exact' => false,
                 ],
             ],
             'filterRelationIds' => [
                 [
                     'requestKey' => 'class_ids',
-                    'relationName' => 'schoolClass',
+                    'relationName' => 'inPersonExamDetail.exam.classes',
                 ],
                 [
                     'requestKey' => 'student_ids',
                     'relationName' => 'student',
                 ],
                 [
-                    'requestKey' => 'exam_session_ids',
-                    'relationName' => 'examSession',
+                    'requestKey' => 'exam_ids',
+                    'relationName' => 'inPersonExamDetail.exam',
+                ],
+                [
+                    'requestKey' => 'lesson_id',
+                    'relationName' => 'inPersonExamDetail.exam.lesson',
                 ],
             ],
-            'eagerLoads' => ['examSession', 'lesson', 'student', 'schoolClass'],
+            'eagerLoads' => ['inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.lesson', 'inPersonExamDetail.exam.classes', 'student'],
             'returnModelQuery' => true,
         ];
 
-        $result = $this->commonIndex($request, Grade::class, $config);
+        $result = $this->commonIndex($request, InPlaceExamResult::class, $config);
 
         if (is_array($result) && isset($result['modelQuery'])) {
             $modelQuery = $result['modelQuery'];
 
+            if ($request->has('school_id')) {
+                $modelQuery->whereHas('inPlaceExamDetail.exam.category', function ($q) use ($request) {
+                    $q->where('school_id', $request->get('school_id'));
+                });
+            }
+
             if ($request->has('field_id')) {
-                $modelQuery->whereHas('schoolClass', function ($query) use ($request) {
-                    $query->whereHas('academicLevel', function ($q) use ($request) {
-                        $q->where('field_id', $request->get('field_id'));
+                $modelQuery->whereHas('inPlaceExamDetail.exam.classes', function ($q) use ($request) {
+                    $q->whereHas('academicLevel', function ($subQ) use ($request) {
+                        $subQ->where('field_id', $request->get('field_id'));
                     });
                 });
             }
 
             if ($request->has('level_id')) {
-                $modelQuery->where(function ($query) use ($request) {
-                    $query->whereHas('schoolClass', function ($q) use ($request) {
-                        $q->where('level_id', $request->get('level_id'));
-                    })->orWhereHas('lesson', function ($q) use ($request) {
-                        $q->where('level_id', $request->get('level_id'));
+                $modelQuery->where(function ($q) use ($request) {
+                    $q->whereHas('inPlaceExamDetail.exam.classes', function ($subQ) use ($request) {
+                        $subQ->where('level_id', $request->get('level_id'));
+                    })->orWhereHas('inPlaceExamDetail.exam.lesson', function ($subQ) use ($request) {
+                        $subQ->where('level_id', $request->get('level_id'));
                     });
+                });
+            }
+
+            if ($request->has('grade_type')) {
+                $gradeTypeLabel = $this->getGradeTypeLabel($request->get('grade_type'), $request->get('grade_name_for_other_type'));
+                $modelQuery->whereHas('inPlaceExamDetail.exam.category', function ($q) use ($gradeTypeLabel) {
+                    $q->where('title', $gradeTypeLabel);
+                });
+            }
+
+            if ($request->has('is_report_card') && $request->boolean('is_report_card')) {
+                $reportCardTypes = ['mid_term_1', 'continuous_1', 'final_1', 'mid_term_2', 'continuous_2', 'final_2'];
+                $reportCardLabels = array_map([$this, 'getGradeTypeLabel'], $reportCardTypes);
+                $modelQuery->whereHas('inPlaceExamDetail.exam.category', function ($q) use ($reportCardLabels) {
+                    $q->whereIn('title', $reportCardLabels);
                 });
             }
 
@@ -110,108 +137,42 @@ class GradeController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'exam_session_id' => 'nullable|exists:exam_sessions,id',
-            'lesson_id' => 'required|exists:lessons,id',
-            'student_id' => 'required|exists:users,id',
-            'class_id' => 'required|exists:classes,id',
-            'raw_grade' => 'nullable|numeric|min:0',
-            'calculated_grade' => 'nullable|numeric|min:0',
-            'min_passing_score' => 'nullable|numeric|min:0',
-            'max_score' => 'nullable|numeric|min:0',
-            'grade_type' => 'required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
-            'grade_name_for_other_type' => 'nullable|string|max:255',
-            'is_report_card' => 'boolean',
-            'is_descriptive' => 'boolean',
-            'descriptive_value' => 'nullable|integer|min:1|max:4',
-            'is_visible' => 'boolean',
+            'in_person_exam_id' => 'required|exists:in_person_exam_details,id',
+            'user_id' => 'required|exists:users,id',
+            'raw_score' => 'nullable|numeric|min:0',
+            'scaled_score' => 'nullable|numeric|min:0',
             'z_score' => 'nullable|numeric',
-            'grade_date' => 'required|date',
-            'explanation' => 'nullable|string',
         ]);
 
-        if (!$request->is_descriptive) {
-            if (!$request->filled('max_score')) {
-                throw ValidationException::withMessages(['max_score' => 'حداکثر نمره الزامی است.']);
-            }
-            if ($request->filled('min_passing_score') && $request->min_passing_score >= $request->max_score) {
-                throw ValidationException::withMessages(['min_passing_score' => 'حداقل نمره قبولی باید از حداکثر نمره کمتر باشد.']);
-            }
-            if ($request->filled('raw_grade') && is_numeric($request->raw_grade) && $request->raw_grade >= $request->max_score) {
-                throw ValidationException::withMessages(['raw_grade' => 'نمره باید کمتر از حداکثر نمره باشد.']);
-            }
-        }
-
-        $isReportCard = in_array($request->grade_type, ['mid_term_1', 'continuous_1', 'final_1', 'mid_term_2', 'continuous_2', 'final_2']);
-
-        $examSession = null;
-        if (!$request->filled('exam_session_id')) {
-            $examSession = ExamSession::create([
-                'lesson_id' => $request->lesson_id,
-                'class_id' => $request->class_id,
-                'exam_date' => $request->exam_date ?? $request->grade_date,
-                'grade_type' => $request->grade_type,
-                'grade_name_for_other_type' => $request->grade_name_for_other_type,
-                'is_descriptive' => $request->is_descriptive ?? false,
-                'is_report_card' => $isReportCard,
-                'min_passing_score' => $request->min_passing_score,
-                'max_score' => $request->max_score,
-                'created_by' => $request->user()->id,
-            ]);
-            $request->merge(['exam_session_id' => $examSession->id]);
-        }
-
-        $grade = Grade::create($request->all());
-
-        return $this->show($grade->id);
+        return $this->commonStore($request, InPersonExamResult::class);
     }
 
     public function show(Request $request, $id): JsonResponse
     {
-        $grade = Grade::with(['examSession', 'lesson', 'student', 'schoolClass'])->findOrFail($id);
+        $result = InPersonExamResult::with(['inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.lesson', 'inPersonExamDetail.exam.classes', 'student'])->findOrFail($id);
 
-        return $this->jsonResponseOk($grade);
+        return $this->jsonResponseOk($result);
     }
 
-    public function update(Request $request, Grade $grade): JsonResponse
+    public function update(Request $request, InPersonExamResult $inPersonExamResult): JsonResponse
     {
         $request->validate([
-            'exam_session_id' => 'sometimes|required|exists:exam_sessions,id',
-            'lesson_id' => 'sometimes|required|exists:lessons,id',
-            'student_id' => 'sometimes|required|exists:users,id',
-            'class_id' => 'sometimes|required|exists:classes,id',
-            'raw_grade' => 'nullable|numeric|min:0',
-            'calculated_grade' => 'nullable|numeric|min:0',
-            'min_passing_score' => 'nullable|numeric|min:0',
-            'max_score' => 'nullable|numeric|min:0',
-            'grade_type' => 'sometimes|required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
-            'grade_name_for_other_type' => 'nullable|string|max:255',
-            'is_report_card' => 'boolean',
-            'is_descriptive' => 'boolean',
-            'descriptive_value' => 'nullable|integer|min:1|max:4',
-            'is_visible' => 'boolean',
+            'in_person_exam_id' => 'sometimes|required|exists:in_person_exam_details,id',
+            'user_id' => 'sometimes|required|exists:users,id',
+            'raw_score' => 'nullable|numeric|min:0',
+            'scaled_score' => 'nullable|numeric|min:0',
             'z_score' => 'nullable|numeric',
-            'grade_date' => 'sometimes|required|date',
-            'explanation' => 'nullable|string',
         ]);
 
-        if (!$request->is_descriptive) {
-            if ($request->filled('max_score') && $request->filled('min_passing_score') && $request->min_passing_score >= $request->max_score) {
-                throw ValidationException::withMessages(['min_passing_score' => 'حداقل نمره قبولی باید از حداکثر نمره کمتر باشد.']);
-            }
-            if ($request->filled('raw_grade') && is_numeric($request->raw_grade) && $request->filled('max_score') && $request->raw_grade >= $request->max_score) {
-                throw ValidationException::withMessages(['raw_grade' => 'نمره باید کمتر از حداکثر نمره باشد.']);
-            }
-        }
-
-        return $this->commonUpdate($request, $grade);
+        return $this->commonUpdate($request, $inPersonExamResult);
     }
 
-    public function destroy(Grade $grade): JsonResponse
+    public function destroy(InPersonExamResult $inPersonExamResult): JsonResponse
     {
-        return $this->commonDestroy($grade);
+        return $this->commonDestroy($inPersonExamResult);
     }
 
-    public function createExamSessionWithGrades(Request $request): JsonResponse
+    public function createExamWithGrades(Request $request): JsonResponse
     {
         $request->validate([
             'lesson_id' => 'required|exists:lessons,id',
@@ -228,8 +189,8 @@ class GradeController extends Controller
             'grades.*.descriptive_value' => 'nullable|integer|min:1|max:4',
         ]);
 
-        if (!$request->is_descriptive) {
-            if (!$request->filled('max_score')) {
+        if (! $request->is_descriptive) {
+            if (! $request->filled('max_score')) {
                 throw ValidationException::withMessages(['max_score' => 'حداکثر نمره الزامی است.']);
             }
             if ($request->filled('min_passing_score') && $request->min_passing_score >= $request->max_score) {
@@ -244,104 +205,89 @@ class GradeController extends Controller
 
         $isReportCard = in_array($request->grade_type, ['mid_term_1', 'continuous_1', 'final_1', 'mid_term_2', 'continuous_2', 'final_2']);
 
-$examSession = ExamSession::create([
-                'lesson_id' => $request->lesson_id,
-                'class_id' => $request->class_id,
-                'exam_date' => $request->exam_date,
-                'grade_type' => $request->grade_type,
-                'grade_name_for_other_type' => $request->grade_name_for_other_type,
-                'is_descriptive' => $request->is_descriptive ?? false,
-                'is_report_card' => $isReportCard,
-                'min_passing_score' => $request->min_passing_score,
-                'max_score' => $request->max_score,
-                'created_by' => $request->user()->id,
-            ]);
+        DB::beginTransaction();
+        try {
+            $exam = $this->createExamFromRequest($request, $isReportCard);
 
-        $createdGrades = [];
-        $errors = [];
+            $createdResults = [];
+            $errors = [];
 
-        foreach ($request->grades as $index => $gradeData) {
-            $rawGrade = $gradeData['raw_grade'] ?? null;
-            $descriptiveValue = $gradeData['descriptive_value'] ?? null;
-            $calculatedGrade = null;
+            foreach ($request->grades as $index => $gradeData) {
+                $rawScore = $gradeData['raw_grade'] ?? null;
+                $descriptiveValue = $gradeData['descriptive_value'] ?? null;
+                $scaledScore = null;
 
-            if (!$request->is_descriptive) {
-                $minGrade = $request->min_passing_score;
-                if ($rawGrade !== null && $minGrade !== null && $rawGrade > $minGrade) {
-                    $errors[] = "Row " . ($index + 1) . ": Student grade cannot exceed base grade";
+                if (! $request->is_descriptive) {
+                    $minGrade = $request->min_passing_score;
+                    if ($rawScore !== null && $minGrade !== null && $rawScore > $minGrade) {
+                        $errors[] = 'Row '.($index + 1).': نمره دانش‌آموز بیش از حداکثر نمره است.';
+
+                        continue;
+                    }
+
+                    $scaledScore = $request->min_passing_score
+                        ? round(($rawScore / $request->min_passing_score) * 20, 2)
+                        : $rawScore;
+                } else {
+                    $rawScore = $descriptiveValue;
+                }
+
+                $existing = InPersonExamResult::where('user_id', $gradeData['student_id'])
+                    ->where('in_person_exam_id', $exam->inPersonDetail->id)
+                    ->first();
+
+                if ($existing) {
+                    $student = User::find($gradeData['student_id']);
+                    $errors[] = 'Row '.($index + 1).': نمره قبلاً برای دانش‌آموز '.($student->full_name ?? 'Unknown').' ثبت شده است.';
+
                     continue;
                 }
 
-                $calculatedGrade = $request->min_passing_score
-                    ? round(($rawGrade / $request->min_passing_score) * 20, 2)
-                    : $rawGrade;
+                $result = InPersonExamResult::create([
+                    'in_person_exam_id' => $exam->inPersonDetail->id,
+                    'user_id' => $gradeData['student_id'],
+                    'raw_score' => $request->is_descriptive ? (float) $descriptiveValue : $rawScore,
+                    'scaled_score' => $scaledScore,
+                ]);
+
+                $createdResults[] = $result;
             }
 
-            $existing = Grade::where('student_id', $gradeData['student_id'])
-                ->where('lesson_id', $request->lesson_id)
-                ->where('grade_type', $request->grade_type)
-                ->where('grade_name_for_other_type', $request->grade_name_for_other_type)
-                ->whereNull('deleted_at')
-                ->first();
-
-            if ($existing) {
-                $student = User::find($gradeData['student_id']);
-                $errors[] = "Row " . ($index + 1) . ": Grade already exists for student " . ($student->full_name ?? 'Unknown');
-                continue;
+            if (! $request->is_descriptive && count($createdResults) > 0) {
+                $this->calculateZScores($exam->inPersonDetail->id);
             }
 
-            $grade = Grade::create([
-                'exam_session_id' => $examSession->id,
-                'lesson_id' => $request->lesson_id,
-                'class_id' => $request->class_id,
-                'student_id' => $gradeData['student_id'],
-                'raw_grade' => $rawGrade,
-                'calculated_grade' => $request->is_descriptive ? null : $calculatedGrade,
-                'min_passing_score' => $request->min_passing_score,
-                'grade_type' => $request->grade_type,
-                'grade_name_for_other_type' => $request->grade_name_for_other_type,
-                'is_descriptive' => $request->is_descriptive ?? false,
-                'is_report_card' => $isReportCard,
-                'descriptive_value' => $descriptiveValue,
-                'is_visible' => true,
-                'grade_date' => $request->exam_date,
+            DB::commit();
+
+            return $this->jsonResponseOk([
+                'exam' => $exam->load(['category', 'inPersonDetail']),
+                'results' => $createdResults,
+                'errors' => $errors,
             ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
 
-            $createdGrades[] = $grade;
+            return $this->jsonResponseServerError(['errors' => [$e->getMessage()]]);
         }
-
-        if (!$request->is_descriptive && count($createdGrades) > 0) {
-            $this->calculateZScores($examSession->id, $request->lesson_id, $request->grade_type, $request->grade_name_for_other_type);
-        }
-
-        return $this->jsonResponseOk([
-            'exam_session' => $examSession,
-            'grades' => $createdGrades,
-            'errors' => $errors,
-        ]);
     }
 
-    private function calculateZScores(int $examSessionId, int $lessonId, string $gradeType, ?string $gradeNameForOtherType): void
+    protected function calculateZScores(int $inPersonExamId): void
     {
-        $grades = Grade::where('exam_session_id', $examSessionId)
-            ->where('lesson_id', $lessonId)
-            ->where('grade_type', $gradeType)
-            ->where('grade_name_for_other_type', $gradeNameForOtherType)
-            ->where('is_descriptive', false)
-            ->whereNotNull('calculated_grade')
+        $results = InPersonExamResult::where('in_person_exam_id', $inPersonExamId)
+            ->whereNotNull('scaled_score')
             ->get();
 
-        if ($grades->isEmpty() || $grades->count() < 2) {
+        if ($results->isEmpty() || $results->count() < 2) {
             return;
         }
 
-        $calculatedGrades = $grades->pluck('calculated_grade')->filter();
-        $avg = $calculatedGrades->avg();
-        $stdDev = $calculatedGrades->std(1);
+        $scaledScores = $results->pluck('scaled_score')->filter();
+        $avg = $scaledScores->avg();
+        $stdDev = $scaledScores->std(1);
 
-        foreach ($grades as $grade) {
-            $zScore = $stdDev > 0 ? round(($grade->calculated_grade - $avg) / $stdDev, 4) : 0;
-            $grade->update(['z_score' => $zScore]);
+        foreach ($results as $result) {
+            $zScore = $stdDev > 0 ? round(($result->scaled_score - $avg) / $stdDev, 4) : 0;
+            $result->update(['z_score' => $zScore]);
         }
     }
 
@@ -351,24 +297,19 @@ $examSession = ExamSession::create([
             'grades' => 'required|array',
             'grades.*.student_id' => 'required|exists:users,id',
             'grades.*.lesson_id' => 'required|exists:lessons,id',
-            'grades.*.class_id' => 'required|exists:classes,id',
             'grades.*.raw_grade' => 'nullable|numeric|min:0',
-            'grades.*.grade_type' => 'required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
             'grades.*.grade_date' => 'required|date',
         ]);
 
         $errors = [];
         foreach ($request->grades as $index => $gradeData) {
-            $existing = Grade::where('student_id', $gradeData['student_id'])
-                ->where('lesson_id', $gradeData['lesson_id'])
-                ->where('grade_type', $gradeData['grade_type'])
-                ->where('grade_name_for_other_type', $gradeData['grade_name_for_other_type'] ?? null)
-                ->whereNull('deleted_at')
+            $existing = InPersonExamResult::where('user_id', $gradeData['student_id'])
+                ->where('in_person_exam_id', $gradeData['exam_id'] ?? null)
                 ->first();
 
             if ($existing) {
                 $student = User::find($gradeData['student_id']);
-                $errors[] = "Row " . ($index + 1) . ": Grade already exists for student " . ($student->full_name ?? 'Unknown');
+                $errors[] = 'Row '.($index + 1).': نمره قبلاً برای دانش‌آموز '.($student->full_name ?? 'Unknown').' ثبت شده است.';
             }
         }
 
@@ -382,84 +323,37 @@ $examSession = ExamSession::create([
     public function bulkStore(Request $request): JsonResponse
     {
         $request->validate([
+            'exam_id' => 'nullable|exists:exams,id',
+            'lesson_id' => 'required|exists:lessons,id',
+            'class_id' => 'required|exists:classes,id',
+            'grade_type' => 'required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
+            'exam_date' => 'required|date',
+            'grade_name_for_other_type' => 'nullable|string|max:255',
+            'min_passing_score' => 'nullable|numeric|min:0',
+            'max_score' => 'nullable|numeric|min:0',
+            'is_descriptive' => 'boolean',
             'grades' => 'required|array',
-            'grades.*.school_id' => 'nullable|exists:schools,id',
-            'grades.*.exam_session_id' => 'nullable|exists:exam_sessions,id',
-            'grades.*.lesson_id' => 'required|exists:lessons,id',
             'grades.*.student_id' => 'required|exists:users,id',
-            'grades.*.class_id' => 'required|exists:classes,id',
             'grades.*.raw_grade' => 'nullable|numeric|min:0',
-            'grades.*.calculated_grade' => 'nullable|numeric|min:0',
-            'grades.*.min_passing_score' => 'nullable|numeric|min:0',
-            'grades.*.max_grade' => 'nullable|numeric|min:0',
-            'grades.*.grade_type' => 'required|string|in:class_quiz,monthly_quiz,mid_term_1,continuous_1,final_1,mid_term_2,continuous_2,final_2,other',
-            'grades.*.grade_name_for_other_type' => 'nullable|string|max:255',
-            'grades.*.is_report_card' => 'boolean',
-            'grades.*.is_descriptive' => 'boolean',
             'grades.*.descriptive_value' => 'nullable|integer|min:1|max:4',
-            'grades.*.is_visible' => 'boolean',
-            'grades.*.z_score' => 'nullable|numeric',
-            'grades.*.grade_date' => 'required|date',
-            'grades.*.explanation' => 'nullable|string',
         ]);
 
-        foreach ($request->grades as $index => $gradeData) {
-            if (!$gradeData['is_descriptive']) {
-                if (!$gradeData['max_grade']) {
-                    throw ValidationException::withMessages(["grades.$index.max_grade" => 'حداکثر نمره الزامی است.']);
-                }
-                if ($gradeData['min_passing_score'] >= $gradeData['max_grade']) {
-                    throw ValidationException::withMessages(["grades.$index.min_passing_score" => 'حداقل نمره قبولی باید از حداکثر نمره کمتر باشد.']);
-                }
-                if (isset($gradeData['raw_grade']) && is_numeric($gradeData['raw_grade']) && $gradeData['raw_grade'] >= $gradeData['max_grade']) {
-                    throw ValidationException::withMessages(["grades.$index.raw_grade" => 'نمره باید کمتر از حداکثر نمره باشد.']);
-                }
-            }
-        }
-
-        $createdGrades = [];
-        $errors = [];
-
-        foreach ($request->grades as $index => $gradeData) {
-            $examSessionId = $gradeData['exam_session_id'];
-            $isReportCard = in_array($gradeData['grade_type'], ['mid_term_1', 'continuous_1', 'final_1', 'mid_term_2', 'continuous_2', 'final_2']);
-
-            if (!$examSessionId) {
-                $examSession = ExamSession::create([
-                    'school_id' => $gradeData['school_id'] ?? $request->user()->school_id,
-                    'lesson_id' => $gradeData['lesson_id'],
-                    'class_id' => $gradeData['class_id'],
-                    'exam_date' => $gradeData['exam_date'] ?? $gradeData['grade_date'],
-                    'grade_type' => $gradeData['grade_type'],
-                    'grade_name_for_other_type' => $gradeData['grade_name_for_other_type'] ?? null,
-                    'is_descriptive' => $gradeData['is_descriptive'] ?? false,
-                    'is_report_card' => $isReportCard,
-                    'min_passing_score' => $gradeData['min_passing_score'] ?? null,
-                    'max_score' => $gradeData['max_score'] ?? null,
-                    'created_by' => $request->user()->id,
-                ]);
-                $examSessionId = $examSession->id;
-            }
-
-            $grade = Grade::create(array_merge($gradeData, ['exam_session_id' => $examSessionId]));
-            $createdGrades[] = $grade;
-        }
-
-        return $this->jsonResponseOk([
-            'grades' => $createdGrades,
-            'errors' => $errors,
-        ]);
+        return $this->createExamWithGrades($request);
     }
 
     public function statistics(Request $request, $lessonId, $classId): JsonResponse
     {
-        $grades = Grade::where('lesson_id', $lessonId)
-            ->where('class_id', $classId)
-            ->where('is_descriptive', false)
-            ->whereNotNull('calculated_grade')
+        $results = InPersonExamResult::whereHas('inPersonExamDetail.exam.lesson', function ($q) use ($lessonId) {
+            $q->where('id', $lessonId);
+        })
+            ->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($classId) {
+                $q->where('class_id', $classId);
+            })
+            ->where('scaled_score', '!=', null)
+            ->with(['student'])
             ->get();
 
-        if ($grades->isEmpty()) {
+        if ($results->isEmpty()) {
             return $this->jsonResponseOk([
                 'count' => 0,
                 'average' => 0,
@@ -469,19 +363,21 @@ $examSession = ExamSession::create([
             ]);
         }
 
-        $calculatedGrades = $grades->pluck('calculated_grade')->filter();
-        $average = round($calculatedGrades->avg(), 2);
-        $highest = $calculatedGrades->max();
-        $lowest = $calculatedGrades->min();
-        $stdDev = $calculatedGrades->count() > 1 ? round($calculatedGrades->std(1), 4) : 0;
+        $scaledScores = $results->pluck('scaled_score')->filter();
+        $average = round($scaledScores->avg(), 2);
+        $highest = $scaledScores->max();
+        $lowest = $scaledScores->min();
+        $stdDev = $scaledScores->count() > 1 ? round($scaledScores->std(1), 4) : 0;
 
-        $passGrades = $grades->filter(function ($grade) {
-            return $grade->raw_grade >= ($grade->min_passing_score ?? 10);
+        $passResults = $results->filter(function ($result) {
+            $minPassing = $result->inPersonExamDetail?->exam?->min_passing_score ?? 10;
+
+            return $result->raw_score >= $minPassing;
         });
-        $passRate = round(($passGrades->count() / $grades->count()) * 100, 2);
+        $passRate = round(($passResults->count() / $results->count()) * 100, 2);
 
         return $this->jsonResponseOk([
-            'count' => $grades->count(),
+            'count' => $results->count(),
             'average' => $average,
             'highest' => $highest,
             'lowest' => $lowest,
@@ -490,90 +386,58 @@ $examSession = ExamSession::create([
         ]);
     }
 
-    public function updateZScores(Request $request): JsonResponse
-    {
-        $request->validate([
-            'lesson_id' => 'required|exists:lessons,id',
-            'class_id' => 'required|exists:classes,id',
-            'grade_type' => 'required|string',
-            'grade_date' => 'required|date',
-        ]);
-
-        $grades = Grade::where('lesson_id', $request->lesson_id)
-            ->where('class_id', $request->class_id)
-            ->where('grade_type', $request->grade_type)
-            ->where('grade_date', $request->grade_date)
-            ->whereNotNull('calculated_grade')
-            ->get();
-
-        if ($grades->isEmpty()) {
-            return $this->jsonResponseOk(['message' => 'No grades found', 'updated' => 0]);
-        }
-
-        $avg = $grades->avg('calculated_grade');
-        $stdDev = $grades->count() > 1 ? $grades->stdDev('calculated_grade') : 0;
-
-        $updated = 0;
-        foreach ($grades as $grade) {
-            $zScore = $stdDev > 0 ? round((($grade->calculated_grade - $avg) / $stdDev), 4) : 0;
-            $grade->update(['z_score' => $zScore]);
-            $updated++;
-        }
-
-        return $this->jsonResponseOk([
-            'message' => 'Z-scores updated successfully',
-            'updated' => $updated,
-            'average' => round($avg, 2),
-            'std_deviation' => round($stdDev, 4),
-        ]);
-    }
-
     public function lessonReport(Request $request, $lessonId): JsonResponse
     {
-        $query = Grade::where('lesson_id', $lessonId)
-            ->where('is_descriptive', false)
-            ->with(['student', 'schoolClass', 'examSession']);
+        $query = InPersonExamResult::whereHas('inPersonExamDetail.exam.lesson', function ($q) use ($lessonId) {
+            $q->where('id', $lessonId);
+        })
+            ->where('scaled_score', '!=', null)
+            ->with(['student', 'inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.classes']);
 
         if ($request->filled('class_id')) {
-            $query->where('class_id', $request->class_id);
+            $query->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($request) {
+                $q->where('class_id', $request->class_id);
+            });
         }
 
-        $grades = $query->get();
+        $results = $query->get();
 
-        if ($grades->isEmpty()) {
+        if ($results->isEmpty()) {
             return $this->jsonResponseOk([
-                'grades' => [],
+                'results' => [],
                 'stats' => [
                     'count' => 0,
                     'average' => 0,
                     'highest' => 0,
                     'lowest' => 0,
                     'pass_rate' => 0,
-                ]
+                ],
             ]);
         }
 
-        $calculatedGrades = $grades->pluck('calculated_grade')->filter();
-        $average = round($calculatedGrades->avg() ?? 0, 2);
-        $highest = $calculatedGrades->max() ?? 0;
-        $lowest = $calculatedGrades->min() ?? 0;
-        $stdDev = $calculatedGrades->count() > 1 ? round($calculatedGrades->std(1), 4) : 0;
+        $scaledScores = $results->pluck('scaled_score')->filter();
+        $average = round($scaledScores->avg() ?? 0, 2);
+        $highest = $scaledScores->max() ?? 0;
+        $lowest = $scaledScores->min() ?? 0;
+        $stdDev = $scaledScores->count() > 1 ? round($scaledScores->std(1), 4) : 0;
 
-        $passGrades = $grades->filter(function ($grade) {
-            return $grade->raw_grade >= ($grade->min_passing_score ?? 10);
+        $passResults = $results->filter(function ($result) {
+            $minPassing = $result->inPersonExamDetail?->exam?->min_passing_score ?? 10;
+
+            return $result->raw_score >= $minPassing;
         });
-        $passRate = $grades->count() > 0 ? round(($passGrades->count() / $grades->count()) * 100, 2) : 0;
+        $passRate = $results->count() > 0 ? round(($passResults->count() / $results->count()) * 100, 2) : 0;
 
         return $this->jsonResponseOk([
-            'grades' => $grades,
+            'results' => $results,
             'stats' => [
-                'count' => $grades->count(),
+                'count' => $results->count(),
                 'average' => $average,
                 'highest' => $highest,
                 'lowest' => $lowest,
                 'pass_rate' => $passRate,
                 'std_deviation' => $stdDev,
-            ]
+            ],
         ]);
     }
 
@@ -589,43 +453,49 @@ $examSession = ExamSession::create([
         $results = [];
 
         foreach ($lessonIds as $lessonId) {
-            $query = Grade::where('lesson_id', $lessonId)
-                ->where('is_descriptive', false)
-                ->with(['student', 'schoolClass', 'examSession']);
+            $query = InPersonExamResult::whereHas('inPersonExamDetail.exam.lesson', function ($q) use ($lessonId) {
+                $q->where('id', $lessonId);
+            })
+                ->where('scaled_score', '!=', null)
+                ->with(['student', 'inPersonExamDetail', 'inPersonExamDetail.exam.lesson', 'inPersonExamDetail.exam.classes']);
 
             if ($request->filled('class_id')) {
-                $query->where('class_id', $request->class_id);
+                $query->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($request) {
+                    $q->where('class_id', $request->class_id);
+                });
             }
 
-            $grades = $query->get();
+            $lessonResults = $query->get();
 
-            if ($grades->isEmpty()) {
+            if ($lessonResults->isEmpty()) {
                 continue;
             }
 
-            $calculatedGrades = $grades->pluck('calculated_grade')->filter();
-            $average = round($calculatedGrades->avg() ?? 0, 2);
-            $highest = $calculatedGrades->max() ?? 0;
-            $lowest = $calculatedGrades->min() ?? 0;
-            $stdDev = $calculatedGrades->count() > 1 ? round($calculatedGrades->std(1), 4) : 0;
+            $scaledScores = $lessonResults->pluck('scaled_score')->filter();
+            $average = round($scaledScores->avg() ?? 0, 2);
+            $highest = $scaledScores->max() ?? 0;
+            $lowest = $scaledScores->min() ?? 0;
+            $stdDev = $scaledScores->count() > 1 ? round($scaledScores->std(1), 4) : 0;
 
-            $passGrades = $grades->filter(function ($grade) {
-                return $grade->raw_grade >= ($grade->min_passing_score ?? 10);
+            $passResults = $lessonResults->filter(function ($result) {
+                $minPassing = $result->inPersonExamDetail?->exam?->min_passing_score ?? 10;
+
+                return $result->raw_score >= $minPassing;
             });
-            $passRate = $grades->count() > 0 ? round(($passGrades->count() / $grades->count()) * 100, 2) : 0;
+            $passRate = $lessonResults->count() > 0 ? round(($passResults->count() / $lessonResults->count()) * 100, 2) : 0;
 
             $results[] = [
                 'lesson_id' => $lessonId,
-                'lesson_name' => $grades->first()?->lesson?->name ?? '',
-                'grades' => $grades,
+                'lesson_name' => $lessonResults->first()?->inPersonExamDetail?->exam?->lesson?->name ?? '',
+                'results' => $lessonResults,
                 'stats' => [
-                    'count' => $grades->count(),
+                    'count' => $lessonResults->count(),
                     'average' => $average,
                     'highest' => $highest,
                     'lowest' => $lowest,
                     'pass_rate' => $passRate,
                     'std_deviation' => $stdDev,
-                ]
+                ],
             ];
         }
 
@@ -634,42 +504,132 @@ $examSession = ExamSession::create([
 
     public function studentReport(Request $request, $studentId): JsonResponse
     {
-        $query = Grade::where('student_id', $studentId)
-            ->where('is_descriptive', false)
-            ->with(['lesson', 'schoolClass', 'examSession']);
+        $query = InPersonExamResult::where('user_id', $studentId)
+            ->where('scaled_score', '!=', null)
+            ->with(['inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.lesson', 'inPersonExamDetail.exam.classes']);
 
-        if ($request->filled('grade_type')) {
-            $query->where('grade_type', $request->grade_type);
+        if ($request->filled('category_title')) {
+            $query->whereHas('inPersonExamDetail.exam.category', function ($q) use ($request) {
+                $q->where('title', $request->category_title);
+            });
         }
 
-        $grades = $query->orderBy('grade_date', 'desc')->get();
+        $results = $query->orderBy('created_at', 'desc')->get();
 
-        return $this->jsonResponseOk($grades);
+        return $this->jsonResponseOk($results);
     }
 
     public function getStudentReportCard(Request $request, $studentId): JsonResponse
     {
-        $query = Grade::where('student_id', $studentId)
-            ->where('is_report_card', true)
-            ->where('is_descriptive', false)
-            ->whereNull('deleted_at')
-            ->with(['lesson', 'examSession'])
-            ->orderBy('grade_date', 'desc');
+        $reportCardTypes = ['mid_term_1', 'continuous_1', 'final_1', 'mid_term_2', 'continuous_2', 'final_2'];
 
-        $grades = $query->get();
+        $query = InPersonExamResult::where('user_id', $studentId)
+            ->where('scaled_score', '!=', null)
+            ->whereHas('inPersonExamDetail.exam.category', function ($q) use ($reportCardTypes) {
+                $q->whereIn('title', $reportCardTypes);
+            })
+            ->with(['inPersonExamDetail.exam.lesson', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.classes'])
+            ->orderBy('created_at', 'desc');
+
+        $results = $query->get();
+
+        if ($results->isEmpty()) {
+            return $this->jsonResponseOk([
+                'student_id' => $studentId,
+                'results' => [],
+                'term_averages' => [],
+            ]);
+        }
 
         $averagesByTerm = [];
-        foreach (['mid_term_1', 'continuous_1', 'final_1', 'mid_term_2', 'continuous_2', 'final_2'] as $type) {
-            $typeGrades = $grades->filter(fn($g) => $g->grade_type === $type);
-            if ($typeGrades->isNotEmpty()) {
-                $averagesByTerm[$type] = round($typeGrades->pluck('calculated_grade')->avg(), 2);
+        $resultsByCategory = [];
+        foreach ($reportCardTypes as $type) {
+            $typeResults = $results->filter(function ($result) use ($type) {
+                return $result->grade_type === $type;
+            });
+            if ($typeResults->isNotEmpty()) {
+                $averagesByTerm[$type] = round($typeResults->pluck('scaled_score')->avg(), 2);
+                $resultsByCategory[$type] = $typeResults->values();
             }
         }
 
         return $this->jsonResponseOk([
             'student_id' => $studentId,
-            'grades' => $grades,
+            'results' => $results,
             'term_averages' => $averagesByTerm,
+            'results_by_category' => $resultsByCategory,
         ]);
+    }
+
+    public function updateZScores(Request $request): JsonResponse
+    {
+        $request->validate([
+            'in_person_exam_id' => 'required|exists:in_person_exam_details,id',
+        ]);
+
+        $this->calculateZScores($request->in_person_exam_id);
+
+        return $this->jsonResponseOk(['message' => 'Z-scores updated']);
+    }
+
+    protected function createExamFromRequest(Request $request, bool $isReportCard): Exam
+    {
+        $schoolId = $request->user()->school_id;
+        $gradeType = $request->grade_type;
+        $gradeTypeLabel = $this->getGradeTypeLabel($gradeType, $request->grade_name_for_other_type);
+
+        $category = ExamCategory::firstOrCreate(
+            ['school_id' => $schoolId, 'title' => $gradeTypeLabel],
+            ['term_number' => null, 'sort_order' => 0]
+        );
+
+        $lesson = Lesson::find($request->lesson_id);
+        $examName = $gradeTypeLabel.' - '.($lesson?->name ?? 'بدون درس');
+
+        $exam = Exam::create([
+            'name' => $examName,
+            'description' => null,
+            'lesson_id' => $request->lesson_id,
+            'min_passing_score' => $request->min_passing_score,
+            'max_score' => $request->max_score,
+            'delivery_mode' => 'in_person',
+            'exam_category_id' => $category->id,
+            'created_by' => $request->user()->id,
+        ]);
+
+        $inPersonDetail = InPersonExamDetail::create([
+            'exam_id' => $exam->id,
+            'held_at' => $request->exam_date,
+            'is_descriptive' => $request->is_descriptive ?? false,
+            'created_by' => $request->user()->id,
+        ]);
+
+        if ($request->filled('class_id')) {
+            $exam->classes()->sync([$request->class_id], false);
+        }
+
+        if ($request->filled('class_ids')) {
+            $exam->classes()->sync($request->class_ids, false);
+        }
+
+        $exam->setRelation('inPersonDetail', $inPersonDetail);
+
+        return $exam;
+    }
+
+    private function getGradeTypeLabel(string $gradeType, ?string $gradeNameForOtherType = null): string
+    {
+        return match ($gradeType) {
+            'class_quiz' => 'آزمون کلاسی',
+            'monthly_quiz' => 'آزمون ماهانه',
+            'mid_term_1' => 'میان ترم اول',
+            'continuous_1' => 'مستمر اول',
+            'final_1' => 'پایان ترم اول',
+            'mid_term_2' => 'میان ترم دوم',
+            'continuous_2' => 'مستمر دوم',
+            'final_2' => 'پایان ترم دوم',
+            'other' => $gradeNameForOtherType ?: 'سایر',
+            default => $gradeType,
+        };
     }
 }

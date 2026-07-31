@@ -5,8 +5,8 @@ namespace Database\Seeders;
 use App\Enums\UserRoleType;
 use App\Models\School;
 use App\Models\SchoolClass;
-use App\Models\UserClass;
 use App\Models\User;
+use App\Models\UserClass;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -41,8 +41,8 @@ class StudentSeeder extends Seeder
                     $lastName = $lastNames[($i - 1) % count($lastNames)];
                     $melliCode = str_pad((string) ($globalIndex * 137 + 1000000000), 10, '0', STR_PAD_LEFT);
                     $username = $melliCode;
-                    $mobile = '0935' . str_pad((string) ($globalIndex * 111111 + 1000000), 7, '0', STR_PAD_LEFT);
-                    $studentCode = strtoupper($school->code) . '-' . strtoupper(str_replace(' ', '_', $class->name)) . '-STU-' . str_pad((string) $i, 3, '0', STR_PAD_LEFT);
+                    $mobile = '0935'.str_pad((string) ($globalIndex * 111111 + 1000000), 7, '0', STR_PAD_LEFT);
+                    $studentCode = strtoupper($school->code).'-'.strtoupper(str_replace(' ', '_', $class->name)).'-STU-'.str_pad((string) $i, 3, '0', STR_PAD_LEFT);
                     $birthYear = rand(2000, 2010);
                     $birthMonth = rand(1, 12);
                     $birthDay = rand(1, 28);
@@ -59,14 +59,14 @@ class StudentSeeder extends Seeder
                             'national_id' => $melliCode,
                             'student_code' => $studentCode,
                             'birth_date' => $birthDate,
-                            'student_email' => $username . '@example.com',
+                            'student_email' => $username.'@example.com',
                             'address' => 'تهران',
                             'father_name' => 'پدر',
                             'father_phone' => $mobile,
-                            'father_email' => 'father.' . $username . '@example.com',
+                            'father_email' => 'father.'.$username.'@example.com',
                             'mother_name' => 'مادر',
                             'mother_phone' => $mobile,
-                            'mother_email' => 'mother.' . $username . '@example.com',
+                            'mother_email' => 'mother.'.$username.'@example.com',
                         ]
                     );
 

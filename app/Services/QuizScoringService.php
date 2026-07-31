@@ -3,9 +3,8 @@
 namespace App\Services;
 
 use App\Models\Quiz;
-use App\Models\QuizSession;
 use App\Models\QuizAnswerKey;
-use App\Models\QuizBooklet;
+use App\Models\QuizSession;
 
 class QuizScoringService
 {
@@ -55,11 +54,9 @@ class QuizScoringService
 
     public function calculateBookletScores(QuizSession $session): array
     {
-        $booklets = QuizBooklet::where('quiz_id', $session->quiz_id)
-            ->orderBy('from_question')
-            ->get();
+        $booklets = $session->booklet_scores ?? [];
 
-        if ($booklets->isEmpty()) {
+        if (empty($booklets)) {
             return [];
         }
 
@@ -71,8 +68,8 @@ class QuizScoringService
             $bookletObtained = 0;
 
             foreach ($responses as $response) {
-                if ($response->question_number < $booklet->from_question
-                    || $response->question_number > $booklet->to_question) {
+                if ($response->question_number < $booklet['from_question']
+                    || $response->question_number > $booklet['to_question']) {
                     continue;
                 }
 
@@ -95,10 +92,10 @@ class QuizScoringService
             $percent = $bookletTotal > 0 ? max(0, round(($bookletObtained / $bookletTotal) * 100, 2)) : 0;
 
             $scores[] = [
-                'id' => $booklet->id,
-                'title' => $booklet->title,
-                'from_question' => $booklet->from_question,
-                'to_question' => $booklet->to_question,
+                'id' => $booklet['id'] ?? null,
+                'title' => $booklet['title'] ?? '',
+                'from_question' => $booklet['from_question'],
+                'to_question' => $booklet['to_question'],
                 'total_marks' => $bookletTotal,
                 'obtained_marks' => $bookletObtained,
                 'percent' => $percent,
@@ -144,6 +141,7 @@ class QuizScoringService
             ->values()
             ->map(function ($item, $index) {
                 $item['rank'] = $index + 1;
+
                 return $item;
             })
             ->toArray();

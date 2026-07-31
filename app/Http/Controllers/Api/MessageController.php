@@ -2,9 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Http\Request;
-
-
 use App\Http\Controllers\Controller;
 use App\Models\Message;
 use App\Models\MessageOwner;
@@ -12,11 +9,12 @@ use App\Models\User;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class MessageController extends Controller
 {
-    use Filter, CommonCRUD;
+    use CommonCRUD, Filter;
 
     public function __construct()
     {
@@ -93,6 +91,7 @@ class MessageController extends Controller
             return $this->jsonResponseOk($message->load(['sender', 'owners.user']));
         } catch (\Exception $e) {
             DB::rollBack();
+
             return $this->jsonResponseServerError(['errors' => ['message' => 'خطا در ارسال پیام.']]);
         }
     }
@@ -124,8 +123,8 @@ class MessageController extends Controller
         $userId = auth()->id();
 
         $messages = Message::whereHas('owners', function ($query) use ($userId) {
-                $query->where('user_id', $userId);
-            })
+            $query->where('user_id', $userId);
+        })
             ->with(['sender', 'owners'])
             ->orderBy('created_at', 'desc')
             ->paginate(20);
@@ -138,11 +137,11 @@ class MessageController extends Controller
         $userId = auth()->id();
 
         $messages = Message::where(function ($query) use ($userId) {
-                $query->where('sender_id', $userId)
-                    ->orWhereHas('owners', function ($q) use ($userId) {
-                        $q->where('user_id', $userId);
-                    });
-            })
+            $query->where('sender_id', $userId)
+                ->orWhereHas('owners', function ($q) use ($userId) {
+                    $q->where('user_id', $userId);
+                });
+        })
             ->with(['sender', 'owners'])
             ->orderBy('created_at', 'desc')
             ->paginate(20);
@@ -188,6 +187,7 @@ class MessageController extends Controller
             return $this->jsonResponseOk($message->load(['sender', 'owners.user']));
         } catch (\Exception $e) {
             DB::rollBack();
+
             return $this->jsonResponseServerError(['errors' => ['message' => 'خطا در ارسال پیام.']]);
         }
     }
@@ -244,6 +244,7 @@ class MessageController extends Controller
             return $this->jsonResponseOk($message->load(['sender', 'owners.user']));
         } catch (\Exception $e) {
             DB::rollBack();
+
             return $this->jsonResponseServerError(['errors' => ['message' => 'خطا در ارسال پیام به کلاس.']]);
         }
     }

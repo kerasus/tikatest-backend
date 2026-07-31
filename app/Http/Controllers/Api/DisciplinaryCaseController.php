@@ -2,18 +2,16 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Http\Request;
-
-
 use App\Http\Controllers\Controller;
 use App\Models\DisciplinaryCase;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class DisciplinaryCaseController extends Controller
 {
-    use Filter, CommonCRUD;
+    use CommonCRUD, Filter;
 
     public function __construct()
     {

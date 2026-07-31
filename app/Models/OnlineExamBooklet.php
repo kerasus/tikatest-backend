@@ -6,28 +6,28 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class StudySession extends Model
+class OnlineExamBooklet extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'student_id',
+        'online_exam_id',
         'lesson_id',
-        'started_at',
-        'ended_at',
-        'duration_minutes',
-        'notes',
+        'title',
+        'from_question',
+        'to_question',
+        'booklet_scores',
     ];
 
     protected $casts = [
-        'started_at' => 'datetime',
-        'ended_at' => 'datetime',
-        'duration_minutes' => 'integer',
+        'from_question' => 'integer',
+        'to_question' => 'integer',
+        'booklet_scores' => 'array',
     ];
 
-    public function student(): BelongsTo
+    public function onlineExamDetail(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'student_id');
+        return $this->belongsTo(OnlineExamDetail::class, 'online_exam_id');
     }
 
     public function lesson(): BelongsTo

@@ -21,7 +21,7 @@ class AuthController extends Controller
 
         $user = User::query()->where('username', $request->username)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (! $user || ! Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
                 'username' => ['اطلاعات ورود نادرست است.'],
             ]);

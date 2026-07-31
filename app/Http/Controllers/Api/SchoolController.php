@@ -2,18 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
-use Illuminate\Http\Request;
-
-
 use App\Http\Controllers\Controller;
 use App\Models\School;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 
 class SchoolController extends Controller
 {
-    use Filter, CommonCRUD;
+    use CommonCRUD, Filter;
 
     public function __construct()
     {
@@ -73,7 +72,7 @@ class SchoolController extends Controller
     public function update(Request $request, School $school): JsonResponse
     {
         $request->validate([
-            'code' => 'sometimes|required|string|max:20|unique:schools,code,' . $school->id,
+            'code' => 'sometimes|required|string|max:20|unique:schools,code,'.$school->id,
             'name' => 'sometimes|required|string|max:255',
             'address' => 'nullable|string',
             'website' => 'nullable|url|max:255',
@@ -98,7 +97,7 @@ class SchoolController extends Controller
         return $this->commonDestroy($school);
     }
 
-    private function storeLogo(\Illuminate\Http\UploadedFile $file, ?string $schoolCode): string
+    private function storeLogo(UploadedFile $file, ?string $schoolCode): string
     {
         $extension = $file->getClientOriginalExtension();
         $schoolCode = $schoolCode ?: 'default';

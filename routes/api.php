@@ -1,28 +1,35 @@
 <?php
 
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\PlaceController;
-use App\Http\Controllers\Api\TagController;
-use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\AcademicFieldController;
 use App\Http\Controllers\Api\AcademicLevelController;
-use App\Http\Controllers\Api\SchoolClassController;
-use App\Http\Controllers\Api\StudentController;
-use App\Http\Controllers\Api\LessonController;
-use App\Http\Controllers\Api\ExamSessionController;
-use App\Http\Controllers\Api\GradeController;
-use App\Http\Controllers\Api\QuizController;
-use App\Http\Controllers\Api\QuizBookletController;
-use App\Http\Controllers\Api\QuizClassAssignmentController;
-use App\Http\Controllers\Api\QuizSessionController;
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DisciplinaryCaseController;
 use App\Http\Controllers\Api\DisciplinaryRecordController;
+use App\Http\Controllers\Api\ExamCategoryController;
+use App\Http\Controllers\Api\ExamController;
+use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\HomeworkController;
 use App\Http\Controllers\Api\HomeworkSubmissionController;
+use App\Http\Controllers\Api\InPersonExamDetailController;
+use App\Http\Controllers\Api\InPersonExamResultController;
+use App\Http\Controllers\Api\LessonController;
 use App\Http\Controllers\Api\MessageController;
+use App\Http\Controllers\Api\OnlineExamAnswerKeyController;
+use App\Http\Controllers\Api\OnlineExamBookletController;
+use App\Http\Controllers\Api\OnlineExamDetailController;
+use App\Http\Controllers\Api\OnlineExamSessionController;
+use App\Http\Controllers\Api\OnlineExamSessionResponseController;
+use App\Http\Controllers\Api\PlaceController;
 use App\Http\Controllers\Api\PreRegistrationController;
+use App\Http\Controllers\Api\QuizClassAssignmentController;
+use App\Http\Controllers\Api\QuizController;
+use App\Http\Controllers\Api\QuizSessionController;
+use App\Http\Controllers\Api\SchoolClassController;
+use App\Http\Controllers\Api\SchoolController;
+use App\Http\Controllers\Api\StudentController;
+use App\Http\Controllers\Api\TagController;
 use App\Http\Controllers\Api\UserClassController;
+use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
@@ -54,18 +61,23 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('classes', SchoolClassController::class);
     Route::apiResource('students', StudentController::class);
     Route::apiResource('lessons', LessonController::class);
-    Route::apiResource('exam-sessions', ExamSessionController::class);
+    Route::apiResource('exams', ExamController::class);
+    Route::apiResource('exam-categories', ExamCategoryController::class);
+    Route::apiResource('in-person-exam-details', InPersonExamDetailController::class);
+    Route::apiResource('in-person-exam-results', InPersonExamResultController::class);
+    Route::apiResource('online-exam-details', OnlineExamDetailController::class);
+    Route::apiResource('online-exam-sessions', OnlineExamSessionController::class);
+    Route::apiResource('online-exam-session-responses', OnlineExamSessionResponseController::class);
+    Route::apiResource('online-exam-answer-keys', OnlineExamAnswerKeyController::class);
+    Route::apiResource('online-exam-booklets', OnlineExamBookletController::class);
     Route::apiResource('grades', GradeController::class);
     Route::post('grades/bulk', [GradeController::class, 'bulkStore']);
-    Route::post('grades/store-with-session', [GradeController::class, 'createExamSessionWithGrades']);
+    Route::post('grades/store-with-exam', [GradeController::class, 'createExamWithGrades']);
     Route::get('grades/statistics/{lesson_id}/{class_id}', [GradeController::class, 'statistics']);
     Route::post('grades/update-z-scores', [GradeController::class, 'updateZScores']);
     Route::get('quizzes/{quiz}/results-with-rank', [QuizController::class, 'resultsWithRank']);
     Route::post('quizzes/{quiz}/participants', [QuizController::class, 'assignParticipants']);
     Route::apiResource('quizzes', QuizController::class);
-    Route::apiResource('quiz-booklets', QuizBookletController::class);
-    Route::get('quizzes/{quiz}/booklets', [QuizBookletController::class, 'indexByQuiz']);
-    Route::post('quizzes/{quiz}/booklets/sync', [QuizBookletController::class, 'sync']);
     Route::apiResource('quiz-assignments', QuizClassAssignmentController::class);
 
     Route::prefix('quiz-sessions')->group(function () {

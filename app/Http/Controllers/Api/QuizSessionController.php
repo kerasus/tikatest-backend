@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\QuizSession;
 use App\Models\Quiz;
+use App\Models\QuizSession;
 use App\Services\QuizScoringService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 class QuizSessionController extends Controller
 {
-    use Filter, CommonCRUD;
+    use CommonCRUD, Filter;
 
     private QuizScoringService $scoringService;
 
@@ -57,6 +57,7 @@ class QuizSessionController extends Controller
                 if ($existingSession) {
                     if ($existingSession->isActive()) {
                         $existingSession->load(['quiz', 'responses']);
+
                         return [
                             'session' => $existingSession,
                             'remaining_time' => $existingSession->getRemainingTimeInSeconds(),
@@ -105,7 +106,7 @@ class QuizSessionController extends Controller
 
             return $this->jsonResponseOk($payload);
         } catch (\Exception $e) {
-            return $this->jsonResponseError('Failed to start session: ' . $e->getMessage(), 500);
+            return $this->jsonResponseError('Failed to start session: '.$e->getMessage(), 500);
         }
     }
 
@@ -181,7 +182,7 @@ class QuizSessionController extends Controller
             DB::transaction(function () use ($session) {
                 $lockedSession = QuizSession::whereKey($session->id)->lockForUpdate()->firstOrFail();
 
-                if (!in_array($lockedSession->status, ['submitted', 'graded'], true)) {
+                if (! in_array($lockedSession->status, ['submitted', 'graded'], true)) {
                     $lockedSession->update([
                         'status' => 'submitted',
                         'submitted_at' => now(),
@@ -211,7 +212,7 @@ class QuizSessionController extends Controller
                 'session' => $session,
             ]);
         } catch (\Exception $e) {
-            return $this->jsonResponseError('Failed to submit: ' . $e->getMessage(), 500);
+            return $this->jsonResponseError('Failed to submit: '.$e->getMessage(), 500);
         }
     }
 
@@ -248,7 +249,7 @@ class QuizSessionController extends Controller
             $count++;
         }
 
-        return $this->jsonResponseOk(['message' => $count . ' sessions expired']);
+        return $this->jsonResponseOk(['message' => $count.' sessions expired']);
     }
 
     private function getQuizDurationInSeconds(Quiz $quiz): int
@@ -256,6 +257,7 @@ class QuizSessionController extends Controller
         if ($quiz->time_limit) {
             return $quiz->time_limit * 60;
         }
+
         return 3600;
     }
 }
