@@ -15,7 +15,7 @@ class ReportService
             ->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($classId) {
                 $q->where('class_id', $classId);
             })
-            ->where('scaled_score', '!=', null)
+            ->whereNotNull('scaled_score')
             ->with(['student', 'inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.classes']);
 
         $results = $query->get();
@@ -102,7 +102,7 @@ class ReportService
                 ->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($classId) {
                     $q->where('class_id', $classId);
                 })
-                ->where('scaled_score', '!=', null)
+                ->whereNotNull('scaled_score')
                 ->with(['student', 'lesson', 'inPersonExamDetail.exam.lesson']);
 
             $results = $query->get();
@@ -268,7 +268,7 @@ class ReportService
         ];
 
         $results = InPersonExamResult::where('user_id', $studentId)
-            ->where('scaled_score', '!=', null)
+            ->whereNotNull('scaled_score')
             ->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($classId) {
                 $q->where('class_id', $classId);
             })

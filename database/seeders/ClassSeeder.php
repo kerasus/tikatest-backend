@@ -18,22 +18,22 @@ class ClassSeeder extends Seeder
             if ($school) {
                 SchoolClass::firstOrCreate(
                     [
-                        'level_id' => $level->id,
+                        'academic_level_id' => $level->id,
                         'name' => 'کلاس الف',
                     ],
                     [
-                        'level_id' => $level->id,
+                        'academic_level_id' => $level->id,
                         'name' => 'کلاس ب',
                     ]
                 );
 
                 SchoolClass::firstOrCreate(
                     [
-                        'level_id' => $level->id,
+                        'academic_level_id' => $level->id,
                         'name' => 'کلاس ب',
                     ],
                     [
-                        'level_id' => $level->id,
+                        'academic_level_id' => $level->id,
                         'name' => 'کلاس ب',
                     ]
                 );

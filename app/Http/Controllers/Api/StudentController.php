@@ -324,7 +324,7 @@ class StudentController extends Controller
         ]);
 
         $query = InPersonExamResult::where('user_id', auth()->id())
-            ->where('scaled_score', '!=', null)
+            ->whereNotNull('scaled_score')
             ->with(['inPersonExamDetail.exam.lesson', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.classes']);
 
         if ($request->filled('category_title')) {

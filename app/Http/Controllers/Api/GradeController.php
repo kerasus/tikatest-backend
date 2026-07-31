@@ -291,35 +291,6 @@ class GradeController extends Controller
         }
     }
 
-    public function validateBulk(Request $request): JsonResponse
-    {
-        $request->validate([
-            'grades' => 'required|array',
-            'grades.*.student_id' => 'required|exists:users,id',
-            'grades.*.lesson_id' => 'required|exists:lessons,id',
-            'grades.*.raw_grade' => 'nullable|numeric|min:0',
-            'grades.*.grade_date' => 'required|date',
-        ]);
-
-        $errors = [];
-        foreach ($request->grades as $index => $gradeData) {
-            $existing = InPersonExamResult::where('user_id', $gradeData['student_id'])
-                ->where('in_person_exam_id', $gradeData['exam_id'] ?? null)
-                ->first();
-
-            if ($existing) {
-                $student = User::find($gradeData['student_id']);
-                $errors[] = 'Row '.($index + 1).': نمره قبلاً برای دانش‌آموز '.($student->full_name ?? 'Unknown').' ثبت شده است.';
-            }
-        }
-
-        if (count($errors) > 0) {
-            return $this->jsonResponseServerError(['errors' => $errors]);
-        }
-
-        return $this->jsonResponseOk(['message' => 'All grades are valid']);
-    }
-
     public function bulkStore(Request $request): JsonResponse
     {
         $request->validate([
@@ -349,7 +320,7 @@ class GradeController extends Controller
             ->whereHas('inPersonExamDetail.exam.classes', function ($q) use ($classId) {
                 $q->where('class_id', $classId);
             })
-            ->where('scaled_score', '!=', null)
+            ->whereNotNull('scaled_score')
             ->with(['student'])
             ->get();
 
@@ -391,7 +362,7 @@ class GradeController extends Controller
         $query = InPersonExamResult::whereHas('inPersonExamDetail.exam.lesson', function ($q) use ($lessonId) {
             $q->where('id', $lessonId);
         })
-            ->where('scaled_score', '!=', null)
+            ->whereNotNull('scaled_score')
             ->with(['student', 'inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.classes']);
 
         if ($request->filled('class_id')) {
@@ -456,7 +427,7 @@ class GradeController extends Controller
             $query = InPersonExamResult::whereHas('inPersonExamDetail.exam.lesson', function ($q) use ($lessonId) {
                 $q->where('id', $lessonId);
             })
-                ->where('scaled_score', '!=', null)
+                ->whereNotNull('scaled_score')
                 ->with(['student', 'inPersonExamDetail', 'inPersonExamDetail.exam.lesson', 'inPersonExamDetail.exam.classes']);
 
             if ($request->filled('class_id')) {
@@ -505,7 +476,7 @@ class GradeController extends Controller
     public function studentReport(Request $request, $studentId): JsonResponse
     {
         $query = InPersonExamResult::where('user_id', $studentId)
-            ->where('scaled_score', '!=', null)
+            ->whereNotNull('scaled_score')
             ->with(['inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.category', 'inPersonExamDetail.exam.lesson', 'inPersonExamDetail.exam.classes']);
 
         if ($request->filled('category_title')) {
@@ -524,7 +495,7 @@ class GradeController extends Controller
         $reportCardTypes = ['mid_term_1', 'continuous_1', 'final_1', 'mid_term_2', 'continuous_2', 'final_2'];
 
         $query = InPersonExamResult::where('user_id', $studentId)
-            ->where('scaled_score', '!=', null)
+            ->whereNotNull('scaled_score')
             ->whereHas('inPersonExamDetail.exam.category', function ($q) use ($reportCardTypes) {
                 $q->whereIn('title', $reportCardTypes);
             })

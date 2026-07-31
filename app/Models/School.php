@@ -50,14 +50,9 @@ class School extends Model
         return $this->hasMany(Exam::class);
     }
 
-    public function quizzes(): HasMany
+    public function examCategories(): HasMany
     {
-        return $this->hasMany(Quiz::class);
-    }
-
-    public function quizClassAssignments(): HasMany
-    {
-        return $this->hasMany(QuizClassAssignment::class);
+        return $this->hasMany(ExamCategory::class);
     }
 
     public function disciplinaryCases(): HasMany
@@ -83,10 +78,5 @@ class School extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class);
-    }
-
-    public function preRegistrations(): HasMany
-    {
-        return $this->hasMany(PreRegistration::class);
     }
 }

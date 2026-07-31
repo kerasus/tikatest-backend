@@ -19,15 +19,9 @@ use App\Http\Controllers\Api\OnlineExamBookletController;
 use App\Http\Controllers\Api\OnlineExamDetailController;
 use App\Http\Controllers\Api\OnlineExamSessionController;
 use App\Http\Controllers\Api\OnlineExamSessionResponseController;
-use App\Http\Controllers\Api\PlaceController;
-use App\Http\Controllers\Api\PreRegistrationController;
-use App\Http\Controllers\Api\QuizClassAssignmentController;
-use App\Http\Controllers\Api\QuizController;
-use App\Http\Controllers\Api\QuizSessionController;
 use App\Http\Controllers\Api\SchoolClassController;
 use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\StudentController;
-use App\Http\Controllers\Api\TagController;
 use App\Http\Controllers\Api\UserClassController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
@@ -46,14 +40,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('users/{user}/remove-role', [UserController::class, 'removeRole']);
     Route::get('users/role/{role}', [UserController::class, 'getByRole']);
     Route::apiResource('users', UserController::class);
-
-    Route::apiResource('tags', TagController::class);
-
-    Route::post('places/import', [PlaceController::class, 'import']);
-    Route::post('places/{place}/tags/sync', [PlaceController::class, 'syncTags']);
-    Route::post('places/{place}/tags/attach', [PlaceController::class, 'attachTags']);
-    Route::post('places/{place}/tags/detach', [PlaceController::class, 'detachTags']);
-    Route::apiResource('places', PlaceController::class);
 
     Route::apiResource('schools', SchoolController::class);
     Route::apiResource('academic-fields', AcademicFieldController::class);
@@ -77,19 +63,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('grades/store-with-exam', [GradeController::class, 'createExamWithGrades']);
     Route::get('grades/statistics/{lesson_id}/{class_id}', [GradeController::class, 'statistics']);
     Route::post('grades/update-z-scores', [GradeController::class, 'updateZScores']);
-    Route::get('quizzes/{quiz}/results-with-rank', [QuizController::class, 'resultsWithRank']);
-    Route::post('quizzes/{quiz}/participants', [QuizController::class, 'assignParticipants']);
-    Route::apiResource('quizzes', QuizController::class);
-    Route::apiResource('quiz-assignments', QuizClassAssignmentController::class);
+    Route::get('online-exam-details/{id}/results-with-rank', [OnlineExamDetailController::class, 'resultsWithRank']);
 
-    Route::prefix('quiz-sessions')->group(function () {
-        Route::get('my-sessions', [QuizSessionController::class, 'mySessions']);
-        Route::post('auto-expire', [QuizSessionController::class, 'autoExpire']);
-        Route::post('{quizId}/start', [QuizSessionController::class, 'startSession']);
-        Route::get('{quizId}/sessions', [QuizSessionController::class, 'getQuizSessions']);
-        Route::get('{sessionId}', [QuizSessionController::class, 'getSession']);
-        Route::post('{sessionId}/answer', [QuizSessionController::class, 'submitAnswer']);
-        Route::post('{sessionId}/submit', [QuizSessionController::class, 'submitSession']);
+    Route::prefix('online-exam-sessions')->group(function () {
+        Route::get('my-sessions', [OnlineExamSessionController::class, 'mySessions']);
+        Route::post('auto-expire', [OnlineExamSessionController::class, 'autoExpire']);
+        Route::post('{examId}/start', [OnlineExamSessionController::class, 'startSession']);
+        Route::get('{examId}/sessions', [OnlineExamSessionController::class, 'getExamSessions']);
+        Route::get('{sessionId}/view', [OnlineExamSessionController::class, 'getSession']);
+        Route::post('{sessionId}/answer', [OnlineExamSessionController::class, 'submitAnswer']);
+        Route::post('{sessionId}/submit', [OnlineExamSessionController::class, 'submitSession']);
     });
 
     Route::apiResource('disciplinary-cases', DisciplinaryCaseController::class);
@@ -111,7 +94,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('grades/report/student/{studentId}/report-card', [GradeController::class, 'getStudentReportCard']);
     Route::get('study-sessions/report/general', [StudentController::class, 'studyHoursGeneralReport']);
     Route::get('study-sessions/report/student/{studentId}', [StudentController::class, 'studyHoursStudentReport']);
-    Route::apiResource('pre-registrations', PreRegistrationController::class)->only(['index', 'store']);
     Route::apiResource('user-class-registrations', UserClassController::class)->except(['update']);
 
     Route::prefix('student-portal')->group(function () {
@@ -133,13 +115,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('homework/{homeworkId}/submit', [HomeworkController::class, 'submitHomework']);
         Route::get('homework/my-submissions', [HomeworkController::class, 'mySubmissions']);
         Route::get('homework-submissions', [HomeworkSubmissionController::class, 'index']);
-        Route::get('quizzes', [QuizController::class, 'availableForStudent']);
+        Route::get('online-exam-sessions', [OnlineExamSessionController::class, 'mySessions']);
         Route::get('dashboard', [StudentController::class, 'dashboard']);
     });
 
     Route::prefix('exam-management')->group(function () {
-        Route::get('quizzes/{quiz}/results', [QuizController::class, 'resultsWithRank']);
-        Route::post('quizzes/{quiz}/participants', [QuizController::class, 'assignParticipants']);
-        Route::post('quiz-sessions/auto-expire', [QuizSessionController::class, 'autoExpire']);
+        Route::post('online-exam-sessions/auto-expire', [OnlineExamSessionController::class, 'autoExpire']);
     });
 });

@@ -5,6 +5,8 @@ namespace Database\Seeders;
 use App\Enums\UserRoleType;
 use App\Models\School;
 use App\Models\SchoolClass;
+use App\Models\StudentGuardian;
+use App\Models\StudentProfile;
 use App\Models\User;
 use App\Models\UserClass;
 use Illuminate\Database\Seeder;
@@ -42,7 +44,12 @@ class StudentSeeder extends Seeder
                     $melliCode = str_pad((string) ($globalIndex * 137 + 1000000000), 10, '0', STR_PAD_LEFT);
                     $username = $melliCode;
                     $mobile = '0935'.str_pad((string) ($globalIndex * 111111 + 1000000), 7, '0', STR_PAD_LEFT);
-                    $studentCode = strtoupper($school->code).'-'.strtoupper(str_replace(' ', '_', $class->name)).'-STU-'.str_pad((string) $i, 3, '0', STR_PAD_LEFT);
+                    $studentCode = sprintf(
+                        '%s-CLS-%d-STU-%03d',
+                        strtoupper($school->code),
+                        $class->id,
+                        $i,
+                    );
                     $birthYear = rand(2000, 2010);
                     $birthMonth = rand(1, 12);
                     $birthDay = rand(1, 28);
@@ -55,22 +62,73 @@ class StudentSeeder extends Seeder
                             'last_name' => $lastName,
                             'password' => Hash::make('password'),
                             'mobile' => $mobile,
-                            'student_phone' => $mobile,
                             'national_id' => $melliCode,
-                            'student_code' => $studentCode,
+                            'email' => $username.'@example.com',
                             'birth_date' => $birthDate,
-                            'student_email' => $username.'@example.com',
                             'address' => 'تهران',
-                            'father_name' => 'پدر',
-                            'father_phone' => $mobile,
-                            'father_email' => 'father.'.$username.'@example.com',
-                            'mother_name' => 'مادر',
-                            'mother_phone' => $mobile,
-                            'mother_email' => 'mother.'.$username.'@example.com',
                         ]
                     );
 
+                    $fatherUser = User::updateOrCreate(
+                        ['username' => "father-{$username}"],
+                        [
+                            'first_name' => $firstNames[$globalIndex % count($firstNames)],
+                            'last_name' => $lastName,
+                            'password' => Hash::make('password'),
+                            'mobile' => '0912'.str_pad((string) (2000000 + $globalIndex), 7, '0', STR_PAD_LEFT),
+                            'national_id' => (string) (2000000000 + $globalIndex),
+                            'email' => "father-{$username}@example.com",
+                            'address' => 'تهران',
+                        ],
+                    );
+                    $fatherUser->syncRoles([UserRoleType::Guardian->value]);
+
+                    $motherUser = User::updateOrCreate(
+                        ['username' => "mother-{$username}"],
+                        [
+                            'first_name' => $firstNames[($globalIndex + 1) % count($firstNames)],
+                            'last_name' => $lastName,
+                            'password' => Hash::make('password'),
+                            'mobile' => '0919'.str_pad((string) (3000000 + $globalIndex), 7, '0', STR_PAD_LEFT),
+                            'national_id' => (string) (3000000000 + $globalIndex),
+                            'email' => "mother-{$username}@example.com",
+                            'address' => 'تهران',
+                        ],
+                    );
+                    $motherUser->syncRoles([UserRoleType::Guardian->value]);
+
                     $user->syncRoles([UserRoleType::Student->value]);
+
+                    $studentProfile = StudentProfile::firstOrCreate(
+                        ['user_id' => $user->id],
+                        [
+                            'code' => $studentCode,
+                        ]
+                    );
+
+                    StudentGuardian::updateOrCreate(
+                        [
+                            'student_profile_id' => $studentProfile->id,
+                            'relationship_type' => 'father',
+                        ],
+                        [
+                            'user_id' => $fatherUser->id,
+                            'job' => 'پدر',
+                            'is_primary_contact' => true,
+                        ],
+                    );
+
+                    StudentGuardian::updateOrCreate(
+                        [
+                            'student_profile_id' => $studentProfile->id,
+                            'relationship_type' => 'mother',
+                        ],
+                        [
+                            'user_id' => $motherUser->id,
+                            'job' => 'مادر',
+                            'is_primary_contact' => false,
+                        ],
+                    );
 
                     UserClass::firstOrCreate([
                         'user_id' => $user->id,

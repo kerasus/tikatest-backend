@@ -31,9 +31,4 @@ class AcademicLevel extends Model
     {
         return $this->hasMany(Lesson::class);
     }
-
-    public function quizClassAssignments(): HasMany
-    {
-        return $this->hasMany(QuizClassAssignment::class);
-    }
 }

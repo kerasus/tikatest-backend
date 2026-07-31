@@ -66,7 +66,7 @@ class MessageController extends Controller
 
         try {
             $message = Message::create([
-                'school_id' => $request->school_id ?? auth()->user()->school_id,
+                'school_id' => $request->input('school_id'),
                 'sender_id' => $request->sender_id ?? auth()->id(),
                 'subject' => $request->subject,
                 'body' => $request->body,
@@ -164,7 +164,7 @@ class MessageController extends Controller
 
         try {
             $message = Message::create([
-                'school_id' => auth()->user()->school_id,
+                'school_id' => $request->input('school_id'),
                 'sender_id' => auth()->id(),
                 'subject' => $request->subject,
                 'body' => $request->body,
@@ -211,7 +211,7 @@ class MessageController extends Controller
 
         try {
             $message = Message::create([
-                'school_id' => auth()->user()->school_id,
+                'school_id' => $request->input('school_id'),
                 'sender_id' => auth()->id(),
                 'subject' => $request->subject,
                 'body' => $request->body,

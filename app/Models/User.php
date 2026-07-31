@@ -90,14 +90,9 @@ class User extends Authenticatable
         return $this->inPersonExamResults();
     }
 
-    public function quizSessions(): HasMany
+    public function examsCreated(): HasMany
     {
-        return $this->hasMany(QuizSession::class, 'student_id');
-    }
-
-    public function disciplinaryRecords(): HasMany
-    {
-        return $this->hasMany(DisciplinaryRecord::class, 'student_id');
+        return $this->hasMany(Exam::class, 'created_by');
     }
 
     public function homeworkSubmissions(): HasMany
@@ -117,17 +112,17 @@ class User extends Authenticatable
 
     public function receivedMessages(): HasMany
     {
-        return $this->hasMany(Message::class, 'receiver_id');
-    }
-
-    public function examsCreated(): HasMany
-    {
-        return $this->hasMany(Exam::class, 'created_by');
+        return $this->hasMany(MessageOwner::class, 'user_id');
     }
 
     public function homeworkCreated(): HasMany
     {
         return $this->hasMany(Homework::class, 'created_by');
+    }
+
+    public function disciplinaryRecords(): HasMany
+    {
+        return $this->hasMany(DisciplinaryRecord::class, 'student_id');
     }
 
     public function disciplinaryRecorded(): HasMany

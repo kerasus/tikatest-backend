@@ -2,21 +2,22 @@
 
 namespace App\Services;
 
-use App\Models\Quiz;
-use App\Models\QuizAnswerKey;
-use App\Models\QuizSession;
+use App\Models\OnlineExamAnswerKey;
+use App\Models\OnlineExamDetail;
+use App\Models\OnlineExamSession;
 
-class QuizScoringService
+class OnlineExamScoringService
 {
-    public function calculateSessionScore(QuizSession $session): array
+    public function calculateSessionScore(OnlineExamSession $session): array
     {
         $totalMarks = 0;
         $obtainedMarks = 0;
 
         $responses = $session->responses;
+        $onlineDetail = $session->exam->onlineDetail ?? null;
 
         foreach ($responses as $response) {
-            $answerKey = QuizAnswerKey::where('quiz_id', $session->quiz_id)
+            $answerKey = OnlineExamAnswerKey::where('exam_id', $session->exam_id)
                 ->where('question_number', $response->question_number)
                 ->first();
 
@@ -28,9 +29,8 @@ class QuizScoringService
                 if ($response->submitted_option === $correctOption) {
                     $obtainedMarks += $points;
                     $response->is_correct = true;
-                } elseif ($response->answer_text !== null) {
-                    $obtainedMarks += $points * 0.5;
-                    $response->is_correct = true;
+                } elseif ($answerKey->has_negative_mark && $response->submitted_option !== null && $response->submitted_option !== $correctOption) {
+                    $response->is_correct = false;
                 } else {
                     $response->is_correct = false;
                 }
@@ -52,11 +52,17 @@ class QuizScoringService
         ];
     }
 
-    public function calculateBookletScores(QuizSession $session): array
+    public function calculateBookletScores(OnlineExamSession $session): array
     {
-        $booklets = $session->booklet_scores ?? [];
+        $onlineDetail = $session->exam->onlineDetail ?? null;
 
-        if (empty($booklets)) {
+        if (! $onlineDetail) {
+            return [];
+        }
+
+        $booklets = $onlineDetail->booklets ?? [];
+
+        if ($booklets->isEmpty()) {
             return [];
         }
 
@@ -68,12 +74,12 @@ class QuizScoringService
             $bookletObtained = 0;
 
             foreach ($responses as $response) {
-                if ($response->question_number < $booklet['from_question']
-                    || $response->question_number > $booklet['to_question']) {
+                if ($response->question_number < $booklet->from_question
+                    || $response->question_number > $booklet->to_question) {
                     continue;
                 }
 
-                $answerKey = QuizAnswerKey::where('quiz_id', $session->quiz_id)
+                $answerKey = OnlineExamAnswerKey::where('exam_id', $session->exam_id)
                     ->where('question_number', $response->question_number)
                     ->first();
 
@@ -83,8 +89,6 @@ class QuizScoringService
                 if ($answerKey && $answerKey->is_active) {
                     if ($response->submitted_option === $answerKey->correct_option) {
                         $bookletObtained += $points;
-                    } elseif ($response->answer_text !== null) {
-                        $bookletObtained += $points * 0.5;
                     }
                 }
             }
@@ -92,10 +96,10 @@ class QuizScoringService
             $percent = $bookletTotal > 0 ? max(0, round(($bookletObtained / $bookletTotal) * 100, 2)) : 0;
 
             $scores[] = [
-                'id' => $booklet['id'] ?? null,
-                'title' => $booklet['title'] ?? '',
-                'from_question' => $booklet['from_question'],
-                'to_question' => $booklet['to_question'],
+                'id' => $booklet->id,
+                'title' => $booklet->title,
+                'from_question' => $booklet->from_question,
+                'to_question' => $booklet->to_question,
                 'total_marks' => $bookletTotal,
                 'obtained_marks' => $bookletObtained,
                 'percent' => $percent,
@@ -105,24 +109,27 @@ class QuizScoringService
         return $scores;
     }
 
-    public function recalculateAllSessions(Quiz $quiz): void
+    public function recalculateAllSessions(OnlineExamDetail $onlineExamDetail): void
     {
-        $sessions = $quiz->sessions()->get();
+        $sessions = OnlineExamSession::where('exam_id', $onlineExamDetail->exam_id)->get();
 
         foreach ($sessions as $session) {
-            $scoreData = $this->calculateSessionScore($session);
+            $scoreData = $this->calculateSessionScore($session->load(['responses', 'exam.onlineDetail.booklets']));
 
             $session->update([
                 'percent' => $scoreData['percent'],
-                'booklet_scores' => $scoreData['booklet_scores'],
+                'score' => $scoreData['obtained_marks'],
+                'started_at' => $session->started_at,
+                'submitted_at' => $session->submitted_at,
             ]);
         }
     }
 
-    public function getRankings(Quiz $quiz): array
+    public function getRankings(OnlineExamDetail $onlineExamDetail): array
     {
-        $sessions = $quiz->sessions()
-            ->where('answer_status', 'sent')
+        $sessions = OnlineExamSession::where('exam_id', $onlineExamDetail->exam_id)
+            ->where('status', 'submitted')
+            ->orWhere('status', 'graded')
             ->with('student')
             ->get();
 
@@ -131,10 +138,10 @@ class QuizScoringService
                 'student_id' => $session->student_id,
                 'student_name' => $session->student->full_name ?? 'Unknown',
                 'percent' => $session->percent,
-                'booklet_scores' => $session->booklet_scores,
-                'started_at' => $session->session_started_at,
+                'score' => $session->score,
+                'started_at' => $session->started_at,
                 'ended_at' => $session->submitted_at,
-                'answer_status' => $session->answer_status,
+                'status' => $session->status,
             ];
         })
             ->sortByDesc('percent')

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\OnlineExamDetail;
+use App\Services\OnlineExamScoringService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
@@ -13,10 +14,13 @@ class OnlineExamDetailController extends Controller
 {
     use CommonCRUD, Filter;
 
-    public function __construct()
+    private OnlineExamScoringService $scoringService;
+
+    public function __construct(OnlineExamScoringService $scoringService)
     {
+        $this->scoringService = $scoringService;
         $this->middleware('auth:sanctum');
-        $this->middleware('admin_or_permission:exams.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:exams.view')->only(['index', 'show', 'resultsWithRank']);
         $this->middleware('admin_or_permission:exams.create')->only(['store']);
         $this->middleware('admin_or_permission:exams.update')->only(['update']);
         $this->middleware('admin_or_permission:exams.delete')->only(['destroy']);
@@ -77,5 +81,16 @@ class OnlineExamDetailController extends Controller
     public function destroy(OnlineExamDetail $onlineExamDetail): JsonResponse
     {
         return $this->commonDestroy($onlineExamDetail);
+    }
+
+    public function resultsWithRank(Request $request, $id): JsonResponse
+    {
+        $detail = OnlineExamDetail::with('exam')->findOrFail($id);
+        $ranked = $this->scoringService->getRankings($detail);
+
+        return $this->jsonResponseOk([
+            'online_exam_detail' => $detail,
+            'results' => $ranked,
+        ]);
     }
 }
