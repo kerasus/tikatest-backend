@@ -60,6 +60,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('academic-levels', AcademicLevelController::class);
     Route::apiResource('classes', SchoolClassController::class);
     Route::apiResource('students', StudentController::class);
+    Route::apiResource('student-profiles', StudentProfileController::class);
+    Route::apiResource('student-guardians', StudentGuardianController::class);
     Route::apiResource('lessons', LessonController::class);
     Route::apiResource('exams', ExamController::class);
     Route::apiResource('exam-categories', ExamCategoryController::class);

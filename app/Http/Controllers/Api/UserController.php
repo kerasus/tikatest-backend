@@ -30,7 +30,6 @@ class UserController extends Controller
                 'first_name',
                 'last_name',
                 'username',
-                'employee_code',
                 'email',
                 'mobile',
             ],
@@ -73,7 +72,6 @@ class UserController extends Controller
             'username' => 'required|string|unique:users',
             'mobile' => 'required|string|unique:users',
             'email' => 'nullable|string|email|unique:users',
-            'employee_code' => 'nullable|string|unique:users',
             'password' => 'required|string|min:6',
         ]);
 
@@ -95,7 +93,6 @@ class UserController extends Controller
             'username' => 'sometimes|required|string|unique:users,username,'.$user->id,
             'mobile' => 'sometimes|required|string|unique:users,mobile,'.$user->id,
             'email' => 'nullable|string|email|unique:users,email,'.$user->id,
-            'employee_code' => 'nullable|string|unique:users,employee_code,'.$user->id,
             'password' => 'nullable|string|min:6',
         ]);
 

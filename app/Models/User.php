@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -19,41 +20,20 @@ class User extends Authenticatable
         'last_name',
         'email',
         'username',
-        'employee_code',
         'mobile',
         'password',
         'mobile_verification_code',
         'national_id',
-        'student_code',
         'birth_date',
-        'student_email',
-        'student_phone',
         'address',
-        'additional_info',
-        'xp',
+        'description',
         'picture',
-        'school_id',
-        'father_name',
-        'father_phone',
-        'father_email',
-        'father_job',
-        'father_national_id',
-        'father_password',
-        'mother_name',
-        'mother_last_name',
-        'mother_phone',
-        'mother_email',
-        'mother_job',
-        'mother_national_id',
-        'mother_password',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
         'mobile_verification_code',
-        'father_password',
-        'mother_password',
     ];
 
     protected $casts = [
@@ -88,6 +68,16 @@ class User extends Authenticatable
     public function userClassRegistrations(): HasMany
     {
         return $this->hasMany(UserClass::class, 'user_id');
+    }
+
+    public function studentProfile(): HasOne
+    {
+        return $this->hasOne(StudentProfile::class, 'user_id');
+    }
+
+    public function guardianRecords(): HasMany
+    {
+        return $this->hasMany(StudentGuardian::class, 'user_id');
     }
 
     public function inPersonExamResults(): HasMany

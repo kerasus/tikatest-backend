@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\DisciplinaryRecord;
 use App\Models\Homework;
 use App\Models\InPersonExamResult;
+use App\Models\StudentProfile;
 use App\Models\StudySession;
 use App\Models\User;
 use App\Models\UserClass;
@@ -36,9 +37,9 @@ class StudentController extends Controller
                 'first_name',
                 'last_name',
                 'username',
-                'student_phone',
+                'mobile',
+                'email',
                 'national_id',
-                'student_code',
             ],
             'filterKeysExact' => [],
             'filterOnMultipleColumnKeys' => [
@@ -60,6 +61,18 @@ class StudentController extends Controller
                     'relationColumn' => 'name',
                     'exact' => false,
                 ],
+                [
+                    'requestKey' => 'student_code',
+                    'relationName' => 'studentProfile',
+                    'relationColumn' => 'code',
+                    'exact' => false,
+                ],
+                [
+                    'requestKey' => 'father_name',
+                    'relationName' => 'guardianRecords.user',
+                    'relationColumn' => 'first_name',
+                    'exact' => false,
+                ],
             ],
             'filterRelationIds' => [
                 [
@@ -74,6 +87,8 @@ class StudentController extends Controller
             ],
             'eagerLoads' => [
                 'userClassRegistrations.schoolClass.academicLevel.academicField.school',
+                'studentProfile',
+                'guardianRecords.user',
                 'roles',
                 'permissions',
             ],
@@ -97,11 +112,8 @@ class StudentController extends Controller
         }
 
         if ($request->filled('school_id')) {
-            $modelQuery->where(function ($query) use ($request) {
-                $query->where('users.school_id', $request->get('school_id'))
-                    ->orWhereHas('userClassRegistrations.schoolClass.academicLevel.academicField', function ($q) use ($request) {
-                        $q->where('academic_fields.school_id', $request->get('school_id'));
-                    });
+            $modelQuery->whereHas('userClassRegistrations.schoolClass.academicLevel.academicField.school', function ($q) use ($request) {
+                $q->where('id', $request->get('school_id'));
             });
         }
 
@@ -115,26 +127,27 @@ class StudentController extends Controller
             'last_name' => 'required|string|max:255',
             'username' => 'required|string|unique:users,username',
             'password' => 'required|string|min:6',
-            'student_phone' => 'nullable|string|max:20',
+            'mobile' => 'nullable|string|max:20|unique:users,mobile',
             'national_id' => 'nullable|string|max:20',
             'student_code' => 'nullable|string|max:50',
             'birth_date' => 'nullable|date',
-            'student_email' => 'nullable|email|max:255',
+            'email' => 'nullable|email|max:255',
             'address' => 'nullable|string',
-            'father_name' => 'nullable|string|max:255',
-            'father_phone' => 'nullable|string|max:20',
-            'father_email' => 'nullable|email|max:255',
-            'mother_name' => 'nullable|string|max:255',
-            'mother_phone' => 'nullable|string|max:20',
-            'mother_email' => 'nullable|email|max:255',
-            'school_id' => 'nullable|exists:schools,id',
+            'description' => 'nullable|string',
+            'class_id' => 'nullable|exists:classes,id',
         ]);
 
         $data = $request->all();
-        $data['mobile'] = $request->input('student_phone');
 
         $user = User::create($data);
         $user->assignRole(UserRoleType::Student->value);
+
+        if ($request->filled('student_code')) {
+            StudentProfile::create([
+                'user_id' => $user->id,
+                'code' => $request->input('student_code'),
+            ]);
+        }
 
         if ($request->filled('class_id')) {
             UserClass::create([
@@ -143,7 +156,7 @@ class StudentController extends Controller
             ]);
         }
 
-        return $this->jsonResponseOk($user->load('userClassRegistrations.schoolClass'));
+        return $this->jsonResponseOk($user->load('studentProfile', 'userClassRegistrations.schoolClass'));
     }
 
     public function show(Request $request, $id): JsonResponse
@@ -152,6 +165,8 @@ class StudentController extends Controller
             ->whereHas('roles', fn ($q) => $q->where('name', 'student'))
             ->with([
                 'userClassRegistrations.schoolClass.academicLevel.academicField.school',
+                'studentProfile',
+                'guardianRecords.user',
                 'roles',
                 'permissions',
             ])
@@ -167,37 +182,28 @@ class StudentController extends Controller
             'last_name' => 'sometimes|required|string|max:255',
             'username' => 'sometimes|required|string|unique:users,username,'.$student->id,
             'password' => 'nullable|string|min:6',
-            'student_phone' => 'nullable|string|max:20',
+            'mobile' => 'sometimes|nullable|string|max:20|unique:users,mobile,'.$student->id,
             'national_id' => 'nullable|string|max:20',
-            'student_code' => 'nullable|string|max:50',
             'birth_date' => 'nullable|date',
-            'student_email' => 'nullable|email|max:255',
+            'email' => 'nullable|email|max:255',
             'address' => 'nullable|string',
-            'father_name' => 'nullable|string|max:255',
-            'father_phone' => 'nullable|string|max:20',
-            'father_email' => 'nullable|email|max:255',
-            'mother_name' => 'nullable|string|max:255',
-            'mother_phone' => 'nullable|string|max:20',
-            'mother_email' => 'nullable|email|max:255',
-            'school_id' => 'nullable|exists:schools,id',
+            'description' => 'nullable|string',
+            'class_id' => 'nullable|exists:classes,id',
         ]);
 
-        $data = $request->all();
-        if ($request->filled('student_phone')) {
-            $data['mobile'] = $request->input('student_phone');
-        }
-
-        $student->fill($data);
-        $student->save();
+        $student->fill($request->only([
+            'first_name', 'last_name', 'username', 'password', 'mobile',
+            'national_id', 'birth_date', 'email', 'address', 'description',
+        ]));
 
         if ($request->filled('class_id')) {
             UserClass::updateOrCreate(
                 ['user_id' => $student->id],
-                ['class_id' => $request->class_id, 'school_id' => $request->school_id]
+                ['class_id' => $request->class_id]
             );
         }
 
-        return $this->jsonResponseOk($student->load('userClassRegistrations.schoolClass'));
+        return $this->jsonResponseOk($student->load('studentProfile', 'guardianRecords.user', 'userClassRegistrations.schoolClass'));
     }
 
     public function destroy(User $student): JsonResponse
