@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             ManagerSeeder::class,
             TeacherSeeder::class,
             StudentSeeder::class,
+            ExamCategorySeeder::class,
         ]);
     }
 }

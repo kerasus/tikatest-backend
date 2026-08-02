@@ -12,31 +12,20 @@ class ClassSeeder extends Seeder
     {
         $levels = AcademicLevel::with('academicField.school')->get();
 
+        $classSuffixes = ['الف', 'ب', 'ج'];
+
         foreach ($levels as $level) {
             $school = $level->academicField->school ?? null;
 
             if ($school) {
-                SchoolClass::firstOrCreate(
-                    [
-                        'academic_level_id' => $level->id,
-                        'name' => 'کلاس الف',
-                    ],
-                    [
-                        'academic_level_id' => $level->id,
-                        'name' => 'کلاس ب',
-                    ]
-                );
-
-                SchoolClass::firstOrCreate(
-                    [
-                        'academic_level_id' => $level->id,
-                        'name' => 'کلاس ب',
-                    ],
-                    [
-                        'academic_level_id' => $level->id,
-                        'name' => 'کلاس ب',
-                    ]
-                );
+                foreach ($classSuffixes as $suffix) {
+                    SchoolClass::firstOrCreate(
+                        [
+                            'academic_level_id' => $level->id,
+                            'name' => 'کلاس ' . $suffix,
+                        ]
+                    );
+                }
             }
         }
     }

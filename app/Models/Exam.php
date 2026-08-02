@@ -63,7 +63,7 @@ class Exam extends Model
 
     public function classes(): BelongsToMany
     {
-        return $this->belongsToMany(SchoolClass::class, 'exam_classes');
+        return $this->belongsToMany(SchoolClass::class, 'exam_classes', 'exam_id', 'class_id');
     }
 
     public function academicLevels(): BelongsToMany

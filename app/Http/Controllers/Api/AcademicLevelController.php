@@ -36,9 +36,18 @@ class AcademicLevelController extends Controller
                 ],
             ],
             'eagerLoads' => ['academicField.school', 'academicField'],
+            'returnModelQuery' => true,
         ];
 
-        return $this->commonIndex($request, AcademicLevel::class, $config);
+        $result = $this->commonIndex($request, AcademicLevel::class, $config);
+
+        if (is_array($result) && isset($result['modelQuery']) && $request->filled('school_id')) {
+            $result['modelQuery']->whereHas('academicField', function ($query) use ($request) {
+                $query->where('school_id', $request->get('school_id'));
+            });
+        }
+
+        return $result['responseWithAttachedCollection']($result['modelQuery']);
     }
 
     public function store(Request $request): JsonResponse

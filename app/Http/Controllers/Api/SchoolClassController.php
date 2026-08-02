@@ -35,18 +35,21 @@ class SchoolClassController extends Controller
                     'exact' => false,
                 ],
             ],
-            'eagerLoads' => ['academicLevel'],
+            'eagerLoads' => [
+                'academicLevel.academicField.school'
+            ],
+            'returnModelQuery' => true,
         ];
 
         $result = $this->commonIndex($request, SchoolClass::class, $config);
 
         if (is_array($result) && isset($result['modelQuery']) && $request->filled('school_id')) {
-            $result['modelQuery']->whereHas('academicLevel', function ($query) use ($request) {
+            $result['modelQuery']->whereHas('academicLevel.academicField', function ($query) use ($request) {
                 $query->where('school_id', $request->get('school_id'));
             });
         }
 
-        return $result;
+        return $result['responseWithAttachedCollection']($result['modelQuery']);
     }
 
     public function store(Request $request): JsonResponse

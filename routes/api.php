@@ -50,6 +50,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('student-guardians', StudentGuardianController::class);
     Route::apiResource('lessons', LessonController::class);
     Route::apiResource('exams', ExamController::class);
+    Route::post('exams/store-with-online-detail', [ExamController::class, 'storeWithOnlineDetail']);
+    Route::post('exams/store-with-inperson-results', [ExamController::class, 'storeWithInPersonDetailAndResults']);
     Route::apiResource('exam-categories', ExamCategoryController::class);
     Route::apiResource('in-person-exam-details', InPersonExamDetailController::class);
     Route::apiResource('in-person-exam-results', InPersonExamResultController::class);

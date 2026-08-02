@@ -36,9 +36,26 @@ class LessonController extends Controller
                 ],
             ],
             'eagerLoads' => ['academicLevel'],
+            'returnModelQuery' => true,
         ];
 
-        return $this->commonIndex($request, Lesson::class, $config);
+        $result = $this->commonIndex($request, Lesson::class, $config);
+
+        if (is_array($result) && isset($result['modelQuery'])) {
+            if ($request->filled('field_id')) {
+                $result['modelQuery']->whereHas('academicLevel.academicField', function ($query) use ($request) {
+                    $query->where('academic_fields.id', $request->get('field_id'));
+                });
+            }
+
+            if ($request->filled('school_id')) {
+                $result['modelQuery']->whereHas('academicLevel.academicField.school', function ($query) use ($request) {
+                    $query->where('schools.id', $request->get('school_id'));
+                });
+            }
+        }
+
+        return $result['responseWithAttachedCollection']($result['modelQuery']);
     }
 
     public function store(Request $request): JsonResponse
