@@ -54,7 +54,7 @@ class HomeworkController extends Controller
                     'exact' => true,
                 ],
                 [
-                    'requestKey' => 'level_id',
+                    'requestKey' => 'academic_level_id',
                     'relationName' => 'schoolClass.academicLevel',
                     'relationColumn' => 'id',
                     'exact' => true,

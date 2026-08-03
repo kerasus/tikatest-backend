@@ -337,11 +337,11 @@ class LessonSeeder extends Seeder
             foreach ($lessonNames as $lessonName) {
                 Lesson::firstOrCreate(
                     [
-                        'level_id' => $level->id,
+                        'academic_level_id' => $level->id,
                         'name' => $lessonName,
                     ],
                     [
-                        'level_id' => $level->id,
+                        'academic_level_id' => $level->id,
                         'name' => $lessonName,
                         'order' => $order,
                     ]

@@ -26,7 +26,7 @@ class LessonController extends Controller
     {
         $config = [
             'filterKeys' => ['name'],
-            'filterKeysExact' => ['level_id'],
+            'filterKeysExact' => ['academic_level_id'],
             'filterRelationKeys' => [
                 [
                     'requestKey' => 'level_name',
@@ -62,7 +62,7 @@ class LessonController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'level_id' => 'nullable|exists:academic_levels,id',
+            'academic_level_id' => 'nullable|exists:academic_levels,id',
             'coefficient' => 'nullable|numeric|min:0',
         ]);
 
@@ -80,7 +80,7 @@ class LessonController extends Controller
     {
         $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'level_id' => 'nullable|exists:academic_levels,id',
+            'academic_level_id' => 'nullable|exists:academic_levels,id',
             'coefficient' => 'nullable|numeric|min:0',
         ]);
 

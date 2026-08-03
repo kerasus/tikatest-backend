@@ -105,9 +105,9 @@ class StudentController extends Controller
             });
         }
 
-        if ($request->filled('level_id')) {
+        if ($request->filled('academic_level_id')) {
             $modelQuery->whereHas('userClassRegistrations.schoolClass', function ($query) use ($request) {
-                $query->where('level_id', $request->get('level_id'));
+                $query->where('academic_level_id', $request->get('academic_level_id'));
             });
         }
 

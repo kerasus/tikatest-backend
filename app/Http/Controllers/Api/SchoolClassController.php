@@ -26,7 +26,7 @@ class SchoolClassController extends Controller
     {
         $config = [
             'filterKeys' => ['name'],
-            'filterKeysExact' => ['level_id'],
+            'filterKeysExact' => ['academic_level_id'],
             'filterRelationKeys' => [
                 [
                     'requestKey' => 'level_name',
@@ -55,7 +55,7 @@ class SchoolClassController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'level_id' => 'required|exists:academic_levels,id',
+            'academic_level_id' => 'required|exists:academic_levels,id',
             'name' => 'required|string|max:255',
         ]);
 
@@ -72,7 +72,7 @@ class SchoolClassController extends Controller
     public function update(Request $request, SchoolClass $schoolClass): JsonResponse
     {
         $request->validate([
-            'level_id' => 'sometimes|required|exists:academic_levels,id',
+            'academic_level_id' => 'sometimes|required|exists:academic_levels,id',
             'name' => 'sometimes|required|string|max:255',
         ]);
 

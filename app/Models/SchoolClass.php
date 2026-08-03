@@ -16,13 +16,13 @@ class SchoolClass extends Model
     protected $table = 'classes';
 
     protected $fillable = [
-        'level_id',
+        'academic_level_id',
         'name',
     ];
 
     public function academicLevel(): BelongsTo
     {
-        return $this->belongsTo(AcademicLevel::class, 'level_id');
+        return $this->belongsTo(AcademicLevel::class, 'academic_level_id');
     }
 
     public function userClassRegistrations(): HasMany

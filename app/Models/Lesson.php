@@ -14,14 +14,14 @@ class Lesson extends Model
 
     protected $fillable = [
         'name',
-        'level_id',
+        'academic_level_id',
         'order',
         'coefficient',
     ];
 
     public function academicLevel(): BelongsTo
     {
-        return $this->belongsTo(AcademicLevel::class, 'level_id');
+        return $this->belongsTo(AcademicLevel::class, 'academic_level_id');
     }
 
     public function exams(): HasMany

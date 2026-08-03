@@ -103,12 +103,12 @@ class GradeController extends Controller
                 });
             }
 
-            if ($request->has('level_id')) {
+            if ($request->has('academic_level_id')) {
                 $modelQuery->where(function ($q) use ($request) {
                     $q->whereHas('inPlaceExamDetail.exam.classes', function ($subQ) use ($request) {
-                        $subQ->where('level_id', $request->get('level_id'));
+                        $subQ->where('academic_level_id', $request->get('academic_level_id'));
                     })->orWhereHas('inPlaceExamDetail.exam.lesson', function ($subQ) use ($request) {
-                        $subQ->where('level_id', $request->get('level_id'));
+                        $subQ->where('academic_level_id', $request->get('academic_level_id'));
                     });
                 });
             }
