@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Exam;
 use App\Models\InPersonExamDetail;
+use App\Models\InPersonExamResult;
 use App\Models\OnlineExamDetail;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
@@ -167,7 +168,6 @@ class ExamController extends Controller
     {
         $validated = $this->validateInPersonExam($request);
 
-        var_dump('hi1');
         return DB::transaction(function () use ($validated, $request) {
             $examData = [
                 'name' => $validated['name'],
@@ -180,10 +180,8 @@ class ExamController extends Controller
                 'created_by' => $validated['created_by'] ?? $request->user()->id,
             ];
 
-            var_dump('hi2');
             $exam = Exam::create($examData);
 
-            var_dump('hi3');
             $detail = InPersonExamDetail::create([
                 'exam_id' => $exam->id,
                 'held_at' => $validated['held_at'],
