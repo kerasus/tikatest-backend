@@ -14,7 +14,7 @@ class OnlineExamScoringService
         $obtainedMarks = 0;
 
         $responses = $session->responses;
-        $onlineDetail = $session->exam->onlineDetail ?? null;
+        $onlineExamDetail = $session->exam->onlineExamDetail ?? null;
 
         foreach ($responses as $response) {
             $answerKey = OnlineExamAnswerKey::where('exam_id', $session->exam_id)
@@ -54,13 +54,13 @@ class OnlineExamScoringService
 
     public function calculateBookletScores(OnlineExamSession $session): array
     {
-        $onlineDetail = $session->exam->onlineDetail ?? null;
+        $onlineExamDetail = $session->exam->onlineExamDetail ?? null;
 
-        if (! $onlineDetail) {
+        if (! $onlineExamDetail) {
             return [];
         }
 
-        $booklets = $onlineDetail->booklets ?? [];
+        $booklets = $onlineExamDetail->booklets ?? [];
 
         if ($booklets->isEmpty()) {
             return [];
@@ -114,7 +114,7 @@ class OnlineExamScoringService
         $sessions = OnlineExamSession::where('exam_id', $onlineExamDetail->exam_id)->get();
 
         foreach ($sessions as $session) {
-            $scoreData = $this->calculateSessionScore($session->load(['responses', 'exam.onlineDetail.booklets']));
+            $scoreData = $this->calculateSessionScore($session->load(['responses', 'exam.onlineExamDetail.booklets']));
 
             $session->update([
                 'percent' => $scoreData['percent'],

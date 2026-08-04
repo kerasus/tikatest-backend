@@ -74,17 +74,6 @@ class StudentController extends Controller
                     'exact' => false,
                 ],
             ],
-            'filterRelationIds' => [
-                [
-                    'requestKey' => 'class_id',
-                    'relationName' => 'userClassRegistrations',
-                ],
-                [
-                    'requestKey' => 'class_ids',
-                    'relationName' => 'userClassRegistrations',
-                    'relationNames' => ['userClassRegistrations'],
-                ],
-            ],
             'eagerLoads' => [
                 'userClassRegistrations.schoolClass.academicLevel.academicField.school',
                 'studentProfile',
@@ -97,23 +86,59 @@ class StudentController extends Controller
         $modelQuery = User::query()->whereHas('roles', fn ($q) => $q->where('name', 'student'));
         $perPage = $request->has('length') ? $request->get('length') : 10;
 
-        $this->buildFilterQuery($request, $modelQuery, User::class, $this->getConfigArray($config));
+        $this->buildFilterQuery(
+            $request,
+            $modelQuery,
+            User::class,
+            $this->getConfigArray($config)
+        );
 
-        if ($request->filled('field_id')) {
-            $modelQuery->whereHas('userClassRegistrations.schoolClass.academicLevel.academicField', function ($query) use ($request) {
-                $query->where('academic_fields.id', $request->get('field_id'));
-            });
-        }
+        if (
+            $request->filled('class_id') ||
+            $request->filled('academic_level_id') ||
+            $request->filled('field_id') ||
+            $request->filled('school_id')
+        ) {
+            $modelQuery->whereHas('userClassRegistrations', function ($registrationQuery) use ($request) {
+                if ($request->filled('class_id')) {
+                    $registrationQuery->where(
+                        'user_class.class_id',
+                        $request->integer('class_id')
+                    );
+                }
 
-        if ($request->filled('academic_level_id')) {
-            $modelQuery->whereHas('userClassRegistrations.schoolClass', function ($query) use ($request) {
-                $query->where('academic_level_id', $request->get('academic_level_id'));
-            });
-        }
+                $registrationQuery->whereHas('schoolClass', function ($classQuery) use ($request) {
+                    if ($request->filled('academic_level_id')) {
+                        $classQuery->where(
+                            'classes.academic_level_id',
+                            $request->integer('academic_level_id')
+                        );
+                    }
 
-        if ($request->filled('school_id')) {
-            $modelQuery->whereHas('userClassRegistrations.schoolClass.academicLevel.academicField.school', function ($q) use ($request) {
-                $q->where('id', $request->get('school_id'));
+                    if (
+                        $request->filled('field_id') ||
+                        $request->filled('school_id')
+                    ) {
+                        $classQuery->whereHas('academicLevel', function ($levelQuery) use ($request) {
+                            if ($request->filled('field_id')) {
+                                $levelQuery->where(
+                                    'academic_levels.field_id',
+                                    $request->integer('field_id')
+                                );
+                            }
+
+                            if ($request->filled('school_id')) {
+                                $levelQuery->whereHas(
+                                    'academicField',
+                                    fn ($fieldQuery) => $fieldQuery->where(
+                                        'academic_fields.school_id',
+                                        $request->integer('school_id')
+                                    )
+                                );
+                            }
+                        });
+                    }
+                });
             });
         }
 

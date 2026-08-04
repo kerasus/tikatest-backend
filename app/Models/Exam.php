@@ -46,12 +46,12 @@ class Exam extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function inPersonDetail(): HasOne
+    public function inPersonExamDetail(): HasOne
     {
         return $this->hasOne(InPersonExamDetail::class);
     }
 
-    public function onlineDetail(): HasOne
+    public function onlineExamDetail(): HasOne
     {
         return $this->hasOne(OnlineExamDetail::class);
     }

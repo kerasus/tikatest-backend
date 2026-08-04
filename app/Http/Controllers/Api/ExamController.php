@@ -58,7 +58,7 @@ class ExamController extends Controller
                     'relationName' => 'academicLevels',
                 ],
             ],
-            'eagerLoads' => ['category', 'lesson', 'createdBy', 'inPersonDetail', 'onlineDetail', 'answerKeys', 'classes', 'academicLevels'],
+            'eagerLoads' => ['category', 'lesson', 'createdBy', 'inPersonExamDetail', 'onlineExamDetail', 'answerKeys', 'classes', 'academicLevels'],
         ];
 
         return $this->commonIndex($request, Exam::class, $config);
@@ -89,7 +89,7 @@ class ExamController extends Controller
     {
         $exam = Exam::with([
             'category', 'lesson', 'createdBy',
-            'inPersonDetail', 'onlineDetail', 'answerKeys',
+            'inPersonExamDetail', 'onlineExamDetail', 'answerKeys',
             'classes', 'academicLevels', 'inPersonResults',
         ])->findOrFail($id);
 

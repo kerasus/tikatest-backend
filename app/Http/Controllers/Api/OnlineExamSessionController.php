@@ -115,25 +115,25 @@ class OnlineExamSessionController extends Controller
         $studentId = auth()->id();
         $attemptNumber = $request->input('attempt_number', 1);
 
-        $onlineDetail = $exam->onlineDetail;
-        if (! $onlineDetail) {
+        $onlineExamDetail = $exam->onlineExamDetail;
+        if (! $onlineExamDetail) {
             return $this->jsonResponseError('Online exam detail not found', 404);
         }
 
-        if ($onlineDetail->visible_at && now()->lt($onlineDetail->visible_at)) {
+        if ($onlineExamDetail->visible_at && now()->lt($onlineExamDetail->visible_at)) {
             return $this->jsonResponseError('Exam is not available', 403);
         }
 
-        if ($onlineDetail->starts_at && now()->lt($onlineDetail->starts_at)) {
+        if ($onlineExamDetail->starts_at && now()->lt($onlineExamDetail->starts_at)) {
             return $this->jsonResponseError('Exam has not started yet', 409);
         }
 
-        if ($onlineDetail->ends_at && now()->gt($onlineDetail->ends_at)) {
+        if ($onlineExamDetail->ends_at && now()->gt($onlineExamDetail->ends_at)) {
             return $this->jsonResponseError('Exam time range has ended', 409);
         }
 
         try {
-            $payload = DB::transaction(function () use ($request, $exam, $examId, $studentId, $attemptNumber, $onlineDetail) {
+            $payload = DB::transaction(function () use ($request, $exam, $examId, $studentId, $attemptNumber, $onlineExamDetail) {
                 $existingSession = OnlineExamSession::where('exam_id', $examId)
                     ->where('student_id', $studentId)
                     ->where('attempt_number', $attemptNumber)
@@ -147,11 +147,11 @@ class OnlineExamSessionController extends Controller
                         return [
                             'session' => $existingSession,
                             'remaining_time' => $existingSession->duration_limit_seconds
-                                ? max(0, $onlineDetail->ends_at
-                                    ? now()->diffInSeconds($onlineDetail->ends_at, false)
+                                ? max(0, $onlineExamDetail->ends_at
+                                    ? now()->diffInSeconds($onlineExamDetail->ends_at, false)
                                     : $existingSession->duration_limit_seconds - $existingSession->time_used_seconds)
                                 : null,
-                            'online_detail' => $onlineDetail->load('booklets', 'exam.category', 'exam.lesson'),
+                            'online_detail' => $onlineExamDetail->load('booklets', 'exam.category', 'exam.lesson'),
                             'answer_keys' => $exam->answerKeys,
                         ];
                     }
@@ -163,14 +163,14 @@ class OnlineExamSessionController extends Controller
                     }
                 }
 
-                $duration = $onlineDetail->time_limit_minutes
-                    ? $onlineDetail->time_limit_minutes * 60
+                $duration = $onlineExamDetail->time_limit_minutes
+                    ? $onlineExamDetail->time_limit_minutes * 60
                     : 3600;
 
                 $endsAt = now()->addSeconds($duration);
-                if ($onlineDetail->ends_at && $endsAt->gt($onlineDetail->ends_at)) {
-                    $duration = max(0, now()->diffInSeconds($onlineDetail->ends_at, false));
-                    $endsAt = $onlineDetail->ends_at;
+                if ($onlineExamDetail->ends_at && $endsAt->gt($onlineExamDetail->ends_at)) {
+                    $duration = max(0, now()->diffInSeconds($onlineExamDetail->ends_at, false));
+                    $endsAt = $onlineExamDetail->ends_at;
                 }
 
                 if ($duration <= 0) {
@@ -193,7 +193,7 @@ class OnlineExamSessionController extends Controller
                 return [
                     'session' => $session,
                     'remaining_time' => $duration,
-                    'online_detail' => $onlineDetail->load('booklets', 'exam.category', 'exam.lesson'),
+                    'online_detail' => $onlineExamDetail->load('booklets', 'exam.category', 'exam.lesson'),
                     'answer_keys' => $exam->answerKeys,
                 ];
             });
@@ -218,7 +218,7 @@ class OnlineExamSessionController extends Controller
             return $this->jsonResponseError('Unauthorized', 403);
         }
 
-        $onlineDetail = $session->exam->onlineDetail ?? null;
+        $onlineExamDetail = $session->exam->onlineExamDetail ?? null;
         $remaining = null;
         if ($session->status === 'in_progress' && $session->duration_limit_seconds) {
             $remaining = max(0, $session->duration_limit_seconds - $session->time_used_seconds);
@@ -228,7 +228,7 @@ class OnlineExamSessionController extends Controller
             'session' => $session,
             'remaining_time' => $remaining,
             'is_expired' => $session->status === 'expired',
-            'online_detail' => $onlineDetail,
+            'online_detail' => $onlineExamDetail,
             'answer_keys' => $session->exam->answerKeys ?? null,
         ]);
     }
@@ -301,7 +301,7 @@ class OnlineExamSessionController extends Controller
                     ]);
 
                     $scoreData = $this->scoringService->calculateSessionScore(
-                        $lockedSession->load(['responses', 'exam.onlineDetail.booklets'])
+                        $lockedSession->load(['responses', 'exam.onlineExamDetail.booklets'])
                     );
 
                     $lockedSession->update([
@@ -338,7 +338,7 @@ class OnlineExamSessionController extends Controller
         $now = now();
         $expiredSessions = OnlineExamSession::where('status', 'in_progress')
             ->where(function ($query) use ($now) {
-                $query->whereHas('exam.onlineDetail', function ($q) use ($now) {
+                $query->whereHas('exam.onlineExamDetail', function ($q) use ($now) {
                     $q->where('ends_at', '<', $now);
                 })
                     ->orWhere(function ($q) use ($now) {

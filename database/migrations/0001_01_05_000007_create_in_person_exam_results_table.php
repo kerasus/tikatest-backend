@@ -21,7 +21,7 @@ return new class extends Migration
 
             $table->decimal('raw_score', 7, 2);
             // برای محاسبه از 20 نمره
-            $table->decimal('scaled_score', 7, 2);
+            $table->decimal('scaled_score', 7, 2)->nullable();
 
             $table->foreignId('recorded_by')
                 ->nullable()
