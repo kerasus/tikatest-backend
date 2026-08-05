@@ -71,7 +71,7 @@ class Exam extends Model
         return $this->belongsToMany(AcademicLevel::class, 'exam_academic_levels');
     }
 
-    public function inPersonResults(): HasManyThrough
+    public function inPersonExamResults(): HasManyThrough
     {
         return $this->hasManyThrough(
             InPersonExamResult::class,
@@ -85,7 +85,7 @@ class Exam extends Model
 
     public function grades()
     {
-        return $this->inPersonResults();
+        return $this->inPersonExamResult();
     }
 
     public function onlineExamSessions(): HasMany

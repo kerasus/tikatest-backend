@@ -25,7 +25,15 @@ class InPersonExamResult extends Model
         'z_score' => 'decimal:4',
     ];
 
-    protected $appends = ['exam_id', 'lesson_id', 'class_ids', 'grade_type', 'exam_date', 'is_descriptive', 'is_report_card'];
+    protected $appends = [
+//     'exam_id',
+//     'lesson_id',
+//     'class_ids',
+//     'grade_type',
+//     'exam_date',
+//     'is_descriptive',
+//     'is_report_card'
+    ];
 
     public function inPersonExamDetail(): BelongsTo
     {

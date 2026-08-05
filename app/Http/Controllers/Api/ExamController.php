@@ -88,9 +88,15 @@ class ExamController extends Controller
     public function show(Request $request, $id): JsonResponse
     {
         $exam = Exam::with([
-            'category', 'lesson', 'createdBy',
-            'inPersonExamDetail', 'onlineExamDetail', 'answerKeys',
-            'classes', 'academicLevels', 'inPersonResults',
+            'category',
+             'lesson',
+             'createdBy',
+             'inPersonExamDetail',
+             'onlineExamDetail',
+             'answerKeys',
+             'classes',
+             'academicLevels',
+             'inPersonExamResults.student',
         ])->findOrFail($id);
 
         return $this->jsonResponseOk($exam);

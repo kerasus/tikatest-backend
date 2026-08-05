@@ -85,11 +85,6 @@ class User extends Authenticatable
         return $this->hasMany(InPersonExamResult::class, 'user_id');
     }
 
-    public function grades()
-    {
-        return $this->inPersonExamResults();
-    }
-
     public function examsCreated(): HasMany
     {
         return $this->hasMany(Exam::class, 'created_by');
