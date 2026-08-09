@@ -35,7 +35,7 @@ class LessonController extends Controller
                     'exact' => false,
                 ],
             ],
-            'eagerLoads' => ['academicLevel'],
+            'eagerLoads' => ['academicLevel.academicField.school'],
             'returnModelQuery' => true,
         ];
 
