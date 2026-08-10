@@ -407,7 +407,7 @@ class ExamController extends Controller
         $fileField = $field . '_file';
         if ($request->hasFile($fileField)) {
             $file = $request->file($fileField);
-            $path = $this->storeExamFile($file);
+            $path = $this->storeExamFile($file, $field);
             $content = $content ?? [];
             $content['path'] = $path;
         }
@@ -415,10 +415,10 @@ class ExamController extends Controller
         return $content;
     }
 
-    private function storeExamFile(UploadedFile $file): string
+    private function storeExamFile(UploadedFile $file, string $prefix = ''): string
     {
         $extension = $file->getClientOriginalExtension();
-        $filename = sprintf('exam_%s.%s', time(), $extension);
+        $filename = sprintf('exam_%s_%s.%s', $prefix, uniqid(), $extension);
         $directory = 'exam-files';
 
         return $file->storeAs($directory, $filename, 'public');
