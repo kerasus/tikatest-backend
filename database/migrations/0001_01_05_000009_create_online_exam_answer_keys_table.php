@@ -18,14 +18,17 @@ return new class extends Migration
             // شماره سوال (مثلاً ۱، ۲، ۳...)
             $table->unsignedInteger('question_number');
 
+            // تعداد گزینه‌های سوال
+            $table->unsignedInteger('number_of_choices')->default(4);
+
             // گزینه صحیح
             $table->string('correct_option', 10);
 
             // ضریب یا وزن سوال
             $table->decimal('weight', 5, 2)->default(1.0);
 
-            // آیا این سوال نمره منفی دارد؟ (پیش‌فرض: بله)
-            $table->boolean('has_negative_mark')->default(true);
+            // آیا این سوال نمره منفی دارد؟ (پیش‌فرض: خیر)
+            $table->boolean('has_negative_mark')->default(false);
 
             // آیا این سوال در حال حاضر در محاسبه نمره لحاظ شود؟
             $table->boolean('is_active')->default(true);

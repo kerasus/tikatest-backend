@@ -183,6 +183,7 @@ class ExamController extends Controller
                     OnlineExamAnswerKey::create([
                         'exam_id' => $exam->id,
                         'question_number' => $answerKey['question_number'],
+                        'number_of_choices' => $answerKey['number_of_choices'] ?? 4,
                         'correct_option' => $answerKey['correct_option'],
                         'weight' => $answerKey['weight'] ?? 0,
                         'has_negative_mark' => $answerKey['has_negative_mark'] ?? false,
@@ -221,21 +222,40 @@ class ExamController extends Controller
 
             $exam->update($examData);
 
-            $content = $this->processExamContent($request, 'content');
-            $solution = $this->processExamContent($request, 'solution');
+            $existingDetail = OnlineExamDetail::where('exam_id', $exam->id)->first();
+
+            $updateData = [
+                'starts_at' => $validated['starts_at'],
+                'ends_at' => $validated['ends_at'],
+                'time_limit_minutes' => $validated['time_limit_minutes'] ?? null,
+                'visible_at' => $validated['visible_at'] ?? null,
+                'answers_visible_at' => $validated['answers_visible_at'] ?? null,
+                'created_by' => $request->user()->id,
+            ];
+
+            if ($request->has('content') || $request->hasFile('content_file')) {
+                $content = $this->processExamContent($request, 'content');
+                if (!$request->hasFile('content_file') && $existingDetail?->content && $content) {
+                    if (isset($existingDetail->content['path']) && !isset($content['path'])) {
+                        $content['path'] = $existingDetail->content['path'];
+                    }
+                }
+                $updateData['content'] = $content;
+            }
+
+            if ($request->has('solution') || $request->hasFile('solution_file')) {
+                $solution = $this->processExamContent($request, 'solution');
+                if (!$request->hasFile('solution_file') && $existingDetail?->solution && $solution) {
+                    if (isset($existingDetail->solution['path']) && !isset($solution['path'])) {
+                        $solution['path'] = $existingDetail->solution['path'];
+                    }
+                }
+                $updateData['solution'] = $solution;
+            }
 
             OnlineExamDetail::updateOrCreate(
                 ['exam_id' => $exam->id],
-                [
-                    'starts_at' => $validated['starts_at'],
-                    'ends_at' => $validated['ends_at'],
-                    'time_limit_minutes' => $validated['time_limit_minutes'] ?? null,
-                    'visible_at' => $validated['visible_at'] ?? null,
-                    'answers_visible_at' => $validated['answers_visible_at'] ?? null,
-                    'content' => $content,
-                    'solution' => $solution,
-                    'created_by' => $request->user()->id,
-                ]
+                $updateData
             );
 
             if (isset($validated['booklets'])) {
@@ -258,6 +278,7 @@ class ExamController extends Controller
                     OnlineExamAnswerKey::create([
                         'exam_id' => $exam->id,
                         'question_number' => $answerKey['question_number'],
+                        'number_of_choices' => $answerKey['number_of_choices'] ?? 4,
                         'correct_option' => $answerKey['correct_option'],
                         'weight' => $answerKey['weight'] ?? 0,
                         'has_negative_mark' => $answerKey['has_negative_mark'] ?? false,
@@ -375,6 +396,7 @@ class ExamController extends Controller
             'booklets.*.booklet_scores' => 'nullable|array',
             'answer_keys' => 'nullable|array',
             'answer_keys.*.question_number' => 'required|integer|min:1',
+            'answer_keys.*.number_of_choices' => 'nullable|integer|min:2|max:10',
             'answer_keys.*.correct_option' => 'required|string|max:255',
             'answer_keys.*.weight' => 'nullable|numeric|min:0',
             'answer_keys.*.has_negative_mark' => 'sometimes|boolean',

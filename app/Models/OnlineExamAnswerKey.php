@@ -13,6 +13,7 @@ class OnlineExamAnswerKey extends Model
     protected $fillable = [
         'exam_id',
         'question_number',
+        'number_of_choices',
         'correct_option',
         'weight',
         'has_negative_mark',
@@ -21,6 +22,7 @@ class OnlineExamAnswerKey extends Model
 
     protected $casts = [
         'question_number' => 'integer',
+        'number_of_choices' => 'integer',
         'weight' => 'decimal:2',
         'has_negative_mark' => 'boolean',
         'is_active' => 'boolean',
