@@ -203,6 +203,81 @@ class ExamController extends Controller
         });
     }
 
+    public function updateWithOnlineDetail(Request $request, Exam $exam): JsonResponse
+    {
+        $validated = $this->validateOnlineExam($request);
+
+        return DB::transaction(function () use ($exam, $validated, $request) {
+            $examData = [
+                'name' => $validated['name'],
+                'description' => $validated['description'] ?? null,
+                'lesson_id' => $validated['lesson_id'],
+                'min_passing_score' => $validated['min_passing_score'] ?? null,
+                'max_score' => $validated['max_score'] ?? null,
+                'delivery_mode' => 'online',
+                'exam_category_id' => $validated['exam_category_id'],
+                'created_by' => $validated['created_by'] ?? $request->user()->id,
+            ];
+
+            $exam->update($examData);
+
+            $content = $this->processExamContent($request, 'content');
+            $solution = $this->processExamContent($request, 'solution');
+
+            OnlineExamDetail::updateOrCreate(
+                ['exam_id' => $exam->id],
+                [
+                    'starts_at' => $validated['starts_at'],
+                    'ends_at' => $validated['ends_at'],
+                    'time_limit_minutes' => $validated['time_limit_minutes'] ?? null,
+                    'visible_at' => $validated['visible_at'] ?? null,
+                    'answers_visible_at' => $validated['answers_visible_at'] ?? null,
+                    'content' => $content,
+                    'solution' => $solution,
+                    'created_by' => $request->user()->id,
+                ]
+            );
+
+            if (isset($validated['booklets'])) {
+                $exam->onlineExamDetail?->booklets()->delete();
+                foreach ($validated['booklets'] as $booklet) {
+                    OnlineExamBooklet::create([
+                        'online_exam_id' => $exam->onlineExamDetail->id,
+                        'lesson_id' => $booklet['lesson_id'] ?? null,
+                        'title' => $booklet['title'],
+                        'from_question' => $booklet['from_question'] ?? null,
+                        'to_question' => $booklet['to_question'] ?? null,
+                        'booklet_scores' => $booklet['booklet_scores'] ?? null,
+                    ]);
+                }
+            }
+
+            if (isset($validated['answer_keys'])) {
+                OnlineExamAnswerKey::where('exam_id', $exam->id)->delete();
+                foreach ($validated['answer_keys'] as $answerKey) {
+                    OnlineExamAnswerKey::create([
+                        'exam_id' => $exam->id,
+                        'question_number' => $answerKey['question_number'],
+                        'correct_option' => $answerKey['correct_option'],
+                        'weight' => $answerKey['weight'] ?? 0,
+                        'has_negative_mark' => $answerKey['has_negative_mark'] ?? false,
+                        'is_active' => $answerKey['is_active'] ?? true,
+                    ]);
+                }
+            }
+
+            if (!empty($validated['class_ids'])) {
+                $exam->classes()->sync($validated['class_ids']);
+            }
+
+            if (!empty($validated['academic_level_ids'])) {
+                $exam->academicLevels()->sync($validated['academic_level_ids']);
+            }
+
+            return $this->show($request, $exam->id);
+        });
+    }
+
     public function storeWithInPersonDetailAndResults(Request $request): JsonResponse
     {
         $validated = $this->validateInPersonExam($request);
