@@ -96,7 +96,7 @@ class ExamController extends Controller
              'lesson',
              'createdBy',
              'inPersonExamDetail',
-             'onlineExamDetail',
+             'onlineExamDetail.booklets',
              'answerKeys',
              'classes',
              'academicLevels',
