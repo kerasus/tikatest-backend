@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\UserRoleType;
 use App\Http\Controllers\Controller;
 use App\Models\Exam;
 use App\Models\OnlineExamSession;
@@ -23,9 +24,9 @@ class OnlineExamSessionController extends Controller
     {
         $this->scoringService = $scoringService;
         $this->middleware('auth:sanctum');
-        $this->middleware('admin_or_permission:exams.view')->only(['index', 'show', 'getExamSessions']);
-        $this->middleware('admin_or_permission:exams.create')->only(['store', 'startSession']);
-        $this->middleware('admin_or_permission:exams.update')->only(['update', 'submitAnswer', 'submitSession', 'autoExpire']);
+        $this->middleware('admin_or_permission:exams.view')->only(['index', 'getExamSessions']);
+        $this->middleware('admin_or_permission:exams.create')->only(['store']);
+        $this->middleware('admin_or_permission:exams.update')->only(['update', 'autoExpire']);
         $this->middleware('admin_or_permission:exams.delete')->only(['destroy']);
     }
 
@@ -64,9 +65,76 @@ class OnlineExamSessionController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $session = OnlineExamSession::with(['exam', 'exam.category', 'exam.lesson', 'student', 'responses'])->findOrFail($id);
+        $session = OnlineExamSession::with($this->sessionDetailRelations())->findOrFail($id);
 
-        return $this->jsonResponseOk($session);
+        $user = $request->user();
+        $canViewAllSessions = $user->hasRole(UserRoleType::Admin->value)
+            || $user->hasPermissionTo('exams.view');
+
+        if ($session->student_id !== $user->id && ! $canViewAllSessions) {
+            return $this->jsonResponseError('Unauthorized', 403);
+        }
+
+        return $this->jsonResponseOk($this->buildSessionDetailPayload($session));
+    }
+
+    public function getResultByExamId(Request $request, int $examId): JsonResponse
+    {
+        $request->validate([
+            'attempt_number' => 'sometimes|integer|min:1',
+        ]);
+
+        Exam::where('id', $examId)
+            ->where('delivery_mode', 'online')
+            ->firstOrFail();
+
+        $studentId = auth()->id();
+
+        $query = OnlineExamSession::where('exam_id', $examId)
+            ->where('student_id', $studentId)
+            ->whereIn('status', ['submitted', 'graded'])
+            ->with($this->sessionDetailRelations());
+
+        if ($request->filled('attempt_number')) {
+            $query->where('attempt_number', $request->integer('attempt_number'));
+        } else {
+            $query->orderByDesc('attempt_number');
+        }
+
+        $session = $query->first();
+
+        if (! $session) {
+            return $this->jsonResponseError('No completed session found for this exam', 404);
+        }
+
+        return $this->jsonResponseOk($this->buildSessionDetailPayload($session));
+    }
+
+    private function sessionDetailRelations(): array
+    {
+        return [
+            'exam',
+            'exam.category',
+            'exam.lesson',
+            'exam.onlineExamDetail',
+            'exam.answerKeys',
+            'student',
+            'responses',
+        ];
+    }
+
+    private function buildSessionDetailPayload(OnlineExamSession $session): array
+    {
+        $isCompleted = in_array($session->status, ['submitted', 'graded'], true);
+
+        return [
+            'session' => $session,
+            'remaining_time' => null,
+            'online_detail' => $session->exam->onlineExamDetail,
+            'answer_keys' => $isCompleted
+                ? $this->resultAnswerKeys($session)
+                : $this->progressAnswerKeys($session),
+        ];
     }
 
     public function update(Request $request, OnlineExamSession $onlineExamSession): JsonResponse
@@ -144,15 +212,27 @@ class OnlineExamSessionController extends Controller
                     if ($existingSession->status === 'in_progress') {
                         $existingSession->load(['exam', 'exam.category', 'exam.lesson', 'responses']);
 
+                        $elapsed = $existingSession->started_at
+                            ? $existingSession->started_at->diffInSeconds(now())
+                            : null;
+
+                        $sessionRemaining = $existingSession->duration_limit_seconds && $elapsed !== null
+                            ? max(0, $existingSession->duration_limit_seconds - $elapsed)
+                            : null;
+
+                        $globalRemaining = $onlineExamDetail->ends_at
+                            ? max(0, now()->diffInSeconds($onlineExamDetail->ends_at, false))
+                            : null;
+
+                        $remainingTime = $sessionRemaining !== null && $globalRemaining !== null
+                            ? min($sessionRemaining, $globalRemaining)
+                            : ($sessionRemaining ?? $globalRemaining);
+
                         return [
                             'session' => $existingSession,
-                            'remaining_time' => $existingSession->duration_limit_seconds
-                                ? max(0, $onlineExamDetail->ends_at
-                                    ? now()->diffInSeconds($onlineExamDetail->ends_at, false)
-                                    : $existingSession->duration_limit_seconds - $existingSession->time_used_seconds)
-                                : null,
+                            'remaining_time' => $remainingTime,
                             'online_detail' => $onlineExamDetail->load('booklets', 'exam.category', 'exam.lesson'),
-                            'answer_keys' => $exam->answerKeys,
+                            'answer_keys' => $this->safeAnswerKeys($exam->answerKeys),
                         ];
                     }
                     if (in_array($existingSession->status, ['submitted', 'graded'])) {
@@ -193,8 +273,12 @@ class OnlineExamSessionController extends Controller
                 return [
                     'session' => $session,
                     'remaining_time' => $duration,
-                    'online_detail' => $onlineExamDetail->load('booklets', 'exam.category', 'exam.lesson'),
-                    'answer_keys' => $exam->answerKeys,
+                    'online_detail' => $onlineExamDetail->load(
+                        'booklets',
+                        'exam.category',
+                        'exam.lesson'
+                    ),
+                    'answer_keys' => $this->safeAnswerKeys($exam->answerKeys),
                 ];
             });
 
@@ -229,8 +313,80 @@ class OnlineExamSessionController extends Controller
             'remaining_time' => $remaining,
             'is_expired' => $session->status === 'expired',
             'online_detail' => $onlineExamDetail,
-            'answer_keys' => $session->exam->answerKeys ?? null,
+            'answer_keys' => $this->safeAnswerKeys($session->exam->answerKeys ?? null),
         ]);
+    }
+
+    private function safeAnswerKeys($answerKeys): ?array
+    {
+        if (!$answerKeys) {
+            return null;
+        }
+
+        return $answerKeys->map(function ($key) {
+            return [
+                'id' => $key->id,
+                'exam_id' => $key->exam_id,
+                'question_number' => $key->question_number,
+                'number_of_choices' => $key->number_of_choices,
+                'weight' => $key->weight,
+                'has_negative_mark' => $key->has_negative_mark,
+                'is_active' => $key->is_active,
+            ];
+        })->toArray();
+    }
+
+    private function progressAnswerKeys(OnlineExamSession $session): ?array
+    {
+        $answerKeys = $session->exam->answerKeys;
+
+        if (! $answerKeys) {
+            return null;
+        }
+
+        $responsesByQuestion = $session->responses->keyBy('question_number');
+
+        return $answerKeys->map(function ($key) use ($responsesByQuestion) {
+            $response = $responsesByQuestion->get($key->question_number);
+
+            return [
+                'id' => $key->id,
+                'exam_id' => $key->exam_id,
+                'question_number' => $key->question_number,
+                'number_of_choices' => $key->number_of_choices,
+                'submitted_option' => $response?->submitted_option,
+                'weight' => $key->weight,
+                'has_negative_mark' => $key->has_negative_mark,
+                'is_active' => $key->is_active,
+            ];
+        })->toArray();
+    }
+
+    private function resultAnswerKeys(OnlineExamSession $session): ?array
+    {
+        $answerKeys = $session->exam->answerKeys;
+
+        if (! $answerKeys) {
+            return null;
+        }
+
+        $responsesByQuestion = $session->responses->keyBy('question_number');
+
+        return $answerKeys->map(function ($key) use ($responsesByQuestion) {
+            $response = $responsesByQuestion->get($key->question_number);
+
+            return [
+                'id' => $key->id,
+                'exam_id' => $key->exam_id,
+                'question_number' => $key->question_number,
+                'number_of_choices' => $key->number_of_choices,
+                'correct_option' => $key->correct_option,
+                'submitted_option' => $response?->submitted_option,
+                'weight' => $key->weight,
+                'has_negative_mark' => $key->has_negative_mark,
+                'is_active' => $key->is_active,
+            ];
+        })->toArray();
     }
 
     public function submitAnswer(Request $request, int $sessionId): JsonResponse
@@ -295,9 +451,21 @@ class OnlineExamSessionController extends Controller
                     ->firstOrFail();
 
                 if (! in_array($lockedSession->status, ['submitted', 'graded'], true)) {
+                    $timeUsedSeconds = $lockedSession->started_at
+                        ? (int) $lockedSession->started_at->diffInSeconds(now())
+                        : (int) ($lockedSession->time_used_seconds ?? 0);
+
+                    if ($lockedSession->duration_limit_seconds) {
+                        $timeUsedSeconds = min(
+                            $timeUsedSeconds,
+                            $lockedSession->duration_limit_seconds
+                        );
+                    }
+
                     $lockedSession->update([
                         'status' => 'submitted',
                         'submitted_at' => now(),
+                        'time_used_seconds' => max(0, $timeUsedSeconds),
                     ]);
 
                     $scoreData = $this->scoringService->calculateSessionScore(

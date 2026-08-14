@@ -73,6 +73,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('auto-expire', [OnlineExamSessionController::class, 'autoExpire']);
         Route::post('{examId}/start', [OnlineExamSessionController::class, 'startSession']);
         Route::get('{examId}/sessions', [OnlineExamSessionController::class, 'getExamSessions']);
+        Route::get('{examId}/result', [OnlineExamSessionController::class, 'getResultByExamId']);
         Route::get('{sessionId}/view', [OnlineExamSessionController::class, 'getSession']);
         Route::post('{sessionId}/answer', [OnlineExamSessionController::class, 'submitAnswer']);
         Route::post('{sessionId}/submit', [OnlineExamSessionController::class, 'submitSession']);
@@ -119,6 +120,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('homework/my-submissions', [HomeworkController::class, 'mySubmissions']);
         Route::get('homework-submissions', [HomeworkSubmissionController::class, 'index']);
         Route::get('online-exam-sessions', [OnlineExamSessionController::class, 'mySessions']);
+        Route::get('online-exams/{examId}/result', [OnlineExamSessionController::class, 'getResultByExamId']);
+        Route::get('online-exams', [ExamController::class, 'studentOnlineExams']);
         Route::get('dashboard', [StudentController::class, 'dashboard']);
     });
 

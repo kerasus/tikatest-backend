@@ -7,6 +7,8 @@ use App\Models\Exam;
 use App\Models\InPersonExamDetail;
 use App\Models\InPersonExamResult;
 use App\Models\OnlineExamDetail;
+use App\Models\SchoolClass;
+use App\Models\UserClass;
 use App\Models\OnlineExamBooklet;
 use App\Models\OnlineExamAnswerKey;
 use App\Traits\CommonCRUD;
@@ -62,10 +64,76 @@ class ExamController extends Controller
                     'relationName' => 'academicLevels',
                 ],
             ],
-            'eagerLoads' => ['category', 'lesson', 'createdBy', 'inPersonExamDetail', 'onlineExamDetail', 'answerKeys', 'classes', 'academicLevels'],
+            'eagerLoads' => [
+                'category',
+                'lesson',
+//                'createdBy',
+                'inPersonExamDetail',
+                'onlineExamDetail',
+//                'answerKeys',
+                'classes',
+                'academicLevels'
+            ],
         ];
 
         return $this->commonIndex($request, Exam::class, $config);
+    }
+
+    public function studentOnlineExams(Request $request): JsonResponse
+    {
+        $studentId = auth()->id();
+        $perPage = (int) $request->get('length', 100);
+
+        $classIds = UserClass::where('user_id', $studentId)->pluck('class_id');
+        $academicLevelIds = SchoolClass::whereIn('id', $classIds)->pluck('academic_level_id');
+
+        $query = Exam::query()
+            ->where('delivery_mode', 'online')
+            ->whereHas('onlineExamDetail', function ($detailQuery) {
+                $detailQuery->where(function ($visibleQuery) {
+                    $visibleQuery->whereNull('visible_at')
+                        ->orWhere('visible_at', '<=', now());
+                });
+            })
+            ->where(function ($accessQuery) use ($classIds, $academicLevelIds) {
+                $accessQuery->where(function ($unrestrictedQuery) {
+                    $unrestrictedQuery->whereDoesntHave('classes')
+                        ->whereDoesntHave('academicLevels');
+                })
+                    ->orWhereHas('classes', function ($classQuery) use ($classIds) {
+                        $classQuery->whereIn('classes.id', $classIds);
+                    })
+                    ->orWhereHas('academicLevels', function ($levelQuery) use ($academicLevelIds) {
+                        $levelQuery->whereIn('academic_levels.id', $academicLevelIds);
+                    });
+            })
+            ->with([
+                'category',
+                'lesson',
+                'onlineExamDetail',
+                'onlineExamSessions' => function ($sessionQuery) use ($studentId) {
+                    $sessionQuery->where('student_id', $studentId)
+                        ->orderByDesc('attempt_number');
+                },
+            ])
+            ->orderByDesc('created_at');
+
+        $exams = $query->paginate($perPage);
+
+        $exams->getCollection()->transform(function (Exam $exam) {
+            $latestSession = $exam->onlineExamSessions->first();
+
+            if ($exam->onlineExamDetail) {
+                $exam->onlineExamDetail->makeHidden(['content', 'solution']);
+            }
+
+            $exam->setAttribute('latest_session', $latestSession);
+            $exam->setAttribute('session_status', $latestSession?->status ?? 'not_started');
+
+            return $exam;
+        });
+
+        return $this->jsonResponseOk($exams);
     }
 
     public function store(Request $request): JsonResponse
