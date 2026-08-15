@@ -450,8 +450,8 @@ class ExamController extends Controller
             'answers_visible_at' => 'nullable|date',
             'content' => 'nullable|string',
             'solution' => 'nullable|string',
-            'content_file' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
-            'solution_file' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp',
+            'content_file' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,pdf',
+            'solution_file' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,pdf',
             'class_ids' => 'nullable|array',
             'class_ids.*' => 'exists:classes,id',
             'academic_level_ids' => 'nullable|array',
@@ -575,6 +575,9 @@ class ExamController extends Controller
             $path = $this->storeExamFile($file, $field);
             $content = $content ?? [];
             $content['path'] = $path;
+            if (!isset($content['type'])) {
+                $content['type'] = in_array($file->getClientMimeType(), ['application/pdf']) ? 'pdf' : 'image';
+            }
         }
 
         return $content;
