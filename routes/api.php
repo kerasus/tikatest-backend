@@ -85,6 +85,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('disciplinary/absences', [DisciplinaryRecordController::class, 'viewAbsences']);
     Route::apiResource('homework', HomeworkController::class);
     Route::get('homework/{homework}/submissions', [HomeworkController::class, 'listSubmissions']);
+    Route::post('homework/{homeworkId}/attachments', [HomeworkController::class, 'storeAttachments']);
+    Route::delete('homework/{homeworkId}/attachments/{attachmentId}', [HomeworkController::class, 'destroyAttachment']);
     Route::apiResource('homework-submissions', HomeworkSubmissionController::class);
     Route::apiResource('messages', MessageController::class);
     Route::get('messages/sent', [MessageController::class, 'sent']);

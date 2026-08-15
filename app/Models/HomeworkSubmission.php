@@ -17,16 +17,22 @@ class HomeworkSubmission extends Model
         'submission_text',
         'submission_file',
         'submitted_at',
+        'student_seen_at',
+        'operator_seen_at',
         'grade',
         'feedback',
         'graded_by',
         'graded_at',
+        'content',
     ];
 
     protected $casts = [
         'submitted_at' => 'datetime',
+        'student_seen_at' => 'datetime',
+        'operator_seen_at' => 'datetime',
         'graded_at' => 'datetime',
         'grade' => 'decimal:2',
+        'content' => 'array',
     ];
 
     public function school(): BelongsTo

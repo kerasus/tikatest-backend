@@ -27,6 +27,10 @@ return new class extends Migration
                   "path": "/uploads/exams/quiz1.png"
                 }
                 {
+                  "type": "pdf",
+                  "path": "/uploads/exams/quiz1.png"
+                }
+                {
                   "type": "text",
                   "body": "<p>سوالات...</p>"
                 }

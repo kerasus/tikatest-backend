@@ -53,6 +53,8 @@ class HomeworkSubmissionController extends Controller
             'submission_text' => 'nullable|string',
             'submission_file' => 'nullable|string|max:255',
             'submitted_at' => 'nullable|date',
+            'content' => 'nullable|array',
+            'content.*' => 'array',
         ]);
 
         return $this->commonStore($request, HomeworkSubmission::class);
@@ -74,10 +76,14 @@ class HomeworkSubmissionController extends Controller
             'submission_text' => 'nullable|string',
             'submission_file' => 'nullable|string|max:255',
             'submitted_at' => 'nullable|date',
+            'student_seen_at' => 'nullable|date',
+            'operator_seen_at' => 'nullable|date',
             'grade' => 'nullable|numeric|min:0',
             'feedback' => 'nullable|string',
             'graded_by' => 'nullable|exists:users,id',
             'graded_at' => 'nullable|date',
+            'content' => 'nullable|array',
+            'content.*' => 'array',
         ]);
 
         return $this->commonUpdate($request, $submission);
