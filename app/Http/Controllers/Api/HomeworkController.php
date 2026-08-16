@@ -34,10 +34,7 @@ class HomeworkController extends Controller
         $config = [
             'filterKeys' => ['title'],
             'filterDate' => ['due_date', 'created_at'],
-            'filterKeysExact' => [
-                'class_id',
-                'lesson_id',
-            ],
+            'filterKeysExact' => ['lesson_id'],
             'filterRelationKeys' => [
                 [
                     'requestKey' => 'lesson_name',
@@ -52,19 +49,19 @@ class HomeworkController extends Controller
                     'exact' => false,
                 ],
                 [
-                    'requestKey' => 'field_id',
-                    'relationName' => 'schoolClass.academicLevel.academicField',
-                    'relationColumn' => 'id',
-                    'exact' => true,
-                ],
-                [
                     'requestKey' => 'academic_level_id',
                     'relationName' => 'schoolClass.academicLevel',
                     'relationColumn' => 'id',
                     'exact' => true,
                 ],
             ],
-            'eagerLoads' => ['school', 'lesson', 'schoolClass', 'createdBy', 'owners.student', 'attachments'],
+            'eagerLoads' => [
+                'attachments',
+                'academicLevels',
+                'classes',
+                'createdBy',
+                'lesson',
+            ],
         ];
 
         return $this->commonIndex($request, Homework::class, $config);
@@ -72,13 +69,24 @@ class HomeworkController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        if ($request->has('attachments') && is_string($request->input('attachments'))) {
+            $request->merge(['attachments' => json_decode($request->input('attachments'), true)]);
+        }
+
+        if ($request->has('academic_level_ids') && is_string($request->input('academic_level_ids'))) {
+            $request->merge(['academic_level_ids' => json_decode($request->input('academic_level_ids'), true)]);
+        }
+
+        if ($request->has('class_ids') && is_string($request->input('class_ids'))) {
+            $request->merge(['class_ids' => json_decode($request->input('class_ids'), true)]);
+        }
+
         $request->validate([
             'title' => 'required|string|max:255',
+            'lesson_id' => 'nullable|exists:lessons,id',
             'description' => 'nullable|string',
             'due_date' => 'nullable|date',
             'created_by' => 'nullable|exists:users,id',
-            'content' => 'nullable|array',
-            'content.*' => 'array',
             'academic_level_ids' => 'nullable|array',
             'academic_level_ids.*' => 'exists:academic_levels,id',
             'class_ids' => 'nullable|array',
@@ -90,6 +98,7 @@ class HomeworkController extends Controller
         return DB::transaction(function () use ($request) {
             $homework = Homework::create($request->only([
                 'title',
+                'lesson_id',
                 'description',
                 'due_date',
                 'created_by',
@@ -99,7 +108,7 @@ class HomeworkController extends Controller
             $this->syncHomeworkRelations($homework, $request);
 
             return $this->jsonResponseOk(
-                Homework::with(['attachments', 'academicLevels', 'classes'])
+                Homework::with(['attachments', 'academicLevels', 'classes', 'lesson'])
                     ->findOrFail($homework->id)
             );
         });
@@ -107,20 +116,38 @@ class HomeworkController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $homework = Homework::with(['createdBy', 'submissions', 'attachments', 'academicLevels', 'classes'])->findOrFail($id);
+        $homework = Homework::with([
+            'createdBy',
+            'lesson',
+            'submissions',
+            'attachments',
+            'academicLevels',
+            'classes',
+        ])->findOrFail($id);
 
         return $this->jsonResponseOk($homework);
     }
 
     public function update(Request $request, Homework $homework): JsonResponse
     {
+        if ($request->has('attachments') && is_string($request->input('attachments'))) {
+            $request->merge(['attachments' => json_decode($request->input('attachments'), true)]);
+        }
+
+        if ($request->has('academic_level_ids') && is_string($request->input('academic_level_ids'))) {
+            $request->merge(['academic_level_ids' => json_decode($request->input('academic_level_ids'), true)]);
+        }
+
+        if ($request->has('class_ids') && is_string($request->input('class_ids'))) {
+            $request->merge(['class_ids' => json_decode($request->input('class_ids'), true)]);
+        }
+
         $request->validate([
             'title' => 'sometimes|required|string|max:255',
+            'lesson_id' => 'nullable|exists:lessons,id',
             'description' => 'nullable|string',
             'due_date' => 'nullable|date',
             'created_by' => 'nullable|exists:users,id',
-            'content' => 'nullable|array',
-            'content.*' => 'array',
             'academic_level_ids' => 'nullable|array',
             'academic_level_ids.*' => 'exists:academic_levels,id',
             'class_ids' => 'nullable|array',
@@ -132,6 +159,7 @@ class HomeworkController extends Controller
         return DB::transaction(function () use ($request, $homework) {
             $homework->update($request->only([
                 'title',
+                'lesson_id',
                 'description',
                 'due_date',
                 'created_by',
@@ -141,7 +169,7 @@ class HomeworkController extends Controller
             $this->syncHomeworkRelations($homework, $request);
 
             return $this->jsonResponseOk(
-                Homework::with(['attachments', 'academicLevels', 'classes'])
+                Homework::with(['attachments', 'academicLevels', 'classes', 'lesson'])
                     ->findOrFail($homework->id)
             );
         });
@@ -155,19 +183,70 @@ class HomeworkController extends Controller
     public function myHomework(Request $request): JsonResponse
     {
         $studentId = auth()->id();
-        $perPage = $request->get('length', 20);
 
-        $homeworks = Homework::where(function ($query) use ($studentId) {
-            $query->whereHas('schoolClass.userClassRegistrations', function ($q) use ($studentId) {
-                $q->where('user_id', $studentId);
-            })
-                ->orWhereNull('class_id');
-        })
-            ->with(['lesson', 'schoolClass', 'owners'])
-            ->orderBy('created_at', 'desc')
-            ->paginate($perPage);
+        $config = [
+            'filterKeys' => ['title'],
+            'filterDate' => ['due_date', 'created_at'],
+            'filterKeysExact' => ['lesson_id'],
+            'filterRelationKeys' => [
+                [
+                    'requestKey' => 'lesson_name',
+                    'relationName' => 'lesson',
+                    'relationColumn' => 'name',
+                    'exact' => false,
+                ],
+                [
+                    'requestKey' => 'class_name',
+                    'relationName' => 'schoolClass',
+                    'relationColumn' => 'name',
+                    'exact' => false,
+                ],
+                [
+                    'requestKey' => 'academic_level_id',
+                    'relationName' => 'schoolClass.academicLevel',
+                    'relationColumn' => 'id',
+                    'exact' => true,
+                ],
+            ],
+            'eagerLoads' => [
+                'attachments',
+                'academicLevels',
+                'classes',
+                'createdBy',
+                'lesson',
+            ],
+        ];
 
-        return $this->jsonResponseOk($homeworks);
+        $modelQuery = Homework::query()
+            ->where(function ($query) use ($studentId) {
+                $query->whereHas('classes.userClassRegistrations', function ($classQuery) use ($studentId) {
+                    $classQuery->where('user_id', $studentId);
+                })
+                    ->orWhereHas('academicLevels', function ($levelQuery) use ($studentId) {
+                        $levelQuery->whereHas('classes.userClassRegistrations', function ($classQuery) use ($studentId) {
+                            $classQuery->where('user_id', $studentId);
+                        });
+                    })
+                    ->orWhere(function ($globalHomeworkQuery) {
+                        $globalHomeworkQuery
+                            ->doesntHave('classes')
+                            ->doesntHave('academicLevels');
+                    });
+            });
+
+        $perPage = $request->has('length') ? $request->get('length') : 10;
+
+        $this->buildFilterQuery(
+            $request,
+            $modelQuery,
+            Homework::class,
+            $this->getConfigArray($config)
+        );
+
+        return $this->jsonResponseOk($modelQuery
+            ->latest('due_date')
+            ->paginate($perPage)
+        );
     }
 
     public function mySubmissions(Request $request): JsonResponse
@@ -230,9 +309,7 @@ class HomeworkController extends Controller
     public function submitHomework(Request $request, int $homeworkId): JsonResponse
     {
         $request->validate([
-            'submission_file' => 'nullable|string|max:255',
             'content' => 'nullable|array',
-            'content.*' => 'array',
         ]);
 
         $studentId = auth()->id();
@@ -253,50 +330,21 @@ class HomeworkController extends Controller
             return $this->jsonResponseError('مهلت ارسال تکلیف گذشته است.', 403);
         }
 
-        $owner = HomeworkOwner::where('homework_id', $homeworkId)
-            ->where('user_id', $studentId)
-            ->first();
-
-        if (! $owner) {
-            $owner = HomeworkOwner::create([
+        $submittedAt = now();
+        $submission = HomeworkSubmission::updateOrCreate(
+            [
                 'homework_id' => $homeworkId,
-                'user_id' => $studentId,
-                'read_status' => true,
-                'read_at' => now(),
-            ]);
-        }
+                'student_id' => $studentId,
+            ],
+            [
+                'content' => $request->input('content'),
+                'submitted_at' => $submittedAt,
+                'student_seen_at' => $submittedAt,
+                'operator_seen_at' => null,
+            ]
+        );
 
-        $owner->update([
-            'submission_file' => $request->submission_file,
-            'submitted_at' => now(),
-        ]);
-
-        $content = $request->input('content');
-        if ($content) {
-            HomeworkSubmission::updateOrCreate(
-                [
-                    'homework_id' => $homeworkId,
-                    'student_id' => $studentId,
-                ],
-                [
-                    'school_id' => $homework->school_id,
-                    'content' => $content,
-                    'submitted_at' => now(),
-                ]
-            );
-        }
-
-        return $this->jsonResponseOk($owner);
-    }
-
-    public function listSubmissions(Request $request, int $homeworkId): JsonResponse
-    {
-        $homework = Homework::with(['owners.student', 'submissions.student'])->findOrFail($homeworkId);
-
-        return $this->jsonResponseOk([
-            'homework' => $homework,
-            'submissions' => $homework->submissions,
-        ]);
+        return $this->jsonResponseOk($submission);
     }
 
     public function storeAttachments(Request $request, int $homeworkId): JsonResponse
@@ -339,7 +387,7 @@ class HomeworkController extends Controller
         }
 
         $attachments = $request->input('attachments', []);
-        if (!empty($attachments)) {
+        if (! empty($attachments)) {
             foreach ($attachments as $index => $attachmentData) {
                 $fileKey = "attachments.{$index}.file";
                 $content = $attachmentData;
@@ -370,14 +418,12 @@ class HomeworkController extends Controller
 
     protected function syncHomeworkRelations(Homework $homework, Request $request): void
     {
-        $academicLevelIds = $request->input('academic_level_ids', []);
-        if (!empty($academicLevelIds)) {
-            $homework->academicLevels()->sync($academicLevelIds, false);
+        if ($request->has('academic_level_ids')) {
+            $homework->academicLevels()->sync($request->input('academic_level_ids', []));
         }
 
-        $classIds = $request->input('class_ids', []);
-        if (!empty($classIds)) {
-            $homework->classes()->sync($classIds, false);
+        if ($request->has('class_ids')) {
+            $homework->classes()->sync($request->input('class_ids', []));
         }
     }
 
@@ -391,7 +437,7 @@ class HomeworkController extends Controller
             $path = $this->storeHomeworkAttachmentFile($file);
             $content = $content ?? [];
             $content['path'] = $path;
-            if (!isset($content['type'])) {
+            if (! isset($content['type'])) {
                 $content['type'] = in_array($file->getClientMimeType(), ['application/pdf']) ? 'pdf' : 'image';
             }
         }

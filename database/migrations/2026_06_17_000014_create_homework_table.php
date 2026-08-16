@@ -11,6 +11,7 @@ return new class extends Migration
         Schema::create('homework', function (Blueprint $table) {
             $table->id();
             $table->string('title');
+            $table->foreignId('lesson_id')->nullable()->constrained('lessons')->nullOnDelete();
             $table->text('description')->nullable();
             $table->date('due_date')->nullable();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();

@@ -36,9 +36,10 @@ class HomeworkSubmissionController extends Controller
                 ],
             ],
             'filterKeysExact' => [
+                'homework_id',
                 'graded_by',
             ],
-            'eagerLoads' => ['school', 'homework', 'student', 'gradedBy'],
+            'eagerLoads' => ['homework', 'student'],
         ];
 
         return $this->commonIndex($request, HomeworkSubmission::class, $config);
@@ -47,11 +48,8 @@ class HomeworkSubmissionController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'homework_id' => 'required|exists:homework,id',
             'student_id' => 'required|exists:users,id',
-            'submission_text' => 'nullable|string',
-            'submission_file' => 'nullable|string|max:255',
             'submitted_at' => 'nullable|date',
             'content' => 'nullable|array',
             'content.*' => 'array',
@@ -62,7 +60,7 @@ class HomeworkSubmissionController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $submission = HomeworkSubmission::with(['school', 'homework', 'student', 'gradedBy'])->findOrFail($id);
+        $submission = HomeworkSubmission::with(['homework', 'student'])->findOrFail($id);
 
         return $this->jsonResponseOk($submission);
     }
@@ -70,18 +68,12 @@ class HomeworkSubmissionController extends Controller
     public function update(Request $request, HomeworkSubmission $submission): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
             'homework_id' => 'sometimes|required|exists:homework,id',
             'student_id' => 'sometimes|required|exists:users,id',
-            'submission_text' => 'nullable|string',
-            'submission_file' => 'nullable|string|max:255',
             'submitted_at' => 'nullable|date',
             'student_seen_at' => 'nullable|date',
             'operator_seen_at' => 'nullable|date',
-            'grade' => 'nullable|numeric|min:0',
             'feedback' => 'nullable|string',
-            'graded_by' => 'nullable|exists:users,id',
-            'graded_at' => 'nullable|date',
             'content' => 'nullable|array',
             'content.*' => 'array',
         ]);

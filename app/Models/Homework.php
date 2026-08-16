@@ -15,8 +15,10 @@ class Homework extends Model
 
     protected $fillable = [
         'title',
+        'lesson_id',
         'description',
         'due_date',
+        'class_id',
         'created_by',
     ];
 
@@ -27,6 +29,16 @@ class Homework extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function lesson(): BelongsTo
+    {
+        return $this->belongsTo(Lesson::class);
+    }
+
+    public function schoolClass(): BelongsTo
+    {
+        return $this->belongsTo(SchoolClass::class, 'class_id');
     }
 
     public function submissions(): HasMany
