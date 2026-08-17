@@ -6,7 +6,6 @@ use App\Enums\UserRoleType;
 use App\Http\Controllers\Controller;
 use App\Models\Homework;
 use App\Models\HomeworkAttachment;
-use App\Models\HomeworkOwner;
 use App\Models\HomeworkSubmission;
 use App\Models\UserClass;
 use App\Traits\CommonCRUD;
@@ -214,6 +213,7 @@ class HomeworkController extends Controller
                 'classes',
                 'createdBy',
                 'lesson',
+                'submissions',
             ],
         ];
 
@@ -258,7 +258,7 @@ class HomeworkController extends Controller
             abort(403, 'Access denied');
         }
 
-        $submissions = HomeworkOwner::where('user_id', $studentId)
+        $submissions = HomeworkSubmission::where('student_id', $studentId)
             ->with(['homework.lesson', 'homework.schoolClass'])
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
@@ -270,7 +270,7 @@ class HomeworkController extends Controller
     {
         $studentId = auth()->id();
 
-        $homework = Homework::with(['lesson', 'schoolClass', 'owners'])->findOrFail($homeworkId);
+        $homework = Homework::with(['lesson', 'schoolClass', 'submissions'])->findOrFail($homeworkId);
 
         if ($homework->class_id) {
             $isEnrolled = UserClass::where('user_id', $studentId)
@@ -282,33 +282,20 @@ class HomeworkController extends Controller
             }
         }
 
-        $owner = HomeworkOwner::where('homework_id', $homeworkId)
-            ->where('user_id', $studentId)
+        $submission = HomeworkSubmission::where('homework_id', $homeworkId)
+            ->where('student_id', $studentId)
             ->first();
-
-        if (! $owner) {
-            HomeworkOwner::create([
-                'homework_id' => $homeworkId,
-                'user_id' => $studentId,
-                'read_status' => true,
-                'read_at' => now(),
-            ]);
-        } else {
-            $owner->update([
-                'read_status' => true,
-                'read_at' => now(),
-            ]);
-        }
 
         return $this->jsonResponseOk([
             'homework' => $homework,
-            'submission' => $owner,
+            'submission' => $submission,
         ]);
     }
 
     public function submitHomework(Request $request, int $homeworkId): JsonResponse
     {
         $request->validate([
+            'submission_file' => 'nullable|string|max:255',
             'content' => 'nullable|array',
         ]);
 
@@ -331,12 +318,14 @@ class HomeworkController extends Controller
         }
 
         $submittedAt = now();
+
         $submission = HomeworkSubmission::updateOrCreate(
             [
                 'homework_id' => $homeworkId,
                 'student_id' => $studentId,
             ],
             [
+                'submission_file' => $request->input('submission_file'),
                 'content' => $request->input('content'),
                 'submitted_at' => $submittedAt,
                 'student_seen_at' => $submittedAt,

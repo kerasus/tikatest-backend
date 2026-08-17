@@ -10,8 +10,9 @@ return new class extends Migration
     {
         Schema::create('homework', function (Blueprint $table) {
             $table->id();
-            $table->string('title');
             $table->foreignId('lesson_id')->nullable()->constrained('lessons')->nullOnDelete();
+            $table->foreignId('class_id')->nullable()->constrained('classes')->nullOnDelete();
+            $table->string('title');
             $table->text('description')->nullable();
             $table->date('due_date')->nullable();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
@@ -19,6 +20,8 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['due_date']);
+            $table->index('lesson_id');
+            $table->index('class_id');
         });
     }
 
