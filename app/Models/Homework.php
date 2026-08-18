@@ -15,10 +15,9 @@ class Homework extends Model
 
     protected $fillable = [
         'title',
-        'lesson_id',
         'description',
+        'lesson_id',
         'due_date',
-        'class_id',
         'created_by',
     ];
 

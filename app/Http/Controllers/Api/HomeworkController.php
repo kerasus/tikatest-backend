@@ -270,7 +270,7 @@ class HomeworkController extends Controller
     {
         $studentId = auth()->id();
 
-        $homework = Homework::with(['lesson', 'schoolClass', 'submissions'])->findOrFail($homeworkId);
+        $homework = Homework::with(['lesson', 'schoolClass', 'submissions', 'attachments'])->findOrFail($homeworkId);
 
         if ($homework->class_id) {
             $isEnrolled = UserClass::where('user_id', $studentId)
@@ -295,8 +295,8 @@ class HomeworkController extends Controller
     public function submitHomework(Request $request, int $homeworkId): JsonResponse
     {
         $request->validate([
-            'submission_file' => 'nullable|string|max:255',
-            'content' => 'nullable|array',
+            'submission_file' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,pdf',
+            'content' => 'nullable',
         ]);
 
         $studentId = auth()->id();
@@ -319,14 +319,29 @@ class HomeworkController extends Controller
 
         $submittedAt = now();
 
+        $contentInput = $request->input('content');
+        $normalizedContent = is_array($contentInput) ? $contentInput : (is_string($contentInput) ? json_decode($contentInput, true) : []);
+        $normalizedContent = $normalizedContent ?: [];
+
+        if ($request->hasFile('submission_file')) {
+            $file = $request->file('submission_file');
+            $path = $this->storeHomeworkSubmissionFile($file);
+            $mimeType = $file->getClientMimeType();
+            $type = $mimeType === 'application/pdf' ? 'pdf' : 'image';
+
+            $normalizedContent[] = [
+                'type' => $type,
+                'path' => $path,
+            ];
+        }
+
         $submission = HomeworkSubmission::updateOrCreate(
             [
                 'homework_id' => $homeworkId,
                 'student_id' => $studentId,
             ],
             [
-                'submission_file' => $request->input('submission_file'),
-                'content' => $request->input('content'),
+                'content' => $normalizedContent ?: null,
                 'submitted_at' => $submittedAt,
                 'student_seen_at' => $submittedAt,
                 'operator_seen_at' => null,
@@ -440,5 +455,13 @@ class HomeworkController extends Controller
         $filename = sprintf('%s_%s.%s', $prefix, uniqid(), $extension);
 
         return $file->storeAs('homework-attachments', $filename, 'public');
+    }
+
+    protected function storeHomeworkSubmissionFile(UploadedFile $file): string
+    {
+        $extension = $file->getClientOriginalExtension();
+        $filename = sprintf('homework_submission_%s.%s', uniqid(), $extension);
+
+        return $file->storeAs('homework-submissions', $filename, 'public');
     }
 }

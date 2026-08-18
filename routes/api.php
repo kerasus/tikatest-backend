@@ -84,6 +84,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('disciplinary/absenteeism', [DisciplinaryRecordController::class, 'registerAbsenteeism']);
     Route::get('disciplinary/absences', [DisciplinaryRecordController::class, 'viewAbsences']);
     Route::get('homework/mine', [HomeworkController::class, 'myHomework']);
+    Route::get('homework/{homeworkId}/view', [HomeworkController::class, 'viewHomework']);
     Route::apiResource('homework', HomeworkController::class);
     Route::post('homework/{homeworkId}/submit', [HomeworkController::class, 'submitHomework']);
     Route::post('homework/{homeworkId}/attachments', [HomeworkController::class, 'storeAttachments']);
@@ -117,7 +118,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('study-sessions/{id}', [StudentController::class, 'showStudySession']);
         Route::put('study-sessions/{id}', [StudentController::class, 'updateStudySession']);
         Route::delete('study-sessions/{id}', [StudentController::class, 'destroyStudySession']);
-        Route::get('homework/{homeworkId}/view', [HomeworkController::class, 'viewHomework']);
         Route::get('homework/my-submissions', [HomeworkController::class, 'mySubmissions']);
         Route::get('homework-submissions', [HomeworkSubmissionController::class, 'index']);
         Route::get('online-exam-sessions', [OnlineExamSessionController::class, 'mySessions']);
