@@ -18,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 class ExamController extends Controller
 {
@@ -548,19 +549,77 @@ class ExamController extends Controller
                 ]
             );
         } elseif ($exam->isOnline()) {
+            $existingDetail = OnlineExamDetail::where('exam_id', $exam->id)->first();
+
+            $updateData = [
+                'starts_at' => $request->input('starts_at'),
+                'ends_at' => $request->input('ends_at'),
+                'time_limit_minutes' => $request->input('time_limit_minutes'),
+                'visible_at' => $request->input('visible_at'),
+                'answers_visible_at' => $request->input('answers_visible_at'),
+                'created_by' => $request->user()->id,
+            ];
+
+            $mustDeleteOldContentFile = false;
+            $mustDeleteOldSolutionFile = false;
+            $oldContentPath = null;
+            $oldSolutionPath = null;
+            // ================= مدیریت Content =================
+            if ($request->has('content') || $request->hasFile('content_file')) {
+                // استخراج مسیر فایل قدیمی به صورت امن
+                $oldContent = $existingDetail?->content;
+                $oldContentPath = is_array($oldContent) ? ($oldContent['path'] ?? null) : null;
+
+                // پردازش محتوای جدید (اگر فایل جدید باشد، مسیر جدید را جایگزین می‌کند)
+                $newContent = $this->processExamContent($request, 'content');
+                $newContent = is_array($newContent) ? $newContent : [];
+
+                // اگر فایل جدیدی آپلود نشده، مسیر فایل قدیمی را حفظ کن
+                if (!$request->hasFile('content_file') && $oldContentPath) {
+                    $newContent['path'] = $oldContentPath;
+                }
+
+                $updateData['content'] = !empty($newContent) ? $newContent : null;
+
+                // ⚠️ حذف فایل قدیمی از استوریج فقط در صورتی که فایل جدید آپلود شده باشد
+                if ($request->hasFile('content_file') && $oldContentPath) {
+                    $mustDeleteOldContentFile = true;
+                }
+            }
+
+            // ================= مدیریت Solution =================
+            if ($request->has('solution') || $request->hasFile('solution_file')) {
+                // استخراج مسیر فایل قدیمی به صورت امن
+                $oldSolution = $existingDetail?->solution;
+                $oldSolutionPath = is_array($oldSolution) ? ($oldSolution['path'] ?? null) : null;
+
+                // پردازش محتوای جدید
+                $newSolution = $this->processExamContent($request, 'solution');
+                $newSolution = is_array($newSolution) ? $newSolution : [];
+
+                // اگر فایل جدیدی آپلود نشده، مسیر فایل قدیمی را حفظ کن
+                if (!$request->hasFile('solution_file') && $oldSolutionPath) {
+                    $newSolution['path'] = $oldSolutionPath;
+                }
+
+                $updateData['solution'] = !empty($newSolution) ? $newSolution : null;
+
+                // ⚠️ حذف فایل قدیمی از استوریج فقط در صورتی که فایل جدید آپلود شده باشد
+                if ($request->hasFile('solution_file') && $oldSolutionPath) {
+                    $mustDeleteOldSolutionFile = true;
+                }
+            }
+
             OnlineExamDetail::updateOrCreate(
                 ['exam_id' => $exam->id],
-                [
-                    'starts_at' => $request->input('starts_at'),
-                    'ends_at' => $request->input('ends_at'),
-                    'time_limit_minutes' => $request->input('time_limit_minutes'),
-                    'visible_at' => $request->input('visible_at'),
-                    'answers_visible_at' => $request->input('answers_visible_at'),
-                    'content' => $request->input('content'),
-                    'solution' => $request->input('solution'),
-                    'created_by' => $request->user()->id,
-                ]
+                $updateData
             );
+            if ($mustDeleteOldContentFile) {
+                Storage::disk('public')->delete($oldContentPath);
+            }
+            if ($mustDeleteOldSolutionFile) {
+                Storage::disk('public')->delete($oldSolutionPath);
+            }
         }
     }
 

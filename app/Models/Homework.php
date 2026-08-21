@@ -19,6 +19,8 @@ class Homework extends Model
         'lesson_id',
         'due_date',
         'created_by',
+        'sort_order',
+        'content',
     ];
 
     protected $casts = [

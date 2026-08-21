@@ -14,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class HomeworkController extends Controller
 {
@@ -208,7 +209,7 @@ class HomeworkController extends Controller
                 ],
             ],
             'eagerLoads' => [
-                'attachments',
+//                'attachments',
                 'academicLevels',
                 'classes',
                 'createdBy',
@@ -286,6 +287,18 @@ class HomeworkController extends Controller
             ->where('student_id', $studentId)
             ->first();
 
+        if (! $submission) {
+            $submission = HomeworkSubmission::create([
+                'homework_id' => $homeworkId,
+                'student_id' => $studentId,
+                'student_seen_at' => now(),
+            ]);
+        } elseif (! $submission->student_seen_at) {
+            $submission->update([
+                'student_seen_at' => now(),
+            ]);
+        }
+
         return $this->jsonResponseOk([
             'homework' => $homework,
             'submission' => $submission,
@@ -319,6 +332,14 @@ class HomeworkController extends Controller
 
         $submittedAt = now();
 
+        $existingSubmission = HomeworkSubmission::where('homework_id', $homeworkId)
+            ->where('student_id', $studentId)
+            ->first();
+        $oldFilePath = null;
+        if ($existingSubmission && is_array($existingSubmission->content)) {
+            $oldFilePath = $existingSubmission->content['path'] ?? null;
+        }
+
         $contentInput = $request->input('content');
         $normalizedContent = is_array($contentInput) ? $contentInput : (is_string($contentInput) ? json_decode($contentInput, true) : []);
         $normalizedContent = $normalizedContent ?: [];
@@ -329,7 +350,7 @@ class HomeworkController extends Controller
             $mimeType = $file->getClientMimeType();
             $type = $mimeType === 'application/pdf' ? 'pdf' : 'image';
 
-            $normalizedContent[] = [
+            $normalizedContent = [
                 'type' => $type,
                 'path' => $path,
             ];
@@ -347,6 +368,10 @@ class HomeworkController extends Controller
                 'operator_seen_at' => null,
             ]
         );
+
+        if ($oldFilePath && Storage::disk('public')->exists($oldFilePath)) {
+            Storage::disk('public')->delete($oldFilePath);
+        }
 
         return $this->jsonResponseOk($submission);
     }
@@ -386,7 +411,14 @@ class HomeworkController extends Controller
     protected function syncAttachments(Homework $homework, Request $request): void
     {
         $existing = $homework->attachments()->get();
+        $oldFilePaths = [];
+
+        // 1️⃣ استخراج مسیر فایل‌های قدیمی قبل از حذف از دیتابیس
         foreach ($existing as $att) {
+            if (is_array($att->content) && isset($att->content['path'])) {
+                $oldFilePaths[] = $att->content['path'];
+            }
+            // حذف رکورد از دیتابیس
             $att->delete();
         }
 
@@ -417,6 +449,12 @@ class HomeworkController extends Controller
                 'content' => $content,
                 'sort_order' => 0,
             ]);
+        }
+
+        foreach ($oldFilePaths as $path) {
+            if ($path && Storage::disk('public')->exists($path)) {
+                Storage::disk('public')->delete($path);
+            }
         }
     }
 

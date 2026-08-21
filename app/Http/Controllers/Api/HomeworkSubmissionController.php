@@ -81,6 +81,32 @@ class HomeworkSubmissionController extends Controller
         return $this->commonUpdate($request, $submission);
     }
 
+    public function markAsSeen(HomeworkSubmission $homeworkSubmission): JsonResponse
+    {
+        if ($homeworkSubmission->operator_seen_at === null) {
+//            $homeworkSubmission->operator_seen_at = now();
+//            $homeworkSubmission->save();
+            $homeworkSubmission->update([
+                'operator_seen_at' => now(),
+            ]);
+        }
+
+        return $this->jsonResponseOk($homeworkSubmission->fresh());
+    }
+
+    public function sendFeedback(Request $request, HomeworkSubmission $homeworkSubmission): JsonResponse
+    {
+        $request->validate([
+            'feedback' => 'nullable|string',
+        ]);
+
+        $homeworkSubmission->update([
+            'feedback' => $request->input('feedback'),
+        ]);
+
+        return $this->jsonResponseOk($homeworkSubmission);
+    }
+
     public function destroy(HomeworkSubmission $submission): JsonResponse
     {
         return $this->commonDestroy($submission);
