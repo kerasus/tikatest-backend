@@ -53,6 +53,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('exams/store-with-online-detail', [ExamController::class, 'storeWithOnlineDetail']);
     Route::post('exams/update-with-online-detail/{exam}', [ExamController::class, 'updateWithOnlineDetail']);
     Route::post('exams/store-with-inperson-results', [ExamController::class, 'storeWithInPersonDetailAndResults']);
+    Route::get('exams/{exam}/students', [ExamController::class, 'examStudents']);
     Route::apiResource('exam-categories', ExamCategoryController::class);
     Route::apiResource('in-person-exam-details', InPersonExamDetailController::class);
     Route::apiResource('in-person-exam-results', InPersonExamResultController::class);

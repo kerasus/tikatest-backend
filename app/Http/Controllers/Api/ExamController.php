@@ -8,6 +8,7 @@ use App\Models\InPersonExamDetail;
 use App\Models\InPersonExamResult;
 use App\Models\OnlineExamDetail;
 use App\Models\SchoolClass;
+use App\Models\User;
 use App\Models\UserClass;
 use App\Models\OnlineExamBooklet;
 use App\Models\OnlineExamAnswerKey;
@@ -27,7 +28,7 @@ class ExamController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('admin_or_permission:exams.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:exams.view')->only(['index', 'show', 'examStudents']);
         $this->middleware('admin_or_permission:exams.create')->only(['store']);
         $this->middleware('admin_or_permission:exams.update')->only(['update']);
         $this->middleware('admin_or_permission:exams.delete')->only(['destroy']);
@@ -340,7 +341,6 @@ class ExamController extends Controller
 
         return $this->jsonResponseOk($exams);
     }
-
     private function extractScore ($inPersonResult = null, $onlineSession = null): ?array
     {
         if ($inPersonResult) {
@@ -398,6 +398,37 @@ class ExamController extends Controller
         ])->findOrFail($id);
 
         return $this->jsonResponseOk($exam);
+    }
+
+    public function examStudents(Request $request, $id): JsonResponse
+    {
+        $exam = Exam::with(['classes', 'academicLevels'])->findOrFail($id);
+
+        $classIds = $exam->classes->pluck('id')->toArray();
+        $academicLevelIds = $exam->academicLevels->pluck('id')->toArray();
+
+        $query = User::query()
+            ->whereHas('roles', fn ($q) => $q->where('name', 'student'))
+            ->where(function ($studentQuery) use ($classIds, $academicLevelIds) {
+                if (!empty($classIds)) {
+                    $studentQuery->whereHas('userClassRegistrations', function ($registrationQuery) use ($classIds) {
+                        $registrationQuery->whereIn('user_class.class_id', $classIds);
+                    });
+                }
+
+                if (!empty($academicLevelIds)) {
+                    $studentQuery->orWhereHas('userClassRegistrations', function ($registrationQuery) use ($academicLevelIds) {
+                        $registrationQuery->whereHas('schoolClass', function ($classQuery) use ($academicLevelIds) {
+                            $classQuery->whereIn('classes.academic_level_id', $academicLevelIds);
+                        });
+                    });
+                }
+            })
+            ->with(['userClassRegistrations.schoolClass', 'studentProfile']);
+
+        $perPage = (int) $request->get('length', 1000);
+
+        return $this->jsonResponseOk($query->paginate($perPage));
     }
 
     public function update(Request $request, Exam $exam): JsonResponse
@@ -730,8 +761,8 @@ class ExamController extends Controller
             'academic_level_ids.*' => 'exists:academic_levels,id',
             'results' => 'required|array|min:1',
             'results.*.user_id' => 'required|exists:users,id',
-            'results.*.raw_score' => 'nullable|numeric|min:0',
-            'results.*.scaled_score' => 'nullable|numeric|min:0',
+            'results.*.raw_score' => 'required|numeric|min:0',
+            'results.*.scaled_score' => 'required|numeric|min:0',
             'results.*.z_score' => 'nullable|numeric',
         ];
 
