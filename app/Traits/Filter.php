@@ -128,10 +128,10 @@ trait Filter
         }
     }
 
-    private function filterByDate($request, &$modelQuery, &$filterDate)
-    {
+    private function filterByDate($request, & $modelQuery, &$filterDate) {
 
-        $filterDate[] = 'created_at';
+        $filterDate []= 'created_at';
+        $filterDate = array_unique($filterDate);
 
         foreach ($filterDate as $ke => $value) {
 
@@ -143,34 +143,21 @@ trait Filter
                 $tillDateKey = $value.'_till_date';
             }
 
-            $sinceDate = $request->get($sinceDateKey);
-            $tillDate = $request->get($tillDateKey);
+            $sinceDate  = $request->get($sinceDateKey);
+            $tillDate   = $request->get($tillDateKey);
+
             if (strlen($sinceDate) > 0 && strlen($tillDate) > 0) {
-                $sinceDate = Carbon::parse($sinceDate)->format('Y-m-d H:m:s');
-                $tillDate = Carbon::parse($tillDate)->format('Y-m-d H:m:s');
+                $sinceDate  = Carbon::parse($sinceDate)->setTimezone(config('app.timezone', 'UTC'))->format('Y-m-d H:i:s');
+                $tillDate   = Carbon::parse($tillDate)->setTimezone(config('app.timezone', 'UTC'))->format('Y-m-d H:i:s');
                 $modelQuery = $modelQuery->whereBetween($value, [$sinceDate, $tillDate]);
-            } elseif (strlen($sinceDate) > 0) {
-                $sinceDate = Carbon::parse($sinceDate)->format('Y-m-d H:m:s');
+            } else if (strlen($sinceDate) > 0) {
+                $sinceDate  = Carbon::parse($sinceDate)->setTimezone(config('app.timezone', 'UTC'))->format('Y-m-d H:i:s');
                 $modelQuery = $modelQuery->where($value, '>=', $sinceDate);
-            } elseif (strlen($tillDate) > 0) {
-                $tillDate = Carbon::parse($tillDate)->format('Y-m-d H:m:s');
+            } else if (strlen($tillDate) > 0) {
+                $tillDate   = Carbon::parse($tillDate)->setTimezone(config('app.timezone', 'UTC'))->format('Y-m-d H:i:s');
                 $modelQuery = $modelQuery->where($value, '<=', $tillDate);
             }
         }
-
-        //        $createdSinceDate  = $request->get('createdSinceDate');
-        //        $createdTillDate   = $request->get('createdTillDate');
-        //        if (strlen($createdSinceDate) > 0 && strlen($createdTillDate) > 0) {
-        //            $createdSinceDate = Carbon::parse($createdSinceDate)->format('Y-m-d H:m:s');
-        //            $createdTillDate = Carbon::parse($createdTillDate)->format('Y-m-d H:m:s');
-        //            $modelQuery       = $modelQuery->whereBetween('created_at', [$createdSinceDate, $createdTillDate]);
-        //        } else if (strlen($createdSinceDate) > 0) {
-        //            $createdSinceDate = Carbon::parse($createdSinceDate)->format('Y-m-d H:m:s');
-        //            $modelQuery       = $modelQuery->where('created_at', '>=', $createdSinceDate);
-        //        } else if (strlen($createdTillDate) > 0) {
-        //            $createdTillDate = Carbon::parse($createdTillDate)->format('Y-m-d H:m:s');
-        //            $modelQuery       = $modelQuery->where('created_at', '<=', $createdTillDate);
-        //        }
     }
 
     private function checkOwner($userOwnerId)

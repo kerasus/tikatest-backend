@@ -37,11 +37,6 @@ class Homework extends Model
         return $this->belongsTo(Lesson::class);
     }
 
-    public function schoolClass(): BelongsTo
-    {
-        return $this->belongsTo(SchoolClass::class, 'class_id');
-    }
-
     public function submissions(): HasMany
     {
         return $this->hasMany(HomeworkSubmission::class);

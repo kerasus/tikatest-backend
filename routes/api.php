@@ -121,6 +121,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('study-sessions/{id}', [StudentController::class, 'updateStudySession']);
         Route::delete('study-sessions/{id}', [StudentController::class, 'destroyStudySession']);
         Route::get('homework/my-submissions', [HomeworkController::class, 'mySubmissions']);
+        Route::get('my-exams', [ExamController::class, 'myExams']);
         Route::get('homework-submissions', [HomeworkSubmissionController::class, 'index']);
         Route::put('homework-submissions/{homeworkSubmission}/feedback', [HomeworkSubmissionController::class, 'sendFeedback']);
         Route::get('online-exam-sessions', [OnlineExamSessionController::class, 'mySessions']);

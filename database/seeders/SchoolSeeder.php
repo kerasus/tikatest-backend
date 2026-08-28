@@ -19,15 +19,15 @@ class SchoolSeeder extends Seeder
                 'type' => 'school',
                 'account_url' => 'https://school1.example.com/account',
             ],
-            [
-                'code' => 'SCH-002',
-                'name' => 'مدرسه نمونه دوم',
-                'address' => 'تهران، خیابان ولیعصر، پلاک 2',
-                'website' => 'https://school2.example.com',
-                'logo_url' => '/uploads/schools/school2-logo.png',
-                'type' => 'school',
-                'account_url' => 'https://school2.example.com/account',
-            ],
+//            [
+//                'code' => 'SCH-002',
+//                'name' => 'مدرسه نمونه دوم',
+//                'address' => 'تهران، خیابان ولیعصر، پلاک 2',
+//                'website' => 'https://school2.example.com',
+//                'logo_url' => '/uploads/schools/school2-logo.png',
+//                'type' => 'school',
+//                'account_url' => 'https://school2.example.com/account',
+//            ],
         ];
 
         foreach ($schools as $school) {

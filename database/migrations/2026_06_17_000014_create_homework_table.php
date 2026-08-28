@@ -20,7 +20,6 @@ return new class extends Migration
 
             $table->index(['due_date']);
             $table->index('lesson_id');
-            $table->index('class_id');
         });
     }
 

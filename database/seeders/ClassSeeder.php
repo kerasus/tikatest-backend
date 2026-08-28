@@ -12,7 +12,11 @@ class ClassSeeder extends Seeder
     {
         $levels = AcademicLevel::with('academicField.school')->get();
 
-        $classSuffixes = ['الف', 'ب', 'ج'];
+        $classSuffixes = [
+            'الف',
+            'ب',
+//            'ج'
+        ];
 
         foreach ($levels as $level) {
             $school = $level->academicField->school ?? null;

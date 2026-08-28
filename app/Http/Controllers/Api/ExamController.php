@@ -137,6 +137,231 @@ class ExamController extends Controller
         return $this->jsonResponseOk($exams);
     }
 
+    public function myExams(Request $request): JsonResponse
+    {
+        $studentId = auth()->id();
+
+        $config = [
+            'filterKeys' => [
+                'name',
+                'description',
+            ],
+
+            'filterDate' => [
+                'created_at',
+            ],
+
+            'filterKeysExact' => [
+                'lesson_id',
+                'exam_category_id',
+                'delivery_mode',
+            ],
+
+            'filterRelationKeys' => [
+                [
+                    'requestKey' => 'lesson_name',
+                    'relationName' => 'lesson',
+                    'relationColumn' => 'name',
+                    'exact' => false,
+                ],
+                [
+                    'requestKey' => 'category_name',
+                    'relationName' => 'category',
+                    'relationColumn' => 'name',
+                    'exact' => false,
+                ],
+                [
+                    'requestKey' => 'academic_level_id',
+                    'relationName' => 'academicLevels',
+                    'relationColumn' => 'academic_levels.id',
+                    'exact' => true,
+                ],
+                [
+                    'requestKey' => 'class_id',
+                    'relationName' => 'classes',
+                    'relationColumn' => 'classes.id',
+                    'exact' => true,
+                ],
+            ],
+
+            'eagerLoads' => [
+                'category',
+                'lesson',
+                'academicLevels',
+                'classes',
+            ],
+        ];
+
+        $modelQuery = Exam::query()
+            /*
+             * آزمون‌هایی که دانش‌آموز اجازه دیدن آن‌ها را دارد:
+             *
+             * 1. آزمون عمومی:
+             *    به هیچ کلاس یا پایه‌ای متصل نشده باشد.
+             *
+             * 2. آزمون مخصوص کلاس دانش‌آموز
+             *
+             * 3. آزمون مخصوص پایه‌ای که دانش‌آموز در کلاس‌های آن پایه ثبت‌نام است
+             */
+            ->where(function ($query) use ($studentId) {
+                $query
+                    ->whereHas('classes.userClassRegistrations', function ($classQuery) use ($studentId) {
+                        $classQuery->where('user_id', $studentId);
+                    })
+                    ->orWhereHas('academicLevels.classes.userClassRegistrations', function ($classQuery) use ($studentId) {
+                        $classQuery->where('user_id', $studentId);
+                    })
+                    ->orWhere(function ($globalExamQuery) {
+                        $globalExamQuery
+                            ->doesntHave('classes')
+                            ->doesntHave('academicLevels');
+                    });
+            });
+
+        /*
+         * اعمال فیلترها، جستجوها و eager loadingهای عمومی
+         */
+        $this->buildFilterQuery(
+            $request,
+            $modelQuery,
+            Exam::class,
+            $this->getConfigArray($config)
+        );
+
+        /*
+         * فقط نتیجه‌ی همین دانش‌آموز را لود می‌کنیم.
+         *
+         * برای آزمون حضوری:
+         * نتیجه از طریق in_person_exam_details به in_person_exam_results
+         * مرتبط است؛ بنابراین رابطه Exam باید به‌درستی تعریف شده باشد.
+         */
+        $modelQuery
+            ->with([
+                'inPersonExamDetail',
+
+                'inPersonExamResults' => function ($resultQuery) use ($studentId) {
+                    $resultQuery
+                        ->where('user_id', $studentId)
+                        ->latest('created_at');
+                },
+
+                'onlineExamDetail',
+
+                'onlineExamSessions' => function ($sessionQuery) use ($studentId) {
+                    $sessionQuery
+                        ->where('student_id', $studentId)
+                        ->latest('attempt_number');
+                },
+            ])
+            ->latest('created_at');
+
+        $perPage = (int) $request->get('length', 10);
+
+        $exams = $modelQuery->paginate($perPage);
+
+        $exams->getCollection()->transform(function (Exam $exam) {
+            $latestInPersonResult = $exam->inPersonExamResults->first();
+            $latestOnlineSession = $exam->onlineExamSessions->first();
+
+            $result = null;
+
+            if ($exam->delivery_mode === 'in_person') {
+                if ($latestInPersonResult) {
+                    $result = [
+                        'type' => 'in_person',
+                        'status' => 'recorded',
+                        'has_result' => true,
+
+                        'raw_score' => $latestInPersonResult->raw_score,
+                        'scaled_score' => $latestInPersonResult->scaled_score,
+                        'z_score' => $latestInPersonResult->z_score,
+
+                        'recorded_at' => $latestInPersonResult->created_at,
+                    ];
+                }
+            } elseif ($exam->delivery_mode === 'online') {
+                if ($latestOnlineSession) {
+                    $hasScore = $latestOnlineSession->score !== null
+                        && $latestOnlineSession->status === 'graded';
+
+                    $result = [
+                        'type' => 'online',
+                        'status' => $latestOnlineSession->status,
+                        'has_result' => $hasScore,
+
+                        'score' => $hasScore
+                            ? $latestOnlineSession->score
+                            : null,
+
+                        'percent' => $hasScore
+                            ? $latestOnlineSession->percent
+                            : null,
+
+                        'attempt_number' => $latestOnlineSession->attempt_number,
+                        'started_at' => $latestOnlineSession->started_at,
+                        'submitted_at' => $latestOnlineSession->submitted_at,
+                    ];
+                }
+            }
+
+            /*
+             * اطلاعات اضافی را به شکل یکسان برای API اضافه می‌کنیم.
+             */
+            $exam->setAttribute('my_result', $result);
+
+            /*
+             * اگر آزمون نتیجه نداشته باشد، مقدار score برابر null است.
+             * این باعث می‌شود آزمون همچنان در لیست باقی بماند.
+             */
+            $exam->setAttribute(
+                'score',
+                $this->extractScore(
+                    $latestInPersonResult,
+                    $latestOnlineSession
+                )
+            );
+
+            $exam->setAttribute(
+                'has_result',
+                $result !== null && ($result['has_result'] ?? false)
+            );
+
+            /*
+             * چون نتیجه داخل my_result قرار گرفت،
+             * بهتر است رابطه‌های خام در خروجی نیایند.
+             */
+            $exam->makeHidden([
+                'inPersonExamResults',
+                'onlineExamSessions',
+            ]);
+
+            return $exam;
+        });
+
+        return $this->jsonResponseOk($exams);
+    }
+
+    private function extractScore ($inPersonResult = null, $onlineSession = null): ?array
+    {
+        if ($inPersonResult) {
+            return [
+                'raw_score' => $inPersonResult->raw_score,
+                'scaled_score' => $inPersonResult->scaled_score,
+                'z_score' => $inPersonResult->z_score,
+            ];
+        }
+
+        if ($onlineSession) {
+            return [
+                'score' => $onlineSession->score,
+                'percent' => $onlineSession->percent,
+                'status' => $onlineSession->status,
+            ];
+        }
+
+        return null;
+    }
+
     public function store(Request $request): JsonResponse
     {
         $validated = $this->validateExam($request);
