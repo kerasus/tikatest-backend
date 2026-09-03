@@ -19,6 +19,9 @@ return new class extends Migration
             // آیا آزمون توصیفی است؟ (خیلی خوب، خوب، ...) یا عددی؟
             $table->boolean('is_descriptive')->default(false);
 
+            // زمان نمایش نتایج به دانش‌آموزان (نتیجه پس از این زمان برای دانش‌آموز قابل مشاهده است)
+            $table->timestamp('results_visible_at')->nullable();
+
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
 

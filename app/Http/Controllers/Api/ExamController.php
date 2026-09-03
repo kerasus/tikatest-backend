@@ -646,6 +646,7 @@ class ExamController extends Controller
                 'exam_id' => $exam->id,
                 'held_at' => $validated['held_at'],
                 'is_descriptive' => $validated['is_descriptive'] ?? false,
+                'results_visible_at' => $validated['results_visible_at'] ?? null,
                 'created_by' => $request->user()->id,
             ]);
 
@@ -755,6 +756,7 @@ class ExamController extends Controller
             'created_by' => 'nullable|exists:users,id',
             'held_at' => 'required|date',
             'is_descriptive' => 'sometimes|boolean',
+            'results_visible_at' => 'nullable|date',
             'class_ids' => 'nullable|array',
             'class_ids.*' => 'exists:classes,id',
             'academic_level_ids' => 'nullable|array',
@@ -776,6 +778,7 @@ class ExamController extends Controller
                 'exam_id' => $exam->id,
                 'held_at' => $request->input('held_at'),
                 'is_descriptive' => $request->boolean('is_descriptive', false),
+                'results_visible_at' => $request->input('results_visible_at'),
                 'created_by' => $request->user()->id,
             ]);
         } elseif ($exam->isOnline()) {
@@ -801,6 +804,7 @@ class ExamController extends Controller
                 [
                     'held_at' => $request->input('held_at'),
                     'is_descriptive' => $request->boolean('is_descriptive', false),
+                    'results_visible_at' => $request->input('results_visible_at'),
                     'created_by' => $request->user()->id,
                 ]
             );

@@ -15,12 +15,14 @@ class InPersonExamDetail extends Model
         'exam_id',
         'held_at',
         'is_descriptive',
+        'results_visible_at',
         'created_by',
     ];
 
     protected $casts = [
         'held_at' => 'date',
         'is_descriptive' => 'boolean',
+        'results_visible_at' => 'datetime',
     ];
 
     public function exam(): BelongsTo
