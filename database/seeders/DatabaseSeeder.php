@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             AcademicLevelSeeder::class,
             LessonSeeder::class,
             ClassSeeder::class,
+            AcademicTermSeeder::class,
             ManagerSeeder::class,
             TeacherSeeder::class,
             ExamCategorySeeder::class,

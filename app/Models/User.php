@@ -67,7 +67,7 @@ class User extends Authenticatable
 
     public function userClassRegistrations(): HasMany
     {
-        return $this->hasMany(UserClass::class, 'user_id');
+        return $this->hasMany(TermEnrollment::class, 'user_id');
     }
 
     public function studentProfile(): HasOne
@@ -83,6 +83,11 @@ class User extends Authenticatable
     public function inPersonExamResults(): HasMany
     {
         return $this->hasMany(InPersonExamResult::class, 'user_id');
+    }
+
+    public function termEnrollments(): HasMany
+    {
+        return $this->hasMany(TermEnrollment::class, 'student_id');
     }
 
     public function examsCreated(): HasMany

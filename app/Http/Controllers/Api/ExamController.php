@@ -8,8 +8,10 @@ use App\Models\InPersonExamDetail;
 use App\Models\InPersonExamResult;
 use App\Models\OnlineExamDetail;
 use App\Models\SchoolClass;
+use App\Models\AcademicTerm;
+use App\Models\ExamCategoryTermLimit;
 use App\Models\User;
-use App\Models\UserClass;
+use App\Models\TermEnrollment;
 use App\Models\OnlineExamBooklet;
 use App\Models\OnlineExamAnswerKey;
 use App\Traits\CommonCRUD;
@@ -20,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class ExamController extends Controller
 {
@@ -86,7 +89,7 @@ class ExamController extends Controller
         $studentId = auth()->id();
         $perPage = (int) $request->get('length', 100);
 
-        $classIds = UserClass::where('user_id', $studentId)->pluck('class_id');
+        $classIds = TermEnrollment::where('user_id', $studentId)->pluck('class_id');
         $academicLevelIds = SchoolClass::whereIn('id', $classIds)->pluck('academic_level_id');
 
         $query = Exam::query()
@@ -369,6 +372,15 @@ class ExamController extends Controller
         return DB::transaction(function () use ($request, $validated) {
             $exam = Exam::create($validated);
 
+            if ($exam->term_id && ($validated['occurrence'] ?? null) === null) {
+                $exam->occurrence = $this->enforceTermOccurrence(
+                    $exam->id,
+                    $exam->exam_category_id,
+                    $exam->term_id
+                );
+                $exam->save();
+            }
+
             $this->storeDetail($exam, $request);
 
             if ($request->filled('class_ids')) {
@@ -395,6 +407,8 @@ class ExamController extends Controller
              'classes',
              'academicLevels',
              'inPersonExamResults.student',
+            'term.school',
+            'term.parentTerm',
         ])->findOrFail($id);
 
         return $this->jsonResponseOk($exam);
@@ -412,7 +426,7 @@ class ExamController extends Controller
             ->where(function ($studentQuery) use ($classIds, $academicLevelIds) {
                 if (!empty($classIds)) {
                     $studentQuery->whereHas('userClassRegistrations', function ($registrationQuery) use ($classIds) {
-                        $registrationQuery->whereIn('user_class.class_id', $classIds);
+                        $registrationQuery->whereIn('term_enrollments.class_id', $classIds);
                     });
                 }
 
@@ -437,6 +451,22 @@ class ExamController extends Controller
 
         return DB::transaction(function () use ($exam, $validated, $request) {
             $exam->update($validated);
+
+            if ($request->filled('term_id')) {
+                $exam->term_id = $request->input('term_id');
+            } elseif ($validated['term_id'] ?? null) {
+                $exam->term_id = $validated['term_id'];
+            }
+            if (array_key_exists('occurrence', $validated) && $validated['occurrence'] !== null) {
+                $exam->occurrence = $validated['occurrence'];
+            } elseif ($exam->term_id) {
+                $exam->occurrence = $this->enforceTermOccurrence(
+                    $exam->id,
+                    $exam->exam_category_id,
+                    $exam->term_id
+                );
+            }
+            $exam->save();
 
             $this->updateDetail($exam, $request);
 
@@ -474,6 +504,15 @@ class ExamController extends Controller
             ];
 
             $exam = Exam::create($examData);
+
+            $occurrence = $this->enforceTermOccurrence(
+                $exam->id,
+                $validated['exam_category_id'],
+                $validated['term_id'] ?? null
+            );
+            $exam->term_id = $validated['term_id'] ?? null;
+            $exam->occurrence = $validated['occurrence'] ?? $occurrence;
+            $exam->save();
 
             $content = $this->processExamContent($request, 'content');
             $solution = $this->processExamContent($request, 'solution');
@@ -546,6 +585,18 @@ class ExamController extends Controller
             ];
 
             $exam->update($examData);
+
+            $exam->term_id = $validated['term_id'] ?? $exam->term_id;
+            if (array_key_exists('occurrence', $validated) && $validated['occurrence'] !== null) {
+                $exam->occurrence = $validated['occurrence'];
+            } elseif ($validated['term_id'] ?? null) {
+                $exam->occurrence = $this->enforceTermOccurrence(
+                    $exam->id,
+                    $exam->exam_category_id,
+                    $validated['term_id']
+                );
+            }
+            $exam->save();
 
             $existingDetail = OnlineExamDetail::where('exam_id', $exam->id)->first();
 
@@ -642,6 +693,15 @@ class ExamController extends Controller
 
             $exam = Exam::create($examData);
 
+            $occurrence = $this->enforceTermOccurrence(
+                $exam->id,
+                $validated['exam_category_id'],
+                $validated['term_id'] ?? null
+            );
+            $exam->term_id = $validated['term_id'] ?? null;
+            $exam->occurrence = $validated['occurrence'] ?? $occurrence;
+            $exam->save();
+
             $detail = InPersonExamDetail::create([
                 'exam_id' => $exam->id,
                 'held_at' => $validated['held_at'],
@@ -685,6 +745,8 @@ class ExamController extends Controller
             'max_score' => 'nullable|numeric|min:0',
             'delivery_mode' => ($isUpdate ? 'sometimes' : 'required').'|in:online,in_person',
             'exam_category_id' => 'required|exists:exam_categories,id',
+            'term_id' => 'sometimes|nullable|exists:academic_terms,id',
+            'occurrence' => 'sometimes|nullable|integer|min:1',
             'created_by' => 'nullable|exists:users,id',
         ];
 
@@ -700,6 +762,8 @@ class ExamController extends Controller
             'min_passing_score' => 'nullable|numeric|min:0',
             'max_score' => 'nullable|numeric|min:0',
             'exam_category_id' => 'required|exists:exam_categories,id',
+            'term_id' => 'sometimes|nullable|exists:academic_terms,id',
+            'occurrence' => 'sometimes|nullable|integer|min:1',
             'created_by' => 'nullable|exists:users,id',
             'starts_at' => 'required|date',
             'ends_at' => 'required|date|after:starts_at',
@@ -757,6 +821,8 @@ class ExamController extends Controller
             'held_at' => 'required|date',
             'is_descriptive' => 'sometimes|boolean',
             'results_visible_at' => 'nullable|date',
+            'term_id' => 'sometimes|nullable|exists:academic_terms,id',
+            'occurrence' => 'sometimes|nullable|integer|min:1',
             'class_ids' => 'nullable|array',
             'class_ids.*' => 'exists:classes,id',
             'academic_level_ids' => 'nullable|array',
@@ -881,6 +947,68 @@ class ExamController extends Controller
                 Storage::disk('public')->delete($oldSolutionPath);
             }
         }
+    }
+
+    /**
+     * بررسی و اعمال محدودیت تعداد برگزاری آزمون یک دسته‌بندی در یک ترم.
+     * اگر max_occurrences تعریف نشده باشد، رقم اولویت (occurrence) به‌صورت خودکار
+     * برابر تعداد پیشین + ۱ محاسبه می‌شود. اگر ۰ باشد، برگزاری غیرممکن است.
+     * در غیر این صورت اگر تعداد برگزاری‌ها به حداکثر برسد، خطا می‌دهد.
+     */
+    protected function enforceTermOccurrence (int $examId, int $categoryId, ?int $termId): ?int
+    {
+        if (!$termId) {
+            return null;
+        }
+
+        $term = AcademicTerm::find($termId);
+
+        // شناسایی ترم‌های مرتبط برای جستجوی محدودیت: خود ترم + ترم والد (در صورتی که زیرترم باشد)
+        $limitTermIds = [$termId];
+        if ($term && $term->parent_id) {
+            $limitTermIds[] = $term->parent_id;
+        }
+
+        $limit = ExamCategoryTermLimit::where('exam_category_id', $categoryId)
+            ->whereIn('term_id', $limitTermIds)
+            ->latest('id')
+            ->first();
+
+        if (!$limit) {
+            // محدودیتی تعریف نشده؛ رقم اولویت به‌صورت خودکار محاسبه می‌شود
+            $count = Exam::where('exam_category_id', $categoryId)
+                ->where('term_id', $termId)
+                ->where('id', '!=', $examId)
+                ->count();
+
+            return $count + 1;
+        }
+
+        if ($limit->max_occurrences === 0) {
+            throw ValidationException::withMessages([
+                'term_id' => "برگزاری آزمون در این ترم ممنوع شده است (حداکثر ۰ بار).",
+            ]);
+        }
+
+        $count = Exam::where('exam_category_id', $categoryId)
+            ->where('term_id', $termId)
+            ->where('id', '!=', $examId)
+            ->count();
+
+        if ($limit->isUnlimited()) {
+            return $count + 1;
+        }
+
+        if ($count >= $limit->max_occurrences) {
+            throw ValidationException::withMessages([
+                'term_id' => sprintf(
+                    'تعداد برگزاری آزمون در این ترم به حداکثر (%d) رسیده است.',
+                    $limit->max_occurrences
+                ),
+            ]);
+        }
+
+        return $count + 1;
     }
 
     private function processExamContent(Request $request, string $field): ?array

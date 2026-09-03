@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ExamCategory;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
+use App\Enums\UserRoleType;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -63,11 +64,19 @@ class ExamCategoryController extends Controller
             'is_system' => 'boolean',
         ]);
 
+        if ($examCategory->is_system && ! $request->user()->hasRole(UserRoleType::Admin->value)) {
+            return $this->jsonResponseError('فقط ادمین‌ها می‌توانند دسته‌بندی سیستمی را ویرایش کنند.', 403);
+        }
+
         return $this->commonUpdate($request, $examCategory);
     }
 
-    public function destroy(ExamCategory $examCategory): JsonResponse
+    public function destroy(Request $request, ExamCategory $examCategory): JsonResponse
     {
+        if ($examCategory->is_system && ! $request->user()->hasRole(UserRoleType::Admin->value)) {
+            return $this->jsonResponseError('فقط ادمین‌ها می‌توانند دسته‌بندی سیستمی را حذف کنند.', 403);
+        }
+
         return $this->commonDestroy($examCategory);
     }
 }

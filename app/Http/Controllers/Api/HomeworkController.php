@@ -7,7 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Homework;
 use App\Models\HomeworkAttachment;
 use App\Models\HomeworkSubmission;
-use App\Models\UserClass;
+use App\Models\TermEnrollment;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
@@ -274,7 +274,7 @@ class HomeworkController extends Controller
         $homework = Homework::with(['lesson', 'schoolClass', 'submissions', 'attachments'])->findOrFail($homeworkId);
 
         if ($homework->class_id) {
-            $isEnrolled = UserClass::where('user_id', $studentId)
+            $isEnrolled = TermEnrollment::where('user_id', $studentId)
                 ->where('class_id', $homework->class_id)
                 ->exists();
 
@@ -317,7 +317,7 @@ class HomeworkController extends Controller
         $homework = Homework::findOrFail($homeworkId);
 
         if ($homework->class_id) {
-            $isEnrolled = UserClass::where('user_id', $studentId)
+            $isEnrolled = TermEnrollment::where('user_id', $studentId)
                 ->where('class_id', $homework->class_id)
                 ->exists();
 

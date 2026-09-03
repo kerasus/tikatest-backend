@@ -3,12 +3,13 @@
 namespace Database\Seeders;
 
 use App\Enums\UserRoleType;
+use App\Models\AcademicTerm;
 use App\Models\School;
 use App\Models\SchoolClass;
 use App\Models\StudentGuardian;
 use App\Models\StudentProfile;
 use App\Models\User;
-use App\Models\UserClass;
+use App\Models\TermEnrollment;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
@@ -32,6 +33,11 @@ class StudentSeeder extends Seeder
         $globalIndex = 0;
 
         foreach ($schools as $school) {
+            $term = AcademicTerm::where('school_id', $school->id)
+                ->where('is_active', true)
+                ->latest('id')
+                ->first();
+
             $classes = SchoolClass::whereHas('academicLevel.academicField', function ($query) use ($school) {
                 $query->where('school_id', $school->id);
             })->get();
@@ -130,9 +136,13 @@ class StudentSeeder extends Seeder
                         ],
                     );
 
-                    UserClass::firstOrCreate([
+                    TermEnrollment::firstOrCreate([
                         'user_id' => $user->id,
                         'class_id' => $class->id,
+                        'school_id' => $school->id,
+                        'term_id' => $term?->id,
+                    ], [
+                        'enrolled_at' => now(),
                     ]);
                 }
             }

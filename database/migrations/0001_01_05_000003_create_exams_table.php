@@ -21,6 +21,15 @@ return new class extends Migration
             $table->enum('delivery_mode', ['online', 'in_person'])->default('in_person');
             $table->foreignId('exam_category_id')->constrained('exam_categories')->restrictOnDelete();
 
+            // ترمی که این نگهداری (instance) آزمون در آن برگزار شده
+            $table->foreignId('term_id')
+                ->nullable()
+                ->constrained('academic_terms')
+                ->nullOnDelete();
+
+            // چندمین بار برگزاری این آزمون در ترم است
+            $table->unsignedInteger('occurrence')->nullable();
+
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
 

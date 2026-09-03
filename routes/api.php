@@ -6,7 +6,10 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\DisciplinaryCaseController;
 use App\Http\Controllers\Api\DisciplinaryRecordController;
 use App\Http\Controllers\Api\ExamCategoryController;
+use App\Http\Controllers\Api\ExamCategoryTermLimitController;
 use App\Http\Controllers\Api\ExamController;
+use App\Http\Controllers\Api\TermController;
+use App\Http\Controllers\Api\TermEnrollmentController;
 use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\HomeworkController;
 use App\Http\Controllers\Api\HomeworkSubmissionController;
@@ -22,7 +25,6 @@ use App\Http\Controllers\Api\OnlineExamSessionResponseController;
 use App\Http\Controllers\Api\SchoolClassController;
 use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\StudentController;
-use App\Http\Controllers\Api\UserClassController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -42,6 +44,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('users', UserController::class);
 
     Route::apiResource('schools', SchoolController::class);
+
+    Route::prefix('schools/{school}')->group(function () {
+        Route::get('terms', [SchoolController::class, 'termsIndex']);
+        Route::post('terms', [SchoolController::class, 'termsStore']);
+        Route::get('terms/{term}', [SchoolController::class, 'termsShow']);
+        Route::put('terms/{term}', [SchoolController::class, 'termsUpdate']);
+        Route::delete('terms/{term}', [SchoolController::class, 'termsDestroy']);
+    });
     Route::apiResource('academic-fields', AcademicFieldController::class);
     Route::apiResource('academic-levels', AcademicLevelController::class);
     Route::apiResource('classes', SchoolClassController::class);
@@ -55,6 +65,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('exams/store-with-inperson-results', [ExamController::class, 'storeWithInPersonDetailAndResults']);
     Route::get('exams/{exam}/students', [ExamController::class, 'examStudents']);
     Route::apiResource('exam-categories', ExamCategoryController::class);
+    Route::apiResource('academic-terms', TermController::class);
+    Route::apiResource('exam-category-term-limits', ExamCategoryTermLimitController::class);
     Route::apiResource('in-person-exam-details', InPersonExamDetailController::class);
     Route::apiResource('in-person-exam-results', InPersonExamResultController::class);
     Route::apiResource('online-exam-details', OnlineExamDetailController::class);
@@ -105,7 +117,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('grades/report/student/{studentId}/report-card', [GradeController::class, 'getStudentReportCard']);
     Route::get('study-sessions/report/general', [StudentController::class, 'studyHoursGeneralReport']);
     Route::get('study-sessions/report/student/{studentId}', [StudentController::class, 'studyHoursStudentReport']);
-    Route::apiResource('user-class-registrations', UserClassController::class)->except(['update']);
+    Route::apiResource('term-enrollments', TermEnrollmentController::class)->except(['update']);
 
     Route::prefix('student-portal')->group(function () {
         Route::get('grades', [StudentController::class, 'myGrades']);

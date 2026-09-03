@@ -42,7 +42,7 @@ class School extends Model
 
     public function userClassRegistrations(): HasMany
     {
-        return $this->hasMany(UserClass::class);
+        return $this->hasMany(TermEnrollment::class);
     }
 
     public function exams(): HasMany
@@ -53,6 +53,16 @@ class School extends Model
     public function examCategories(): HasMany
     {
         return $this->hasMany(ExamCategory::class);
+    }
+
+    public function academicTerms(): HasMany
+    {
+        return $this->hasMany(AcademicTerm::class);
+    }
+
+    public function termEnrollments(): HasMany
+    {
+        return $this->hasMany(TermEnrollment::class);
     }
 
     public function disciplinaryCases(): HasMany

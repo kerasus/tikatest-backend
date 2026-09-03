@@ -34,4 +34,9 @@ class ExamCategory extends Model
     {
         return $this->hasMany(Exam::class, 'exam_category_id');
     }
+
+    public function termLimits(): HasMany
+    {
+        return $this->hasMany(ExamCategoryTermLimit::class, 'exam_category_id');
+    }
 }

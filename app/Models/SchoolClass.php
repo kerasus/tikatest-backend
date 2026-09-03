@@ -27,7 +27,7 @@ class SchoolClass extends Model
 
     public function userClassRegistrations(): HasMany
     {
-        return $this->hasMany(UserClass::class, 'class_id', 'id');
+        return $this->hasMany(TermEnrollment::class, 'class_id', 'id');
     }
 
     public function exams(): BelongsToMany

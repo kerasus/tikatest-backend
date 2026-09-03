@@ -26,7 +26,7 @@ class InPersonExamResultController extends Controller
     {
         $config = [
             'filterKeysExact' => ['in_person_exam_id', 'user_id', 'recorded_by'],
-            'eagerLoads' => ['inPersonExamDetail', 'inPersonExamDetail.exam', 'student', 'recordedBy'],
+            'eagerLoads' => ['inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.term', 'student', 'recordedBy'],
         ];
 
         return $this->commonIndex($request, InPersonExamResult::class, $config);
@@ -48,7 +48,7 @@ class InPersonExamResultController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $result = InPersonExamResult::with(['inPersonExamDetail', 'inPersonExamDetail.exam', 'student', 'recordedBy'])->findOrFail($id);
+        $result = InPersonExamResult::with(['inPersonExamDetail', 'inPersonExamDetail.exam', 'inPersonExamDetail.exam.term', 'student', 'recordedBy'])->findOrFail($id);
 
         return $this->jsonResponseOk($result);
     }

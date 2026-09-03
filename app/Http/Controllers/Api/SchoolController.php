@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\AcademicTerm;
 use App\Models\School;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
@@ -105,5 +106,80 @@ class SchoolController extends Controller
         $directory = 'school-logos';
 
         return $file->storeAs($directory, $filename, 'public');
+    }
+
+    public function termsIndex(Request $request, $schoolId): JsonResponse
+    {
+        $school = School::findOrFail($schoolId);
+
+        $terms = AcademicTerm::where('school_id', $school->id)
+            ->with(['children' => fn ($q) => $q->with('children')])
+            ->whereNull('parent_id')
+            ->get();
+
+        return $this->jsonResponseOk($terms);
+    }
+
+    public function termsStore(Request $request, $schoolId): JsonResponse
+    {
+        $school = School::findOrFail($schoolId);
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'type' => 'required|string|in:school_year,seasonal,sub_term',
+            'academic_year' => 'nullable|string|max:20',
+            'season' => 'nullable|string|max:20',
+            'period' => 'nullable|integer',
+            'starts_at' => 'nullable|date',
+            'ends_at' => 'nullable|date|after:starts_at',
+            'is_active' => 'nullable|boolean',
+            'parent_id' => 'nullable|exists:academic_terms,id',
+        ]);
+
+        $term = AcademicTerm::create(array_merge(
+            $request->all(),
+            ['school_id' => $school->id]
+        ));
+
+        return $this->jsonResponseOk($term, 201);
+    }
+
+    public function termsShow(Request $request, $schoolId, $termId): JsonResponse
+    {
+        $term = AcademicTerm::where('school_id', $schoolId)->findOrFail($termId);
+
+        return $this->jsonResponseOk($term->load(['children.children', 'parentTerm']));
+    }
+
+    public function termsUpdate(Request $request, $schoolId, $termId): JsonResponse
+    {
+        $term = AcademicTerm::where('school_id', $schoolId)->findOrFail($termId);
+
+        $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'type' => 'sometimes|required|string|in:school_year,seasonal,sub_term',
+            'academic_year' => 'nullable|string|max:20',
+            'season' => 'nullable|string|max:20',
+            'period' => 'nullable|integer',
+            'starts_at' => 'nullable|date',
+            'ends_at' => 'nullable|date|after:starts_at',
+            'is_active' => 'nullable|boolean',
+            'parent_id' => 'nullable|exists:academic_terms,id',
+        ]);
+
+        $term->update($request->all());
+
+        return $this->jsonResponseOk($term);
+    }
+
+    public function termsDestroy(Request $request, $schoolId, $termId): JsonResponse
+    {
+        $term = AcademicTerm::where('school_id', $schoolId)->findOrFail($termId);
+
+        $term->delete();
+
+        return $this->jsonResponseOk([
+            'message' => 'ترم با موفقیت حذف شد.',
+        ]);
     }
 }

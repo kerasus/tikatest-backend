@@ -10,7 +10,7 @@ use App\Models\InPersonExamResult;
 use App\Models\StudentProfile;
 use App\Models\StudySession;
 use App\Models\User;
-use App\Models\UserClass;
+use App\Models\TermEnrollment;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Carbon\Carbon;
@@ -102,7 +102,7 @@ class StudentController extends Controller
             $modelQuery->whereHas('userClassRegistrations', function ($registrationQuery) use ($request) {
                 if ($request->filled('class_id')) {
                     $registrationQuery->where(
-                        'user_class.class_id',
+                        'term_enrollments.class_id',
                         $request->integer('class_id')
                     );
                 }
@@ -175,7 +175,7 @@ class StudentController extends Controller
         }
 
         if ($request->filled('class_id')) {
-            UserClass::create([
+            TermEnrollment::create([
                 'user_id' => $user->id,
                 'class_id' => $request->class_id,
             ]);
@@ -222,7 +222,7 @@ class StudentController extends Controller
         ]));
 
         if ($request->filled('class_id')) {
-            UserClass::updateOrCreate(
+            TermEnrollment::updateOrCreate(
                 ['user_id' => $student->id],
                 ['class_id' => $request->class_id]
             );

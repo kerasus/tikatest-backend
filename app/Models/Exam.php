@@ -22,6 +22,8 @@ class Exam extends Model
         'max_score',
         'delivery_mode',
         'exam_category_id',
+        'term_id',
+        'occurrence',
         'created_by',
     ];
 
@@ -29,11 +31,17 @@ class Exam extends Model
         'min_passing_score' => 'decimal:2',
         'max_score' => 'decimal:2',
         'delivery_mode' => 'string',
+        'occurrence' => 'integer',
     ];
 
     public function category(): BelongsTo
     {
         return $this->belongsTo(ExamCategory::class, 'exam_category_id');
+    }
+
+    public function term(): BelongsTo
+    {
+        return $this->belongsTo(AcademicTerm::class, 'term_id');
     }
 
     public function lesson(): BelongsTo
