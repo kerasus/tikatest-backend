@@ -106,6 +106,11 @@ class Exam extends Model
         return $this->hasMany(OnlineExamSessionResponse::class);
     }
 
+    public function onlineExamSessionResults(): HasMany
+    {
+        return $this->hasMany(OnlineExamSessionResult::class);
+    }
+
     public function isOnline(): bool
     {
         return $this->delivery_mode === 'online';

@@ -52,4 +52,9 @@ class OnlineExamSession extends Model
     {
         return $this->hasMany(OnlineExamSessionResponse::class);
     }
+
+    public function results(): HasMany
+    {
+        return $this->hasMany(OnlineExamSessionResult::class);
+    }
 }

@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\OnlineExamBookletController;
 use App\Http\Controllers\Api\OnlineExamDetailController;
 use App\Http\Controllers\Api\OnlineExamSessionController;
 use App\Http\Controllers\Api\OnlineExamSessionResponseController;
+use App\Http\Controllers\Api\ReportCardController;
 use App\Http\Controllers\Api\SchoolClassController;
 use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\StudentController;
@@ -117,7 +118,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('grades/report/student/{studentId}/report-card', [GradeController::class, 'getStudentReportCard']);
     Route::get('study-sessions/report/general', [StudentController::class, 'studyHoursGeneralReport']);
     Route::get('study-sessions/report/student/{studentId}', [StudentController::class, 'studyHoursStudentReport']);
-    Route::apiResource('term-enrollments', TermEnrollmentController::class)->except(['update']);
+Route::apiResource('term-enrollments', TermEnrollmentController::class)->except(['update']);
+
+    Route::prefix('report-cards')->group(function () {
+        Route::get('', [ReportCardController::class, 'index']);
+        Route::get('student/{studentId}', [ReportCardController::class, 'studentReport']);
+        Route::get('class/{classId}', [ReportCardController::class, 'classReport']);
+        Route::get('class-cards', [ReportCardController::class, 'classReportCards']);
+        Route::get('comprehensive', [ReportCardController::class, 'comprehensiveReport']);
+        Route::get('grade-matrix', [ReportCardController::class, 'gradeMatrix']);
+        Route::get('class-grade-sheet', [ReportCardController::class, 'classGradeSheet']);
+    });
 
     Route::prefix('student-portal')->group(function () {
         Route::get('grades', [StudentController::class, 'myGrades']);

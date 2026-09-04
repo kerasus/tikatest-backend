@@ -491,6 +491,8 @@ class ExamController extends Controller
     {
         $validated = $this->validateOnlineExam($request);
 
+        $this->validateLessonOrBookletsExclusive($validated);
+
         return DB::transaction(function () use ($validated, $request) {
             $examData = [
                 'name' => $validated['name'],
@@ -530,10 +532,11 @@ class ExamController extends Controller
             ]);
 
             if (!empty($validated['booklets'])) {
+                $examHasLesson = !empty($validated['lesson_id']);
                 foreach ($validated['booklets'] as $booklet) {
                     OnlineExamBooklet::create([
                         'online_exam_id' => $onlineDetail->id,
-                        'lesson_id' => $booklet['lesson_id'] ?? null,
+                        'lesson_id' => $examHasLesson ? null : ($booklet['lesson_id'] ?? null),
                         'title' => $booklet['title'],
                         'from_question' => $booklet['from_question'] ?? null,
                         'to_question' => $booklet['to_question'] ?? null,
@@ -571,6 +574,8 @@ class ExamController extends Controller
     public function updateWithOnlineDetail(Request $request, Exam $exam): JsonResponse
     {
         $validated = $this->validateOnlineExam($request);
+
+        $this->validateLessonOrBookletsExclusive($validated);
 
         return DB::transaction(function () use ($exam, $validated, $request) {
             $examData = [
@@ -636,10 +641,11 @@ class ExamController extends Controller
 
             if (isset($validated['booklets'])) {
                 $exam->onlineExamDetail?->booklets()->delete();
+                $examHasLesson = !empty($validated['lesson_id']);
                 foreach ($validated['booklets'] as $booklet) {
                     OnlineExamBooklet::create([
                         'online_exam_id' => $exam->onlineExamDetail->id,
-                        'lesson_id' => $booklet['lesson_id'] ?? null,
+                        'lesson_id' => $examHasLesson ? null : ($booklet['lesson_id'] ?? null),
                         'title' => $booklet['title'],
                         'from_question' => $booklet['from_question'] ?? null,
                         'to_question' => $booklet['to_question'] ?? null,
@@ -806,6 +812,32 @@ class ExamController extends Controller
         }
 
         return Validator::make($input, $rules)->validate();
+    }
+
+    /**
+     * هم‌زمانی درس آزمون و دفترچه‌ها:
+     * - اگر lesson_id برای آزمون انتخاب شده باشد، دفترچه‌ها نباید lesson_id داشته باشند.
+     * - اگر lesson_id برای آزمون انتخاب نشده باشد، باید حداقل یک دفترچه با lesson_id ارائه شود.
+     */
+    protected function validateLessonOrBookletsExclusive(array $validated): void
+    {
+        $hasExamLesson = !empty($validated['lesson_id']);
+        $booklets = $validated['booklets'] ?? [];
+
+        if ($hasExamLesson && !empty($booklets)) {
+            $bookletLessons = array_filter(array_column($booklets, 'lesson_id'));
+            if (!empty($bookletLessons)) {
+                throw ValidationException::withMessages([
+                    'booklets' => 'اگر درس برای آزمون انتخاب شده است، نباید درس برای دفترچه‌ها انتخاب شود.',
+                ]);
+            }
+        }
+
+        if (!$hasExamLesson && empty($booklets)) {
+            throw ValidationException::withMessages([
+                'lesson_id' => 'باید یا درس برای آزمون یا دفترچه با درس برای آزمون انتخاب شود.',
+            ]);
+        }
     }
 
     protected function validateInPersonExam(Request $request): array
