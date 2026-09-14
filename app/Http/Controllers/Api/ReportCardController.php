@@ -290,10 +290,12 @@ class ReportCardController extends Controller
             return [
                 'student' => [
                     'id' => $student->id,
-                    'name' => $student->first_name ?? $student->name,
+                    'name' => $student->first_name,
                     'last_name' => $student->last_name,
+                    'picture' => $student->picture,
                     'student_code' => $student->studentProfile?->code,
                     'username' => $student->username,
+                    'student_profile' => $student->studentProfile,
                 ],
                 'lessons' => $this->buildLessonsWithStats(
                     $studentInPerson,
@@ -309,6 +311,7 @@ class ReportCardController extends Controller
                 'id' => $school?->id,
                 'name' => $school?->name,
                 'address' => $school?->address,
+                'logo_url' => $school?->logo_url,
                 'phone' => $school?->phone,
             ],
             'term' => $term ? ['id' => $term->id, 'name' => $term->name, 'type' => $term->type] : null,
@@ -557,7 +560,7 @@ class ReportCardController extends Controller
         return array_values($lessons);
     }
 
-        public function comprehensiveReport (Request $request): JsonResponse
+    public function comprehensiveReport (Request $request): JsonResponse
     {
         $request->validate([
             'school_id' => 'nullable|exists:schools,id',
@@ -583,7 +586,7 @@ class ReportCardController extends Controller
 
         $examQuery = Exam::whereHas('classes', fn ($q) => $q->where('classes.id', $classId))
             ->when($termId, fn ($q) => $q->where('term_id', $termId))
-            ->when($categoryId, fn ($q) => $q->where('category_id', $categoryId))
+            ->when($categoryId, fn ($q) => $q->where('exam_category_id', $categoryId))
             ->with(['lesson', 'category', 'inPersonExamDetail']);
 
         $exams = $examQuery->get();
@@ -625,24 +628,26 @@ class ReportCardController extends Controller
                     ];
                 }
 
-                $examResults = $studentInPerson->filter(fn ($r) => $r->inPersonExamDetail?->exam?->lesson_id === $lessonId);
-                $onlineExamResults = $studentOnline->filter(fn ($r) => ($r->exam?->lesson_id ?? $r->lesson_id) === $lessonId);
+                $examResults = $studentInPerson->filter(fn ($r) => ($r->inPersonExamDetail?->exam?->id ?? null) === $exam->id);
+                $onlineExamResults = $studentOnline->filter(fn ($r) => ($r->exam_id ?? null) === $exam->id);
 
                 $allScores = [];
                 foreach ($examResults as $r) {
                     $allScores[] = (float) ($r->scaled_score ?? $r->raw_score);
                 }
+
                 foreach ($onlineExamResults as $r) {
                     $allScores[] = (float) ($r->scaled_score ?? $r->raw_score);
                 }
 
                 if (count($allScores) > 0) {
-                    $studentAvg = round(array_sum($allScores) / count($allScores), 2);
+                    $examAvg = round(array_sum($allScores) / count($allScores), 2);
+
                     $lessons[$lessonId]['exam_scores'][] = [
                         'exam_id' => $exam->id,
                         'exam_name' => $exam->name,
                         'category' => $exam->category?->title ?? 'سایر',
-                        'score' => $studentAvg,
+                        'score' => $examAvg,
                         'count' => count($allScores),
                     ];
                 }
@@ -659,8 +664,17 @@ class ReportCardController extends Controller
 
                 $studentScore = $studentAvg !== null ? (float) $studentAvg : 0;
                 $studentTaraz = 5000;
+
                 if ($classAvg !== null && $classStat['std_dev'] > 0) {
-                    $studentTaraz = round((($studentScore - $classAvg) / $classStat['std_dev']) * 1000) + 5000;
+                    // محاسبه Z-Score با محدود کردن دامنه (Capping)
+                    $zScore = ($studentScore - $classAvg) / $classStat['std_dev'];
+
+                    // محدود کردن بین ۳- و ۳+ برای جلوگیری از اعداد فضایی
+                    $zScore = max(-3, min(3, $zScore));
+
+                    // محاسبه تراز و اعمال کفِ حداقل ۱۰۰۰ (یا هر عددی که صلاح می‌دونی)
+                    $calculatedTaraz = ($zScore * 1000) + 5000;
+                    $studentTaraz = (int) max(1000, round($calculatedTaraz));
                 }
 
                 $lessons[$lessonId] = array_merge($lessonData, [
@@ -703,51 +717,82 @@ class ReportCardController extends Controller
     {
         $stats = [];
 
+        // لیست lesson ها از exams
         foreach ($exams as $exam) {
             $lesson = $exam->lesson;
-            if (!$lesson) continue;
+            if (!$lesson) {
+                continue;
+            }
 
             $lessonId = $lesson->id;
+
             if (!isset($stats[$lessonId])) {
                 $stats[$lessonId] = [
                     'lesson_id' => $lessonId,
                     'lesson_name' => $lesson->name,
-                    'scores' => [],
-                    'student_avgs' => [],
+                    'student_scores' => [], // [studentId => [score1, score2, ...]]
                 ];
-            }
-
-            $examInPerson = $inPersonResults->filter(fn ($r) => ($r->inPersonExamDetail?->exam?->lesson_id ?? null) === $lessonId);
-            $examOnline = $onlineResults->filter(fn ($r) => ($r->exam?->lesson_id ?? $r->lesson_id) === $lessonId);
-
-            $studentScores = [];
-            foreach ($examInPerson as $r) {
-                $studentScores[$r->user_id] = ($studentScores[$r->user_id] ?? 0) + (float) ($r->scaled_score ?? $r->raw_score);
-            }
-            foreach ($examOnline as $r) {
-                $studentScores[$r->student_id] = ($studentScores[$r->student_id] ?? 0) + (float) ($r->scaled_score ?? $r->raw_score);
-            }
-
-            foreach ($studentScores as $studentId => $score) {
-                $stats[$lessonId]['scores'][] = $score;
             }
         }
 
+        // نتایج حضوری
+        foreach ($inPersonResults as $r) {
+            $lessonId = $r->inPersonExamDetail?->exam?->lesson_id ?? null;
+            $studentId = $r->user_id;
+            $score = $r->scaled_score ?? $r->raw_score;
+
+            if ($lessonId === null || $score === null || !isset($stats[$lessonId])) {
+                continue;
+            }
+
+            $stats[$lessonId]['student_scores'][$studentId] ??= [];
+            $stats[$lessonId]['student_scores'][$studentId][] = (float) $score;
+        }
+
+        // نتایج آنلاین
+        foreach ($onlineResults as $r) {
+            $lessonId = $r->exam?->lesson_id ?? $r->lesson_id ?? null;
+            $studentId = $r->student_id;
+            $score = $r->scaled_score ?? $r->raw_score;
+
+            if ($lessonId === null || $score === null || !isset($stats[$lessonId])) {
+                continue;
+            }
+
+            $stats[$lessonId]['student_scores'][$studentId] ??= [];
+            $stats[$lessonId]['student_scores'][$studentId][] = (float) $score;
+        }
+
         foreach ($stats as $lessonId => $stat) {
-            $scores = $stat['scores'];
-            $count = count($scores);
+            $studentAverages = [];
 
-            $classMax = $count > 0 ? max($scores) : null;
-            $classMin = $count > 0 ? min($scores) : null;
-            $classAvg = $count > 0 ? round(array_sum($scores) / $count, 2) : null;
+            foreach ($stat['student_scores'] as $studentId => $scores) {
+                if (!empty($scores)) {
+                    $studentAverages[] = round(array_sum($scores) / count($scores), 2);
+                }
+            }
 
-            $variance = $count > 1 ? array_sum(array_map(fn ($s) => pow($s - ($classAvg ?? 0), 2), $scores)) / ($count - 1) : 0;
+            $count = count($studentAverages);
+            $classMax = $count > 0 ? max($studentAverages) : null;
+            $classMin = $count > 0 ? min($studentAverages) : null;
+            $classAvg = $count > 0 ? round(array_sum($studentAverages) / $count, 2) : null;
+
+            $variance = $count > 1
+                ? array_sum(array_map(fn ($s) => pow($s - $classAvg, 2), $studentAverages)) / ($count - 1)
+                : 0;
+
             $stdDev = sqrt($variance);
 
-            $maxTaraz = $stdDev > 0 ? round(((($classMax ?? 0) - ($classAvg ?? 0)) / $stdDev) * 1000) + 5000 : 5000;
-            $minTaraz = $stdDev > 0 ? round(((($classMin ?? 0) - ($classAvg ?? 0)) / $stdDev) * 1000) + 5000 : 5000;
+            $maxTaraz = ($stdDev > 0 && $classMax !== null && $classAvg !== null)
+                ? round(((($classMax - $classAvg) / $stdDev) * 1000) + 5000)
+                : 5000;
+
+            $minTaraz = ($stdDev > 0 && $classMin !== null && $classAvg !== null)
+                ? round(((($classMin - $classAvg) / $stdDev) * 1000) + 5000)
+                : 5000;
 
             $stats[$lessonId] = array_merge($stat, [
+                'student_avgs' => $studentAverages,
                 'class_max' => $classMax,
                 'class_min' => $classMin,
                 'class_avg' => $classAvg,
@@ -758,7 +803,9 @@ class ReportCardController extends Controller
         }
 
         return $stats;
-    }    public function gradeMatrix (Request $request): JsonResponse
+    }
+
+    public function gradeMatrix (Request $request): JsonResponse
     {
         $request->validate([
             'class_id' => 'required|exists:classes,id',
@@ -818,10 +865,12 @@ class ReportCardController extends Controller
             $avg = count($allScores) > 0 ? round(array_sum($allScores) / count($allScores), 2) : null;
 
             return [
-                'student_id' => $student->id,
-                'name' => $student->first_name,
+                'id' => $student->id,
+                'first_name' => $student->first_name,
                 'last_name' => $student->last_name,
-                'student_code' => $student->studentProfile?->code,
+                'national_id' => $student->national_id,
+                'username' => $student->username,
+                'student_profile' => $student->studentProfile,
                 'scores' => $scores,
                 'avg_score' => $avg,
             ];
@@ -839,6 +888,7 @@ class ReportCardController extends Controller
             $examStats[] = [
                 'exam_id' => $exam->id,
                 'exam_name' => $exam->name,
+                'held_at' => $exam->held_at,
                 'category' => $exam->category?->title ?? 'سایر',
                 'max_score' => count($examScores) > 0 ? max($examScores) : null,
                 'min_score' => count($examScores) > 0 ? min($examScores) : null,
@@ -851,9 +901,10 @@ class ReportCardController extends Controller
                 'id' => $school->id,
                 'name' => $school->name,
                 'address' => $school->address,
+                'logo_url' => $school->logo_url,
                 'phone' => $school->phone,
             ],
-            'term' => $term ? ['id' => $term->id, 'name' => $term->name] : null,
+            'term' => $term ? ['id' => $term->id, 'name' => $term->name, 'type' => $term->type] : null,
             'class' => ['id' => $class->id, 'name' => $class->name],
             'lesson' => ['id' => $lessonId, 'name' => Lesson::find($lessonId)?->name],
             'exams' => $exams->map(fn ($e) => [
@@ -945,7 +996,7 @@ class ReportCardController extends Controller
 
             return [
                 'student_id' => $student->id,
-                'name' => $student->first_name,
+                'first_name' => $student->first_name,
                 'last_name' => $student->last_name,
                 'student_code' => $student->studentProfile?->code,
                 'scores' => $scores,
@@ -1001,9 +1052,10 @@ class ReportCardController extends Controller
                 'id' => $school->id,
                 'name' => $school->name,
                 'address' => $school->address,
+                'logo_url' => $school?->logo_url,
                 'phone' => $school->phone,
             ],
-            'term' => $term ? ['id' => $term->id, 'name' => $term->name] : null,
+            'term' => $term ? ['id' => $term->id, 'name' => $term->name, 'type' => $term->type] : null,
             'class' => ['id' => $class->id, 'name' => $class->name],
             'exams' => $exams->map(fn ($e) => [
                 'id' => $e->id,
@@ -1011,6 +1063,7 @@ class ReportCardController extends Controller
                 'lesson_id' => $e->lesson_id,
                 'lesson_name' => $e->lesson?->name,
                 'category' => $e->category?->title ?? 'سایر',
+                'held_at' => $e->held_at ?? $e->inPersonExamDetail?->held_at ?? null,
             ]),
             'students' => $students,
             'column_stats' => $columnStats,
