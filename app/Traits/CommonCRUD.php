@@ -258,16 +258,59 @@ trait CommonCRUD
      */
     public function commonDestroy($model)
     {
-        if ($model->delete()) {
-            return $this->jsonResponseOk(['message' => 'حذف با موفقیت انجام شد.']);
-        } else {
-            return $this->jsonResponseServerError([
-                'errors' => [
-                    'commonDestroy' => [
-                        'مشکلی در حذف اطلاعات رخ داده است.',
+        \Log::info('commonDestroy', [
+            '$model' => $model
+        ]);
+        try {
+            $deleted = $model->delete();
+
+            if ($deleted === false) {
+                \Log::warning('Model deletion was cancelled', [
+                    'model' => $model::class,
+                    'id' => $model->getKey(),
+                    'exists' => $model->exists,
+                    'was_recently_created' => $model->wasRecentlyCreated,
+                    'attributes' => $model->getAttributes(),
+                ]);
+
+                return response()->json([
+                    'message' => 'عملیات حذف توسط رویداد یا منطق مدل لغو شد.',
+                    'errors' => [
+                        'delete' => [
+                            'یکی از رویدادهای deleting یا Observerهای مدل، عملیات حذف را لغو کرده است.',
+                        ],
                     ],
-                ],
+                ], 409);
+            }
+
+            return $this->jsonResponseOk([
+                'message' => 'حذف با موفقیت انجام شد.',
             ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            \Log::error('Delete QueryException', [
+                'model' => $model::class,
+                'id' => $model->getKey(),
+                'message' => $e->getMessage(),
+                'sql' => $e->getSql(),
+                'bindings' => $e->getBindings(),
+            ]);
+
+            return response()->json([
+                'message' => 'خطای دیتابیس در حذف',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        } catch (\Throwable $e) {
+            \Log::error('Delete Throwable', [
+                'model' => $model::class,
+                'id' => $model->getKey(),
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => 'خطای غیرمنتظره در حذف',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
         }
     }
 

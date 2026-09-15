@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -13,7 +14,9 @@ class School extends Model
 
     protected $fillable = [
         'code',
+        'slug',
         'name',
+        'phone_number',
         'address',
         'website',
         'logo_url',
@@ -40,7 +43,7 @@ class School extends Model
         return $this->hasMany(SchoolClass::class);
     }
 
-    public function userClassRegistrations(): HasMany
+    public function termEnrollments(): HasMany
     {
         return $this->hasMany(TermEnrollment::class);
     }
@@ -58,11 +61,6 @@ class School extends Model
     public function academicTerms(): HasMany
     {
         return $this->hasMany(AcademicTerm::class);
-    }
-
-    public function termEnrollments(): HasMany
-    {
-        return $this->hasMany(TermEnrollment::class);
     }
 
     public function disciplinaryCases(): HasMany
@@ -88,5 +86,22 @@ class School extends Model
     public function messages(): HasMany
     {
         return $this->hasMany(Message::class);
+    }
+
+    public function users(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'school_user')
+            ->withPivot(['role_in_school', 'personnel_code', 'is_active', 'joined_at', 'left_at'])
+            ->withTimestamps();
+    }
+
+    public function staffMembers(): BelongsToMany
+    {
+        return $this->users()->wherePivotIn('role_in_school', ['manager', 'teacher', 'staff']);
+    }
+
+    public function teachers(): BelongsToMany
+    {
+        return $this->users()->wherePivot('role_in_school', 'teacher');
     }
 }

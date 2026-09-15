@@ -16,6 +16,7 @@ use App\Traits\Filter;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class StudentController extends Controller
 {
@@ -51,13 +52,13 @@ class StudentController extends Controller
             'filterRelationKeys' => [
                 [
                     'requestKey' => 'class_name',
-                    'relationName' => 'userClassRegistrations.schoolClass',
+                    'relationName' => 'termEnrollments.schoolClass',
                     'relationColumn' => 'name',
                     'exact' => false,
                 ],
                 [
                     'requestKey' => 'level_name',
-                    'relationName' => 'userClassRegistrations.schoolClass.academicLevel',
+                    'relationName' => 'termEnrollments.schoolClass.academicLevel',
                     'relationColumn' => 'name',
                     'exact' => false,
                 ],
@@ -75,7 +76,7 @@ class StudentController extends Controller
                 ],
             ],
             'eagerLoads' => [
-                'userClassRegistrations.schoolClass.academicLevel.academicField.school',
+                'termEnrollments.schoolClass.academicLevel.academicField.school',
                 'studentProfile',
                 'guardianRecords.user',
                 'roles',
@@ -99,7 +100,7 @@ class StudentController extends Controller
             $request->filled('field_id') ||
             $request->filled('school_id')
         ) {
-            $modelQuery->whereHas('userClassRegistrations', function ($registrationQuery) use ($request) {
+            $modelQuery->whereHas('termEnrollments', function ($registrationQuery) use ($request) {
                 if ($request->filled('class_id')) {
                     $registrationQuery->where(
                         'term_enrollments.class_id',
@@ -159,10 +160,18 @@ class StudentController extends Controller
             'email' => 'nullable|email|max:255',
             'address' => 'nullable|string',
             'description' => 'nullable|string',
+            'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
             'class_id' => 'nullable|exists:classes,id',
         ]);
 
-        $data = $request->all();
+        $data = $request->only([
+            'first_name', 'last_name', 'username', 'password', 'mobile',
+            'national_id', 'birth_date', 'email', 'address', 'description',
+        ]);
+
+        if ($request->hasFile('picture')) {
+            $data['picture'] = $request->file('picture')->store('student-pictures', 'public');
+        }
 
         $user = User::create($data);
         $user->assignRole(UserRoleType::Student->value);
@@ -181,7 +190,7 @@ class StudentController extends Controller
             ]);
         }
 
-        return $this->jsonResponseOk($user->load('studentProfile', 'userClassRegistrations.schoolClass'));
+        return $this->jsonResponseOk($user->load('studentProfile', 'termEnrollments.schoolClass'));
     }
 
     public function show(Request $request, $id): JsonResponse
@@ -189,9 +198,8 @@ class StudentController extends Controller
         $student = User::where('id', $id)
             ->whereHas('roles', fn ($q) => $q->where('name', 'student'))
             ->with([
-                'userClassRegistrations.schoolClass.academicLevel.academicField.school',
-                'studentProfile',
-                'guardianRecords.user',
+                'termEnrollments.schoolClass.academicLevel.academicField.school',
+                'studentProfile.guardians.user',
                 'roles',
                 'permissions',
             ])
@@ -213,22 +221,26 @@ class StudentController extends Controller
             'email' => 'nullable|email|max:255',
             'address' => 'nullable|string',
             'description' => 'nullable|string',
-            'class_id' => 'nullable|exists:classes,id',
+            'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
         ]);
 
-        $student->fill($request->only([
+        $data = $request->only([
             'first_name', 'last_name', 'username', 'password', 'mobile',
             'national_id', 'birth_date', 'email', 'address', 'description',
-        ]));
+        ]);
 
-        if ($request->filled('class_id')) {
-            TermEnrollment::updateOrCreate(
-                ['user_id' => $student->id],
-                ['class_id' => $request->class_id]
-            );
+        if ($request->hasFile('picture')) {
+            if ($student->picture && Storage::disk('public')->exists($student->picture)) {
+                Storage::disk('public')->delete($student->picture);
+            }
+
+            $data['picture'] = $request->file('picture')->store('student-pictures', 'public');
         }
 
-        return $this->jsonResponseOk($student->load('studentProfile', 'guardianRecords.user', 'userClassRegistrations.schoolClass'));
+        $student->fill($data);
+        $student->save();
+
+        return $this->jsonResponseOk($student->load('studentProfile', 'guardianRecords.user', 'termEnrollments.schoolClass'));
     }
 
     public function destroy(User $student): JsonResponse
@@ -482,7 +494,7 @@ class StudentController extends Controller
         });
 
         $query->when($request->filled('class_id'), function ($q) use ($request) {
-            $q->whereHas('student.userClassRegistrations', function ($subQ) use ($request) {
+            $q->whereHas('student.termEnrollments', function ($subQ) use ($request) {
                 $subQ->where('class_id', $request->class_id);
             });
         });

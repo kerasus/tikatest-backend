@@ -7,6 +7,7 @@ use App\Models\AcademicTerm;
 use App\Models\School;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -89,6 +90,8 @@ class SchoolController extends Controller
         }
 
         $school->update($data);
+
+        Cache::forget("school_slug_{$school->slug}");
 
         return $this->jsonResponseOk($school);
     }
@@ -180,6 +183,28 @@ class SchoolController extends Controller
 
         return $this->jsonResponseOk([
             'message' => 'ترم با موفقیت حذف شد.',
+        ]);
+    }
+
+    public function getBySlug(string $slug): JsonResponse
+    {
+        // کش رو با یه کلیدِ منحصر به فرد ذخیره می‌کنیم
+        // مثلا: school_slug_mobtakeran
+        // تایم رو هم مثلا ۱ ساعت (۳۶۰۰ ثانیه) می‌ذاریم که نه خیلی سنگین باشه نه دیتابیس رو شلوغ کنه
+        $school = Cache::remember("school_slug_{$slug}", 3600, function () use ($slug) {
+            return School::where('slug', $slug)->first();
+        });
+
+        if (!$school) {
+            return response()->json(['message' => 'مدرسه‌ای با این مشخصات یافت نشد.'], 404);
+        }
+
+        return response()->json([
+            'data' => [
+                'name' => $school->name,
+                'logo_url' => $school->logo_url ? asset('storage/' . $school->logo_url) : null,
+                'type' => $school->type,
+            ]
         ]);
     }
 }

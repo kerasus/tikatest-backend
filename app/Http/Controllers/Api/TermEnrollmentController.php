@@ -27,7 +27,7 @@ class TermEnrollmentController extends Controller
         $config = [
             'filterKeysExact' => ['term_id', 'student_id', 'class_id', 'school_id'],
             'filterDate' => ['enrolled_at', 'left_at'],
-            'eagerLoads' => ['term.school', 'student', 'class'],
+            'eagerLoads' => ['term.school', 'user', 'schoolClass'],
         ];
 
         return $this->commonIndex($request, TermEnrollment::class, $config);
@@ -49,11 +49,10 @@ class TermEnrollmentController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $enrollment = TermEnrollment::with(['term.school', 'student', 'class'])->findOrFail($id);
+        $enrollment = TermEnrollment::with(['term.school', 'user', 'schoolClass'])->findOrFail($id);
 
         return $this->jsonResponseOk($enrollment);
     }
-
     public function update(Request $request, TermEnrollment $enrollment): JsonResponse
     {
         $request->validate([
@@ -68,8 +67,8 @@ class TermEnrollmentController extends Controller
         return $this->commonUpdate($request, $enrollment);
     }
 
-    public function destroy(TermEnrollment $enrollment): JsonResponse
+    public function destroy(TermEnrollment $termEnrollment): JsonResponse
     {
-        return $this->commonDestroy($enrollment);
+        return $this->commonDestroy($termEnrollment);
     }
 }

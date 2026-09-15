@@ -220,11 +220,11 @@ class HomeworkController extends Controller
 
         $modelQuery = Homework::query()
             ->where(function ($query) use ($studentId) {
-                $query->whereHas('classes.userClassRegistrations', function ($classQuery) use ($studentId) {
+                $query->whereHas('classes.termEnrollments', function ($classQuery) use ($studentId) {
                     $classQuery->where('user_id', $studentId);
                 })
                     ->orWhereHas('academicLevels', function ($levelQuery) use ($studentId) {
-                        $levelQuery->whereHas('classes.userClassRegistrations', function ($classQuery) use ($studentId) {
+                        $levelQuery->whereHas('classes.termEnrollments', function ($classQuery) use ($studentId) {
                             $classQuery->where('user_id', $studentId);
                         });
                     })

@@ -10,7 +10,6 @@ use App\Http\Controllers\Api\ExamCategoryTermLimitController;
 use App\Http\Controllers\Api\ExamController;
 use App\Http\Controllers\Api\TermController;
 use App\Http\Controllers\Api\TermEnrollmentController;
-use App\Http\Controllers\Api\GradeController;
 use App\Http\Controllers\Api\HomeworkController;
 use App\Http\Controllers\Api\HomeworkSubmissionController;
 use App\Http\Controllers\Api\InPersonExamDetailController;
@@ -26,8 +25,12 @@ use App\Http\Controllers\Api\ReportCardController;
 use App\Http\Controllers\Api\SchoolClassController;
 use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\StudentController;
+use App\Http\Controllers\Api\StudentGuardianController;
+use App\Http\Controllers\Api\SchoolUserController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('schools/slug/{slug}', [SchoolController::class, 'getBySlug']);
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
@@ -57,8 +60,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('academic-levels', AcademicLevelController::class);
     Route::apiResource('classes', SchoolClassController::class);
     Route::apiResource('students', StudentController::class);
-    Route::apiResource('student-profiles', StudentProfileController::class);
     Route::apiResource('student-guardians', StudentGuardianController::class);
+    Route::post('student-guardians/create-with-user', [StudentGuardianController::class, 'createWithUser']);
+    Route::apiResource('school-users', SchoolUserController::class);
     Route::apiResource('lessons', LessonController::class);
     Route::apiResource('exams', ExamController::class);
     Route::post('exams/store-with-online-detail', [ExamController::class, 'storeWithOnlineDetail']);
@@ -75,11 +79,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('online-exam-session-responses', OnlineExamSessionResponseController::class);
     Route::apiResource('online-exam-answer-keys', OnlineExamAnswerKeyController::class);
     Route::apiResource('online-exam-booklets', OnlineExamBookletController::class);
-    Route::apiResource('grades', GradeController::class);
-    Route::post('grades/bulk', [GradeController::class, 'bulkStore']);
-    Route::post('grades/store-with-exam', [GradeController::class, 'createExamWithGrades']);
-    Route::get('grades/statistics/{lesson_id}/{class_id}', [GradeController::class, 'statistics']);
-    Route::post('grades/update-z-scores', [GradeController::class, 'updateZScores']);
     Route::get('online-exam-details/{id}/results-with-rank', [OnlineExamDetailController::class, 'resultsWithRank']);
 
     Route::prefix('online-exam-sessions')->group(function () {
@@ -112,13 +111,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('messages/send-to-student', [MessageController::class, 'sendToStudent']);
     Route::post('messages/send-to-class', [MessageController::class, 'sendToClass']);
     Route::patch('messages/{message}/read', [MessageController::class, 'markAsRead']);
-    Route::get('grades/report/lesson/{lessonId}', [GradeController::class, 'lessonReport']);
-    Route::get('grades/report/multiple-lessons', [GradeController::class, 'multipleLessonsReport']);
-    Route::get('grades/report/student/{studentId}', [GradeController::class, 'studentReport']);
-    Route::get('grades/report/student/{studentId}/report-card', [GradeController::class, 'getStudentReportCard']);
     Route::get('study-sessions/report/general', [StudentController::class, 'studyHoursGeneralReport']);
     Route::get('study-sessions/report/student/{studentId}', [StudentController::class, 'studyHoursStudentReport']);
-Route::apiResource('term-enrollments', TermEnrollmentController::class)->except(['update']);
+    Route::apiResource('term-enrollments', TermEnrollmentController::class)->except(['update']);
 
     Route::prefix('report-cards')->group(function () {
         Route::get('', [ReportCardController::class, 'index']);

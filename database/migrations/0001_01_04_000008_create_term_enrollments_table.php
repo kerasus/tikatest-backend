@@ -35,6 +35,7 @@ return new class extends Migration
             $table->datetime('left_at')->nullable();
 
             $table->timestamps();
+            $table->softDeletes();
 
             $table->index(['user_id', 'class_id']);
             $table->index('school_id');

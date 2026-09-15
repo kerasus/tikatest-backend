@@ -12,7 +12,8 @@ class SchoolSeeder extends Seeder
         $schools = [
             [
                 'code' => 'SCH-001',
-                'name' => 'مدرسه نمونه اول',
+                'name' => 'آموزشگاه مبترکان',
+                'slug' => 'mobtakeran',
                 'address' => 'تهران، خیابان انقلاب، پلاک 1',
                 'website' => 'https://school1.example.com',
                 'logo_url' => '/uploads/schools/school1-logo.png',

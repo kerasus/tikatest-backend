@@ -39,8 +39,8 @@ class ReportCardController extends Controller
 
         $student = User::with([
             'studentProfile',
-            'userClassRegistrations.schoolClass.academicLevel.academicField.school',
-            'userClassRegistrations.term',
+            'termEnrollments.schoolClass.academicLevel.academicField.school',
+            'termEnrollments.term',
         ])->findOrFail($studentId);
 
         $enrollments = TermEnrollment::where('user_id', $studentId)

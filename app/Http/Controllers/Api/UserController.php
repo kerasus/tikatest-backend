@@ -80,7 +80,7 @@ class UserController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $user = User::with(['roles', 'permissions'])->findOrFail($id);
+        $user = User::with(['roles', 'permissions', 'schools'])->findOrFail($id);
 
         return $this->jsonResponseOk($user);
     }

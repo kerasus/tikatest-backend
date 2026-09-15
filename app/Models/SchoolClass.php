@@ -25,7 +25,7 @@ class SchoolClass extends Model
         return $this->belongsTo(AcademicLevel::class, 'academic_level_id');
     }
 
-    public function userClassRegistrations(): HasMany
+    public function termEnrollments(): HasMany
     {
         return $this->hasMany(TermEnrollment::class, 'class_id', 'id');
     }

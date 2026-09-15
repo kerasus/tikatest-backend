@@ -209,10 +209,10 @@ class ExamController extends Controller
              */
             ->where(function ($query) use ($studentId) {
                 $query
-                    ->whereHas('classes.userClassRegistrations', function ($classQuery) use ($studentId) {
+                    ->whereHas('classes.termEnrollments', function ($classQuery) use ($studentId) {
                         $classQuery->where('user_id', $studentId);
                     })
-                    ->orWhereHas('academicLevels.classes.userClassRegistrations', function ($classQuery) use ($studentId) {
+                    ->orWhereHas('academicLevels.classes.termEnrollments', function ($classQuery) use ($studentId) {
                         $classQuery->where('user_id', $studentId);
                     })
                     ->orWhere(function ($globalExamQuery) {
@@ -425,20 +425,20 @@ class ExamController extends Controller
             ->whereHas('roles', fn ($q) => $q->where('name', 'student'))
             ->where(function ($studentQuery) use ($classIds, $academicLevelIds) {
                 if (!empty($classIds)) {
-                    $studentQuery->whereHas('userClassRegistrations', function ($registrationQuery) use ($classIds) {
+                    $studentQuery->whereHas('termEnrollments', function ($registrationQuery) use ($classIds) {
                         $registrationQuery->whereIn('term_enrollments.class_id', $classIds);
                     });
                 }
 
                 if (!empty($academicLevelIds)) {
-                    $studentQuery->orWhereHas('userClassRegistrations', function ($registrationQuery) use ($academicLevelIds) {
+                    $studentQuery->orWhereHas('termEnrollments', function ($registrationQuery) use ($academicLevelIds) {
                         $registrationQuery->whereHas('schoolClass', function ($classQuery) use ($academicLevelIds) {
                             $classQuery->whereIn('classes.academic_level_id', $academicLevelIds);
                         });
                     });
                 }
             })
-            ->with(['userClassRegistrations.schoolClass', 'studentProfile']);
+            ->with(['termEnrollments.schoolClass', 'studentProfile']);
 
         $perPage = (int) $request->get('length', 1000);
 
