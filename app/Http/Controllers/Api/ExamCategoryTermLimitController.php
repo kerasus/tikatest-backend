@@ -50,7 +50,7 @@ class ExamCategoryTermLimitController extends Controller
         return $this->jsonResponseOk($limit);
     }
 
-    public function update(Request $request, ExamCategoryTermLimit $limit): JsonResponse
+    public function update(Request $request, ExamCategoryTermLimit $examCategoryTermLimit): JsonResponse
     {
         $request->validate([
             'exam_category_id' => 'sometimes|required|exists:exam_categories,id',
@@ -58,11 +58,11 @@ class ExamCategoryTermLimitController extends Controller
             'max_occurrences' => 'nullable|integer|min:0',
         ]);
 
-        return $this->commonUpdate($request, $limit);
+        return $this->commonUpdate($request, $examCategoryTermLimit);
     }
 
-    public function destroy(ExamCategoryTermLimit $limit): JsonResponse
+    public function destroy(ExamCategoryTermLimit $examCategoryTermLimit): JsonResponse
     {
-        return $this->commonDestroy($limit);
+        return $this->commonDestroy($examCategoryTermLimit);
     }
 }
