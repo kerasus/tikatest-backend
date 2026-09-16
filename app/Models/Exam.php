@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Exam extends Model
 {
@@ -119,5 +120,12 @@ class Exam extends Model
     public function isInPerson(): bool
     {
         return $this->delivery_mode === 'in_person';
+    }
+
+    public function scopeInSchool(Builder $query, $schoolId): Builder
+    {
+        return $query->whereHas('academicLevels.academicField', function ($q) use ($schoolId) {
+            $q->where('school_id', $schoolId);
+        });
     }
 }

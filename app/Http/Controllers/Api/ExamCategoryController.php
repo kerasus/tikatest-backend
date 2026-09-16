@@ -26,9 +26,20 @@ class ExamCategoryController extends Controller
     public function index(Request $request): JsonResponse
     {
         $config = [
-            'filterKeys' => ['title'],
-            'filterKeysExact' => ['is_system', 'term_number', 'school_id'],
-            'eagerLoads' => ['school'],
+            'filterKeys' => [
+                'title'
+            ],
+            'filterKeysExact' => [
+                'is_system',
+                'term_number',
+                'school_id'
+            ],
+            'scopes' => [
+                'forSchoolOrGlobal'
+            ],
+            'eagerLoads' => [
+                'school'
+            ],
         ];
 
         return $this->commonIndex($request, ExamCategory::class, $config);

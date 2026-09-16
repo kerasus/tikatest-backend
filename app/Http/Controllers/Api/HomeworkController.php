@@ -35,25 +35,26 @@ class HomeworkController extends Controller
             'filterKeys' => ['title'],
             'filterDate' => ['due_date', 'created_at'],
             'filterKeysExact' => ['lesson_id'],
-            'filterRelationKeys' => [
+            'filterRelationIds' => [
                 [
-                    'requestKey' => 'lesson_name',
+                    'requestKey' => 'lesson_id',
                     'relationName' => 'lesson',
-                    'relationColumn' => 'name',
-                    'exact' => false,
                 ],
                 [
-                    'requestKey' => 'class_name',
-                    'relationName' => 'schoolClass',
-                    'relationColumn' => 'name',
-                    'exact' => false,
+                    'requestKey' => 'class_id',
+                    'relationName' => 'classes',
+                ],
+                [
+                    'requestKey' => 'field_id',
+                    'relationName' => 'academicLevels.academicField',
                 ],
                 [
                     'requestKey' => 'academic_level_id',
-                    'relationName' => 'schoolClass.academicLevel',
-                    'relationColumn' => 'id',
-                    'exact' => true,
+                    'relationName' => 'academicLevels',
                 ],
+            ],
+            'scopes' => [
+                'inSchool',
             ],
             'eagerLoads' => [
                 'attachments',

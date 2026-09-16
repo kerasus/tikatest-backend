@@ -23,9 +23,7 @@ return new class extends Migration
 
             // ترمی که این نگهداری (instance) آزمون در آن برگزار شده
             $table->foreignId('term_id')
-                ->nullable()
-                ->constrained('academic_terms')
-                ->nullOnDelete();
+                ->constrained('academic_terms');
 
             // چندمین بار برگزاری این آزمون در ترم است
             $table->unsignedInteger('occurrence')->nullable();

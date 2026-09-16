@@ -108,17 +108,39 @@ trait CommonCRUD
 
     private function loadScopes(Request $request, &$modelQuery, $scopes)
     {
-        foreach ($scopes as $item) {
-            // Check if the scope key exists in the request
-            if ($request->has($item)) {
-                $scopeValue = $request->get($item);
+        $model = $modelQuery->getModel();
 
-                // Apply the scope only if the value is true or 1
-                if ($scopeValue === true || $scopeValue === 'true' || $scopeValue == 1) {
-                    $modelQuery->$item();
-                } elseif ($scopeValue !== false && $scopeValue !== 'false' && $scopeValue !== 0) {
+        foreach ($scopes as $item) {
+            if (! $request->has($item)) {
+                continue;
+            }
+
+            $scopeValue = $request->get($item);
+
+            // اگر مقدار خالی، null یا false بود رد شو
+            if ($scopeValue === false || $scopeValue === 'false' || $scopeValue === null || $scopeValue === '') {
+                continue;
+            }
+
+            $scopeMethod = 'scope' . ucfirst($item);
+
+            // بررسی می‌کنیم آیا متد اسکوپ اصلاً آرگومان مقداری قبول می‌کنه یا نه
+            if (method_exists($model, $scopeMethod)) {
+                $reflection = new \ReflectionMethod($model, $scopeMethod);
+                $numberOfParameters = $reflection->getNumberOfParameters();
+
+                // پارامتر اول همیشه $query است؛ اگر بیشتر از 1 پارامتر داشت، مقدار $scopeValue را پاس می‌دهیم
+                if ($numberOfParameters > 1) {
                     $modelQuery->$item($scopeValue);
+                } else {
+                    // اسکوپ‌های بدون آرگومان (فقط به شرط true/1 فعال می‌شوند)
+                    if ($scopeValue === true || $scopeValue === 'true' || $scopeValue == 1) {
+                        $modelQuery->$item();
+                    }
                 }
+            } else {
+                // فال‌بک برای حالتی که اسکوپ دینامیک باشه
+                $modelQuery->$item($scopeValue);
             }
         }
     }

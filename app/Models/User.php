@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\UserRoleType;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -150,5 +151,12 @@ class User extends Authenticatable
         return $this->belongsToMany(School::class, 'school_user')
             ->withPivot(['id', 'personnel_code', 'is_active', 'joined_at', 'left_at'])
             ->withTimestamps();
+    }
+
+    public function scopeNonStudent(Builder $query): Builder
+    {
+        return $query->whereDoesntHave('roles', function (Builder $q) {
+            $q->where('name', UserRoleType::Student->value);
+        });
     }
 }

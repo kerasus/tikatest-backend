@@ -32,7 +32,7 @@ class AuthController extends Controller
         return response()->json([
             'token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user->load('roles', 'permissions'),
+            'user' => $user->load('roles', 'permissions', 'schools'),
         ]);
     }
 

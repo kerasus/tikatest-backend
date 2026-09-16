@@ -2,10 +2,11 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class ExamCategory extends Model
 {
@@ -38,5 +39,16 @@ class ExamCategory extends Model
     public function termLimits(): HasMany
     {
         return $this->hasMany(ExamCategoryTermLimit::class, 'exam_category_id');
+    }
+
+    public function scopeForSchoolOrGlobal(Builder $query, $schoolId = null): Builder
+    {
+        return $query->where(function (Builder $q) use ($schoolId) {
+            $q->whereNull('school_id');
+
+            if (!empty($schoolId)) {
+                $q->orWhere('school_id', $schoolId);
+            }
+        });
     }
 }

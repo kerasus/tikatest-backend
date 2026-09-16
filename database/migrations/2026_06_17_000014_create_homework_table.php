@@ -12,9 +12,9 @@ return new class extends Migration
             $table->id();
             $table->string('title');
             $table->text('description')->nullable();
-            $table->foreignId('lesson_id')->nullable()->constrained('lessons')->nullOnDelete();
+            $table->foreignId('lesson_id')->constrained('lessons');
             $table->date('due_date')->nullable();
-            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('created_by')->constrained('users');
             $table->softDeletes();
             $table->timestamps();
 

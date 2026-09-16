@@ -56,4 +56,11 @@ class Homework extends Model
     {
         return $this->belongsToMany(SchoolClass::class, 'homework_classes', 'homework_id', 'class_id');
     }
+
+    public function scopeInSchool(Builder $query, $schoolId): Builder
+    {
+        return $query->whereHas('academicLevels.academicField', function (Builder $q) use ($schoolId) {
+            $q->where('school_id', $schoolId);
+        });
+    }
 }

@@ -45,37 +45,36 @@ class ExamController extends Controller
             'filterDate' => [
                 'created_at',
             ],
-            'filterRelationKeys' => [
-                [
-                    'requestKey' => 'category_title',
-                    'relationName' => 'category',
-                    'relationColumn' => 'title',
-                    'exact' => false,
-                ],
-                [
-                    'requestKey' => 'lesson_name',
-                    'relationName' => 'lesson',
-                    'relationColumn' => 'name',
-                    'exact' => false,
-                ],
-            ],
             'filterRelationIds' => [
                 [
-                    'requestKey' => 'class_ids',
+                    'requestKey' => 'field_id',
+                    'relationName' => 'academicLevels.academicField',
+                ],
+                [
+                    'requestKey' => 'academic_level_id',
+                    'relationName' => 'academicLevels',
+                ],
+                [
+                    'requestKey' => 'class_id',
                     'relationName' => 'classes',
                 ],
                 [
-                    'requestKey' => 'academic_level_ids',
-                    'relationName' => 'academicLevels',
+                    'requestKey' => 'lesson_id',
+                    'relationName' => 'lesson',
                 ],
+                [
+                    'requestKey' => 'exam_category_id',
+                    'relationName' => 'category',
+                ],
+            ],
+            'scopes' => [
+                'inSchool',
             ],
             'eagerLoads' => [
                 'category',
                 'lesson',
-//                'createdBy',
                 'inPersonExamDetail',
                 'onlineExamDetail',
-//                'answerKeys',
                 'classes',
                 'academicLevels'
             ],

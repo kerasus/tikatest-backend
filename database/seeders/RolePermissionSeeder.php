@@ -87,6 +87,10 @@ class RolePermissionSeeder extends Seeder
             'messages.create',
             'messages.update',
             'messages.delete',
+            'terms.view',
+            'terms.create',
+            'terms.update',
+            'terms.delete',
         ];
 
         foreach ($permissions as $permission) {
@@ -171,6 +175,10 @@ class RolePermissionSeeder extends Seeder
             'messages.create',
             'messages.update',
             'messages.delete',
+            'terms.view',
+            'terms.create',
+            'terms.update',
+            'terms.delete',
         ]);
 
         $teacher->syncPermissions([
@@ -244,6 +252,10 @@ class RolePermissionSeeder extends Seeder
             'disciplinary_records.view',
             'messages.view',
             'messages.create',
+            'terms.view',
+            'terms.create',
+            'terms.update',
+            'terms.delete',
         ]);
     }
 }

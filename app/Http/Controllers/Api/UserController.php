@@ -44,6 +44,13 @@ class UserController extends Controller
             ],
             'scopes' => [
                 'role',
+                'nonStudent',
+            ],
+            'filterRelationIds' => [
+                [
+                    'requestKey'   => 'school_id',
+                    'relationName' => 'schools',
+                ],
             ],
             'eagerLoads' => ['roles', 'permissions'],
         ];
