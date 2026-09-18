@@ -2,32 +2,31 @@
 
 namespace App\Models;
 
-use App\Enums\StudySessionSource;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class StudySession extends Model
+class LearningActivity extends Model
 {
     use HasFactory;
 
     protected $fillable = [
         'student_id',
         'lesson_id',
-        'term_id',
-        'started_at',
-        'ended_at',
-        'description',
-        'source',
+        'study_session_id',
+        'type',
+        'occurred_at',
+        'duration_seconds',
         'metadata',
     ];
 
     protected $casts = [
-        'started_at' => 'datetime',
-        'ended_at' => 'datetime',
-        'source' => StudySessionSource::class,
+        'occurred_at' => 'datetime',
+        'duration_seconds' => 'integer',
         'metadata' => 'array',
-        'term_id' => 'integer',
+        'student_id' => 'integer',
+        'lesson_id' => 'integer',
+        'study_session_id' => 'integer',
     ];
 
     public function student(): BelongsTo
@@ -40,8 +39,8 @@ class StudySession extends Model
         return $this->belongsTo(Lesson::class);
     }
 
-    public function term(): BelongsTo
+    public function studySession(): BelongsTo
     {
-        return $this->belongsTo(AcademicTerm::class);
+        return $this->belongsTo(StudySession::class);
     }
 }

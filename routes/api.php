@@ -1,34 +1,38 @@
 <?php
 
-use App\Http\Controllers\Api\AcademicFieldController;
-use App\Http\Controllers\Api\AcademicLevelController;
+use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\DisciplinaryCaseController;
-use App\Http\Controllers\Api\DisciplinaryRecordController;
-use App\Http\Controllers\Api\ExamCategoryController;
-use App\Http\Controllers\Api\ExamCategoryTermLimitController;
+use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\ExamController;
 use App\Http\Controllers\Api\TermController;
-use App\Http\Controllers\Api\TermEnrollmentController;
+use App\Http\Controllers\Api\SchoolController;
+use App\Http\Controllers\Api\LessonController;
+use App\Http\Controllers\Api\LearningActivityController;
+use App\Http\Controllers\Api\StudentController;
+use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\HomeworkController;
+use App\Http\Controllers\Api\SchoolUserController;
+use App\Http\Controllers\Api\ReportCardController;
+use App\Http\Controllers\Api\SchoolClassController;
+use App\Http\Controllers\Api\SkyroomRoomController;
+use App\Http\Controllers\Api\ExamCategoryController;
+use App\Http\Controllers\Api\AcademicFieldController;
+use App\Http\Controllers\Api\AcademicLevelController;
+use App\Http\Controllers\Api\TermEnrollmentController;
+use App\Http\Controllers\Api\StudentGuardianController;
+use App\Http\Controllers\Api\DisciplinaryCaseController;
+use App\Http\Controllers\Api\OnlineExamDetailController;
+use App\Http\Controllers\Api\OnlineExamBookletController;
+use App\Http\Controllers\Api\OnlineExamSessionController;
+use App\Http\Controllers\Api\DisciplinaryRecordController;
 use App\Http\Controllers\Api\HomeworkSubmissionController;
 use App\Http\Controllers\Api\InPersonExamDetailController;
 use App\Http\Controllers\Api\InPersonExamResultController;
-use App\Http\Controllers\Api\LessonController;
-use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\OnlineExamAnswerKeyController;
-use App\Http\Controllers\Api\OnlineExamBookletController;
-use App\Http\Controllers\Api\OnlineExamDetailController;
-use App\Http\Controllers\Api\OnlineExamSessionController;
+use App\Http\Controllers\Api\SkyroomRoomScheduleController;
+use App\Http\Controllers\Api\StudySessionController;
+use App\Http\Controllers\Api\ExamCategoryTermLimitController;
 use App\Http\Controllers\Api\OnlineExamSessionResponseController;
-use App\Http\Controllers\Api\ReportCardController;
-use App\Http\Controllers\Api\SchoolClassController;
-use App\Http\Controllers\Api\SchoolController;
-use App\Http\Controllers\Api\StudentController;
-use App\Http\Controllers\Api\StudentGuardianController;
-use App\Http\Controllers\Api\SchoolUserController;
-use App\Http\Controllers\Api\UserController;
-use Illuminate\Support\Facades\Route;
 
 Route::get('schools/slug/{slug}', [SchoolController::class, 'getBySlug']);
 
@@ -59,12 +63,15 @@ Route::middleware('auth:sanctum')->group(function () {
     });
     Route::apiResource('academic-fields', AcademicFieldController::class);
     Route::apiResource('academic-levels', AcademicLevelController::class);
+    Route::get('classes/{schoolClass}/skyroom-rooms', [SkyroomRoomController::class, 'index']);
     Route::apiResource('classes', SchoolClassController::class);
     Route::apiResource('students', StudentController::class);
     Route::apiResource('student-guardians', StudentGuardianController::class);
     Route::post('student-guardians/create-with-user', [StudentGuardianController::class, 'createWithUser']);
     Route::apiResource('school-users', SchoolUserController::class);
     Route::apiResource('lessons', LessonController::class);
+    Route::apiResource('study-sessions', StudySessionController::class);
+    Route::apiResource('learning-activities', LearningActivityController::class);
     Route::apiResource('exams', ExamController::class);
     Route::post('exams/store-with-online-detail', [ExamController::class, 'storeWithOnlineDetail']);
     Route::post('exams/update-with-online-detail/{exam}', [ExamController::class, 'updateWithOnlineDetail']);
@@ -153,4 +160,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('exam-management')->group(function () {
         Route::post('online-exam-sessions/auto-expire', [OnlineExamSessionController::class, 'autoExpire']);
     });
+
+    Route::prefix('skyroom-rooms')->group(function () {
+        Route::get('{skyroomRoom}', [SkyroomRoomController::class, 'show']);
+        Route::post('{skyroomRoom}/login-url', [SkyroomRoomController::class, 'generateLoginUrl']);
+    });
+
+    Route::apiResource('skyroom-room-schedules', SkyroomRoomScheduleController::class);
 });

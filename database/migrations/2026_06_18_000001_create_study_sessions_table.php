@@ -11,14 +11,20 @@ return new class extends Migration
         Schema::create('study_sessions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('student_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('lesson_id')->nullable()->constrained('lessons')->nullOnDelete();
+            $table->foreignId('lesson_id')->constrained('lessons')->restrictOnDelete();
+            $table->foreignId('term_id')->constrained('academic_terms')->cascadeOnDelete();
             $table->dateTime('started_at');
-            $table->dateTime('ended_at')->nullable();
-            $table->integer('duration_minutes')->nullable();
-            $table->text('notes')->nullable();
+            $table->dateTime('ended_at');
+            $table->text('description')->nullable();
+
+            $table->string('source', 30)->default('manual');
+            $table->json('metadata')->nullable();
             $table->timestamps();
 
             $table->index(['student_id', 'started_at']);
+            $table->index(['student_id', 'lesson_id', 'started_at']);
+            $table->index(['student_id', 'term_id', 'started_at']);
+            $table->index(['lesson_id', 'started_at']);
         });
     }
 
