@@ -40,4 +40,8 @@ return [
         'data_path' => env('DATA_PATH', '/var/www/data'),
     ],
 
+    'skyroom' => [
+        'key' => env('SKYROOM_API_KEY'),
+    ],
+
 ];
