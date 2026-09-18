@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
 use App\Models\User;
-use App\Traits\CommonCRUD;
 use App\Traits\Filter;
-use Illuminate\Http\JsonResponse;
+use App\Traits\CommonCRUD;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
@@ -80,9 +81,20 @@ class UserController extends Controller
             'mobile' => 'required|string|unique:users',
             'email' => 'nullable|string|email|unique:users',
             'password' => 'required|string|min:6',
+            'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
         ]);
 
-        return $this->commonStore($request, User::class);
+        $data = $request->only([
+            'first_name', 'last_name', 'username', 'mobile', 'email', 'password',
+        ]);
+
+        if ($request->hasFile('picture')) {
+            $data['picture'] = $request->file('picture')->store('user-pictures', 'public');
+        }
+
+        $user = User::create($data);
+
+        return $this->jsonResponseOk($user);
     }
 
     public function show(Request $request, $id): JsonResponse
@@ -101,9 +113,31 @@ class UserController extends Controller
             'mobile' => 'sometimes|required|string|unique:users,mobile,'.$user->id,
             'email' => 'nullable|string|email|unique:users,email,'.$user->id,
             'password' => 'nullable|string|min:6',
+            'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
         ]);
 
-        return $this->commonUpdate($request, $user);
+        $data = $request->only([
+            'first_name', 'last_name', 'username', 'mobile', 'email',
+        ]);
+
+        // اگر پسورد پر شده بود آپدیتش کن، اگر خالی بود پسورد قبلی رو بازنویسی نکن!
+        if ($request->filled('password')) {
+            $data['password'] = $request->password;
+        }
+
+        // مدیریت فایل تصویر (حذف عکس قدیمی + ذخیره عکس جدید)
+        if ($request->hasFile('picture')) {
+            if ($user->picture && Storage::disk('public')->exists($user->picture)) {
+                Storage::disk('public')->delete($user->picture);
+            }
+
+            $data['picture'] = $request->file('picture')->store('user-pictures', 'public');
+        }
+
+        $user->fill($data);
+        $user->save();
+
+        return $this->jsonResponseOk($user);
     }
 
     public function destroy(User $user): JsonResponse
@@ -141,5 +175,16 @@ class UserController extends Controller
                 'user' => $user->load('roles', 'permissions'),
             ],
         ]);
+    }
+
+    public function me(Request $request): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        // لود تنبل/Lazy Load رابطه‌ها روی کاربر لاگین‌شده
+        $user->load(['roles', 'permissions', 'schools']);
+
+        return $this->jsonResponseOk($user);
     }
 }

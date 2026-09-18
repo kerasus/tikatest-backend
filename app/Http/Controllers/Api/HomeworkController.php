@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\UserRoleType;
 use App\Http\Controllers\Controller;
+use App\Models\AcademicTerm;
 use App\Models\Homework;
 use App\Models\HomeworkAttachment;
 use App\Models\HomeworkSubmission;
@@ -34,11 +35,15 @@ class HomeworkController extends Controller
         $config = [
             'filterKeys' => ['title'],
             'filterDate' => ['due_date', 'created_at'],
-            'filterKeysExact' => ['lesson_id'],
+            'filterKeysExact' => ['lesson_id', 'term_id'],
             'filterRelationIds' => [
                 [
                     'requestKey' => 'lesson_id',
                     'relationName' => 'lesson',
+                ],
+                [
+                    'requestKey' => 'term_id',
+                    'relationName' => 'term',
                 ],
                 [
                     'requestKey' => 'class_id',
@@ -62,6 +67,7 @@ class HomeworkController extends Controller
                 'classes',
                 'createdBy',
                 'lesson',
+                'term',
             ],
         ];
 
@@ -85,9 +91,9 @@ class HomeworkController extends Controller
         $request->validate([
             'title' => 'required|string|max:255',
             'lesson_id' => 'nullable|exists:lessons,id',
+            'term_id' => 'required|exists:academic_terms,id',
             'description' => 'nullable|string',
             'due_date' => 'nullable|date',
-            'created_by' => 'nullable|exists:users,id',
             'academic_level_ids' => 'nullable|array',
             'academic_level_ids.*' => 'exists:academic_levels,id',
             'class_ids' => 'nullable|array',
@@ -100,16 +106,16 @@ class HomeworkController extends Controller
             $homework = Homework::create($request->only([
                 'title',
                 'lesson_id',
+                'term_id',
                 'description',
                 'due_date',
-                'created_by',
-            ]));
+            ]) + ['created_by' => auth()->id()]);
 
             $this->syncAttachments($homework, $request);
             $this->syncHomeworkRelations($homework, $request);
 
             return $this->jsonResponseOk(
-                Homework::with(['attachments', 'academicLevels', 'classes', 'lesson'])
+                Homework::with(['attachments', 'academicLevels', 'classes', 'lesson', 'term'])
                     ->findOrFail($homework->id)
             );
         });
@@ -120,6 +126,7 @@ class HomeworkController extends Controller
         $homework = Homework::with([
             'createdBy',
             'lesson',
+            'term',
             'submissions',
             'attachments',
             'academicLevels',
@@ -146,9 +153,9 @@ class HomeworkController extends Controller
         $request->validate([
             'title' => 'sometimes|required|string|max:255',
             'lesson_id' => 'nullable|exists:lessons,id',
+            'term_id' => 'sometimes|required|exists:academic_terms,id',
             'description' => 'nullable|string',
             'due_date' => 'nullable|date',
-            'created_by' => 'nullable|exists:users,id',
             'academic_level_ids' => 'nullable|array',
             'academic_level_ids.*' => 'exists:academic_levels,id',
             'class_ids' => 'nullable|array',
@@ -161,16 +168,16 @@ class HomeworkController extends Controller
             $homework->update($request->only([
                 'title',
                 'lesson_id',
+                'term_id',
                 'description',
                 'due_date',
-                'created_by',
             ]));
 
             $this->syncAttachments($homework, $request);
             $this->syncHomeworkRelations($homework, $request);
 
             return $this->jsonResponseOk(
-                Homework::with(['attachments', 'academicLevels', 'classes', 'lesson'])
+                Homework::with(['attachments', 'academicLevels', 'classes', 'lesson', 'term'])
                     ->findOrFail($homework->id)
             );
         });

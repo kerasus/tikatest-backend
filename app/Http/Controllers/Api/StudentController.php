@@ -2,20 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\UserRoleType;
-use App\Http\Controllers\Controller;
-use App\Models\DisciplinaryRecord;
-use App\Models\Homework;
-use App\Models\InPersonExamResult;
-use App\Models\StudentProfile;
-use App\Models\StudySession;
-use App\Models\User;
-use App\Models\TermEnrollment;
-use App\Traits\CommonCRUD;
-use App\Traits\Filter;
 use Carbon\Carbon;
-use Illuminate\Http\JsonResponse;
+use App\Models\User;
+use App\Traits\Filter;
+use App\Models\Homework;
+use App\Traits\CommonCRUD;
+use App\Enums\UserRoleType;
 use Illuminate\Http\Request;
+use App\Models\StudySession;
+use App\Models\StudentProfile;
+use App\Models\TermEnrollment;
+use Illuminate\Http\JsonResponse;
+use App\Models\DisciplinaryRecord;
+use App\Models\InPersonExamResult;
+use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Storage;
 
 class StudentController extends Controller
@@ -468,9 +468,16 @@ class StudentController extends Controller
             ->limit(3)
             ->get();
 
-        $pendingHomework = Homework::whereHas('owners', function ($q) use ($studentId) {
-            $q->where('user_id', $studentId)->whereNull('submitted_at');
-        })->count();
+
+        $pendingHomework = Homework::forStudent($studentId)
+            ->whereDoesntHave('submissions', function ($q) use ($studentId) {
+                $q->where('student_id', $studentId);
+            })
+            // اگر می‌خواهی فقط تکالیفی که هنوز مهلت دارند شمرده شوند:
+             ->where(function ($q) {
+                 $q->whereNull('due_date')->orWhereDate('due_date', '>=', now());
+             })
+            ->count();
 
         return $this->jsonResponseOk([
             'recent_grades' => $recentResults,
