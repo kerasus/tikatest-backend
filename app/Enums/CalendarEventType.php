@@ -5,7 +5,7 @@ namespace App\Enums;
 enum CalendarEventType: string
 {
     case General = 'general';
-    case Class = 'class';
+    case ClassEvent = 'class';
     case Exam = 'exam';
     case Homework = 'homework';
     case Meeting = 'meeting';
@@ -18,7 +18,7 @@ enum CalendarEventType: string
     {
         return match ($this) {
             self::General => 'عمومی',
-            self::Class => 'کلاس',
+            self::ClassEvent => 'کلاس',
             self::Exam => 'امتحان',
             self::Homework => 'تکلیف',
             self::Meeting => 'جلسه',

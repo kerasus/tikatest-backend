@@ -25,7 +25,9 @@ return new class extends Migration
                 'calendar_event_id',
                 'target_type',
                 'target_id',
-            ]);
+            ],
+                'cet_target_unique'
+            );
 
             $table->index([
                 'target_type',
