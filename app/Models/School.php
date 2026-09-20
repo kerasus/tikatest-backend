@@ -2,24 +2,25 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class School extends Model
 {
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'code',
         'slug',
         'name',
         'phone_number',
         'address',
         'website',
-        'logo_url',
+        'logo',
         'type',
         'account_url',
     ];
@@ -27,6 +28,30 @@ class School extends Model
     protected $casts = [
         'deleted_at' => 'datetime',
     ];
+
+
+
+    protected function logo(): Attribute
+    {
+        return Attribute::make(
+            get: function (?string $value) {
+                if (! $value) {
+                    return null;
+                }
+
+                // اگر لینک مستقیم خارجی بود دست نزن
+                if (filter_var($value, FILTER_VALIDATE_URL)) {
+                    return $value;
+                }
+
+                // تولید خودکار آدرس استاندارد بر اساس دیسک پیش‌فرض (public disk)
+                return Storage::disk('public')->url($value);
+
+                // یا اگر صرفاً پیشوند نسبی مثل /storage/ می‌خواهی:
+                // return asset('storage/' . ltrim($value, '/'));
+            }
+        );
+    }
 
     public function academicFields(): HasMany
     {

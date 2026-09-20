@@ -14,16 +14,16 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RolePermissionSeeder::class,
             AdminUserSeeder::class,
-            SchoolSeeder::class,
-            AcademicFieldSeeder::class,
-            AcademicLevelSeeder::class,
-            LessonSeeder::class,
-            ClassSeeder::class,
-            AcademicTermSeeder::class,
-            ManagerSeeder::class,
-            TeacherSeeder::class,
-            ExamCategorySeeder::class,
-            StudentSeeder::class,
+//            SchoolSeeder::class,
+//            AcademicFieldSeeder::class,
+//            AcademicLevelSeeder::class,
+//            LessonSeeder::class,
+//            ClassSeeder::class,
+//            AcademicTermSeeder::class,
+//            ManagerSeeder::class,
+//            TeacherSeeder::class,
+//            ExamCategorySeeder::class,
+//            StudentSeeder::class,
         ]);
     }
 }
