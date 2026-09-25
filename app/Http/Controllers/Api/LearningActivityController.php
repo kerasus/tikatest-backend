@@ -28,6 +28,9 @@ class LearningActivityController extends Controller
             'filterKeys' => ['type'],
             'filterKeysExact' => ['student_id', 'lesson_id', 'study_session_id'],
             'filterDate' => ['occurred_at'],
+            'filterKeysIn' => [
+                'id',
+            ],
             'eagerLoads' => ['student', 'lesson', 'studySession'],
         ];
 

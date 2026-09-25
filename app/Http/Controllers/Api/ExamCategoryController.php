@@ -30,9 +30,13 @@ class ExamCategoryController extends Controller
                 'title'
             ],
             'filterKeysExact' => [
+                'id',
                 'is_system',
                 'term_number',
                 'school_id'
+            ],
+            'filterKeysIn' => [
+                'id',
             ],
             'scopes' => [
                 'forSchoolOrGlobal'
@@ -48,7 +52,7 @@ class ExamCategoryController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'school_id' => 'nullable|exists:schools,id',
+            'school_id' => 'required|exists:schools,id',
             'title' => 'required|string|max:255',
             'term_number' => 'nullable|integer|in:1,2',
             'sort_order' => 'nullable|integer|min:0',

@@ -43,6 +43,9 @@ class UserController extends Controller
                     ],
                 ],
             ],
+            'filterKeysIn' => [
+                'id',
+            ],
             'scopes' => [
                 'role',
                 'nonStudent',

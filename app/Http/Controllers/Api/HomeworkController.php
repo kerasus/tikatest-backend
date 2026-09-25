@@ -58,6 +58,9 @@ class HomeworkController extends Controller
                     'relationName' => 'academicLevels',
                 ],
             ],
+            'filterKeysIn' => [
+                'id',
+            ],
             'scopes' => [
                 'inSchool',
             ],

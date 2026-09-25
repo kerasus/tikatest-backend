@@ -1,42 +1,42 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AcademicFieldController;
+use App\Http\Controllers\Api\AcademicLevelController;
+use App\Http\Controllers\Api\AcademicTermController;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\ExamController;
-use App\Http\Controllers\Api\TermController;
-use App\Http\Controllers\Api\SchoolController;
 use App\Http\Controllers\Api\CalendarController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CalendarEventTargetController;
 use App\Http\Controllers\Api\CalendarUserController;
-use App\Http\Controllers\Api\LessonController;
-use App\Http\Controllers\Api\LearningActivityController;
-use App\Http\Controllers\Api\StudentController;
-use App\Http\Controllers\Api\MessageController;
-use App\Http\Controllers\Api\HomeworkController;
-use App\Http\Controllers\Api\SchoolUserController;
-use App\Http\Controllers\Api\ReportCardController;
-use App\Http\Controllers\Api\SchoolClassController;
-use App\Http\Controllers\Api\SkyroomRoomController;
-use App\Http\Controllers\Api\ExamCategoryController;
-use App\Http\Controllers\Api\AcademicFieldController;
-use App\Http\Controllers\Api\AcademicLevelController;
-use App\Http\Controllers\Api\TermEnrollmentController;
-use App\Http\Controllers\Api\StudentGuardianController;
 use App\Http\Controllers\Api\DisciplinaryCaseController;
-use App\Http\Controllers\Api\OnlineExamDetailController;
-use App\Http\Controllers\Api\OnlineExamBookletController;
-use App\Http\Controllers\Api\OnlineExamSessionController;
 use App\Http\Controllers\Api\DisciplinaryRecordController;
+use App\Http\Controllers\Api\ExamCategoryController;
+use App\Http\Controllers\Api\ExamCategoryTermLimitController;
+use App\Http\Controllers\Api\ExamController;
+use App\Http\Controllers\Api\HomeworkController;
 use App\Http\Controllers\Api\HomeworkSubmissionController;
 use App\Http\Controllers\Api\InPersonExamDetailController;
 use App\Http\Controllers\Api\InPersonExamResultController;
+use App\Http\Controllers\Api\LearningActivityController;
+use App\Http\Controllers\Api\LessonController;
+use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\OnlineExamAnswerKeyController;
-use App\Http\Controllers\Api\SkyroomRoomScheduleController;
-use App\Http\Controllers\Api\StudySessionController;
-use App\Http\Controllers\Api\ExamCategoryTermLimitController;
+use App\Http\Controllers\Api\OnlineExamBookletController;
+use App\Http\Controllers\Api\OnlineExamDetailController;
+use App\Http\Controllers\Api\OnlineExamSessionController;
 use App\Http\Controllers\Api\OnlineExamSessionResponseController;
+use App\Http\Controllers\Api\ReportCardController;
+use App\Http\Controllers\Api\SchoolClassController;
+use App\Http\Controllers\Api\SchoolController;
+use App\Http\Controllers\Api\SchoolUserController;
+use App\Http\Controllers\Api\SkyroomRoomController;
+use App\Http\Controllers\Api\SkyroomRoomScheduleController;
+use App\Http\Controllers\Api\StudentController;
+use App\Http\Controllers\Api\StudentGuardianController;
+use App\Http\Controllers\Api\StudySessionController;
+use App\Http\Controllers\Api\TermEnrollmentController;
+use App\Http\Controllers\Api\UserController;
+use Illuminate\Support\Facades\Route;
 
 Route::get('schools/slug/{slug}', [SchoolController::class, 'getBySlug']);
 
@@ -58,12 +58,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('schools', SchoolController::class);
 
-    Route::prefix('schools/{school}')->group(function () {
-        Route::get('terms', [SchoolController::class, 'termsIndex']);
-        Route::post('terms', [SchoolController::class, 'termsStore']);
-        Route::get('terms/{term}', [SchoolController::class, 'termsShow']);
-        Route::put('terms/{term}', [SchoolController::class, 'termsUpdate']);
-        Route::delete('terms/{term}', [SchoolController::class, 'termsDestroy']);
+    Route::scopeBindings()->prefix('schools/{school}')->group(function () {
+        Route::get('terms', [AcademicTermController::class, 'index']);
+        Route::post('terms', [AcademicTermController::class, 'store']);
+        Route::get('terms/{term}', [AcademicTermController::class, 'showTerm']);
+        Route::put('terms/{term}', [AcademicTermController::class, 'update']);
+        Route::delete('terms/{term}', [AcademicTermController::class, 'destroy']);
     });
     Route::apiResource('academic-fields', AcademicFieldController::class);
     Route::apiResource('academic-levels', AcademicLevelController::class);
@@ -86,7 +86,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('exams/store-with-inperson-results', [ExamController::class, 'storeWithInPersonDetailAndResults']);
     Route::get('exams/{exam}/students', [ExamController::class, 'examStudents']);
     Route::apiResource('exam-categories', ExamCategoryController::class);
-    Route::apiResource('academic-terms', TermController::class);
     Route::apiResource('exam-category-term-limits', ExamCategoryTermLimitController::class);
     Route::apiResource('in-person-exam-details', InPersonExamDetailController::class);
     Route::apiResource('in-person-exam-results', InPersonExamResultController::class);

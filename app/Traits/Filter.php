@@ -104,26 +104,61 @@ trait Filter
         }
     }
 
-    private function filterByKeyExact($request, $key, &$modelQuery)
+    private function filterByKeyExact(Request $request, $key, &$modelQuery)
     {
-        $keyValue = trim($request->get($key));
-        if (strlen($keyValue) > 0) {
-            $modelQuery = $modelQuery->where($key, '=', $keyValue);
+        if (! $request->has($key)) {
+            return;
         }
+
+        $keyValue = $request->get($key);
+
+        if ($keyValue === null || $keyValue === '') {
+            return;
+        }
+
+        if ($keyValue === 'true' || $keyValue === true) {
+            $keyValue = 1;
+        } elseif ($keyValue === 'false' || $keyValue === false) {
+            $keyValue = 0;
+        }
+
+        $modelQuery->where($key, '=', $keyValue);
     }
 
-    private function filterOrByKeyExact($request, $key, &$modelQuery)
+    private function filterOrByKeyExact(Request $request, $key, &$modelQuery)
     {
-        $keyValue = trim($request->get($key));
-        if (strlen($keyValue) > 0) {
-            $modelQuery = $modelQuery->orWhere($key, '=', $keyValue);
+        if (! $request->has($key)) {
+            return;
         }
+
+        $keyValue = $request->get($key);
+
+        if ($keyValue === null || $keyValue === '') {
+            return;
+        }
+
+        if ($keyValue === 'true' || $keyValue === true) {
+            $keyValue = 1;
+        } elseif ($keyValue === 'false' || $keyValue === false) {
+            $keyValue = 0;
+        }
+
+        $modelQuery->orWhere($key, '=', $keyValue);
     }
 
     private function filterByKeyIn($request, $key, &$modelQuery)
     {
-        $keyValue = trim($request->get($key.'_in'));
-        if (isset($keyValue) && is_array($keyValue)) {
+        $keyValue = $request->get($key.'_in');
+
+        if (! isset($keyValue)) {
+            return;
+        }
+
+        if (is_string($keyValue)) {
+            $keyValue = array_filter(array_map('trim', explode(',', $keyValue)));
+        }
+
+        if (is_array($keyValue) && count($keyValue) > 0) {
             $modelQuery = $modelQuery->whereIn($key, $keyValue);
         }
     }

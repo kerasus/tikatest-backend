@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\TermEnrollment;
+use App\Services\TermEnrollmentService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class TermEnrollmentController extends Controller
 {
@@ -33,18 +35,26 @@ class TermEnrollmentController extends Controller
         return $this->commonIndex($request, TermEnrollment::class, $config);
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, TermEnrollmentService $termEnrollmentService): JsonResponse
     {
-        $request->validate([
-            'term_id' => 'required|exists:academic_terms,id',
-            'student_id' => 'required|exists:users,id',
-            'class_id' => 'nullable|exists:classes,id',
-            'school_id' => 'required|exists:schools,id',
+        $validated = $request->validate([
+            'term_id' => 'required|integer|exists:academic_terms,id',
+            'student_id' => 'required|integer|exists:users,id',
+            'class_id' => 'required|integer|exists:classes,id',
             'enrolled_at' => 'nullable|date',
             'left_at' => 'nullable|date|after:enrolled_at',
         ]);
 
-        return $this->commonStore($request, TermEnrollment::class);
+        $enrollment = DB::transaction(function () use ($validated, $termEnrollmentService) {
+            return $termEnrollmentService->enrollStudent(
+                $validated['class_id'],
+                $validated['student_id'],
+                $validated['term_id'],
+                $validated
+            );
+        });
+
+        return $this->jsonResponseOk($enrollment->load(['term.school', 'user', 'schoolClass']), 201);
     }
 
     public function show(Request $request, $id): JsonResponse
@@ -53,6 +63,7 @@ class TermEnrollmentController extends Controller
 
         return $this->jsonResponseOk($enrollment);
     }
+
     public function update(Request $request, TermEnrollment $enrollment): JsonResponse
     {
         $request->validate([
@@ -67,8 +78,14 @@ class TermEnrollmentController extends Controller
         return $this->commonUpdate($request, $enrollment);
     }
 
-    public function destroy(TermEnrollment $termEnrollment): JsonResponse
+    public function destroy(TermEnrollment $termEnrollment, TermEnrollmentService $termEnrollmentService): JsonResponse
     {
-        return $this->commonDestroy($termEnrollment);
+        DB::transaction(function () use ($termEnrollment, $termEnrollmentService) {
+            $termEnrollmentService->removeEnrollment($termEnrollment->id);
+        });
+
+        return $this->jsonResponseOk([
+            'message' => 'ثبت نام با موفقیت حذف شد.',
+        ]);
     }
 }

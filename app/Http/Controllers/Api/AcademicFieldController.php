@@ -35,6 +35,9 @@ class AcademicFieldController extends Controller
                     'exact' => false,
                 ],
             ],
+            'filterKeysIn' => [
+                'id',
+            ],
             'eagerLoads' => ['school', 'academicLevels'],
         ];
 

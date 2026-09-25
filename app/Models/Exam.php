@@ -124,8 +124,19 @@ class Exam extends Model
 
     public function scopeInSchool(Builder $query, $schoolId): Builder
     {
-        return $query->whereHas('academicLevels.academicField', function ($q) use ($schoolId) {
-            $q->where('school_id', $schoolId);
+        return $query->where(function (Builder $subQuery) use ($schoolId) {
+            // ۱. از طریق کلاس‌های متصل به آزمون (که رایج‌ترین حالته)
+            $subQuery->whereHas('classes.academicLevel.academicField', function ($q) use ($schoolId) {
+                $q->where('school_id', $schoolId);
+            })
+            // ۲. یا از طریق پایه‌های متصل مستقیم به آزمون
+            ->orWhereHas('academicLevels.academicField', function ($q) use ($schoolId) {
+                $q->where('school_id', $schoolId);
+            })
+            // ۳. یا حتی از طریق ترم تحصیلی فعال آزمون
+            ->orWhereHas('term', function ($q) use ($schoolId) {
+                $q->where('school_id', $schoolId);
+            });
         });
     }
 }

@@ -35,6 +35,9 @@ class AcademicLevelController extends Controller
                     'exact' => false,
                 ],
             ],
+            'filterKeysIn' => [
+                'id',
+            ],
             'eagerLoads' => ['academicField.school', 'academicField'],
             'returnModelQuery' => true,
         ];

@@ -34,6 +34,15 @@ class SchoolClassController extends Controller
                     'relationColumn' => 'name',
                     'exact' => false,
                 ],
+                [
+                    'requestKey' => 'school_id',
+                    'relationName' => 'academicLevel.academicField',
+                    'relationColumn' => 'school_id',
+                    'exact' => true,
+                ],
+            ],
+            'filterKeysIn' => [
+                'id',
             ],
             'eagerLoads' => [
                 'academicLevel.academicField.school'

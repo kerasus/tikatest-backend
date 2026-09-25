@@ -493,6 +493,7 @@ class ExamController extends Controller
         $this->validateLessonOrBookletsExclusive($validated);
 
         return DB::transaction(function () use ($validated, $request) {
+            $termId = $validated['term_id'] ?? null;
             $examData = [
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
@@ -501,6 +502,7 @@ class ExamController extends Controller
                 'max_score' => $validated['max_score'] ?? null,
                 'delivery_mode' => 'online',
                 'exam_category_id' => $validated['exam_category_id'],
+                'term_id' => $termId,
                 'created_by' => $validated['created_by'] ?? $request->user()->id,
             ];
 
@@ -509,7 +511,7 @@ class ExamController extends Controller
             $occurrence = $this->enforceTermOccurrence(
                 $exam->id,
                 $validated['exam_category_id'],
-                $validated['term_id'] ?? null
+                $termId
             );
             $exam->term_id = $validated['term_id'] ?? null;
             $exam->occurrence = $validated['occurrence'] ?? $occurrence;
@@ -685,6 +687,8 @@ class ExamController extends Controller
         $validated = $this->validateInPersonExam($request);
 
         return DB::transaction(function () use ($validated, $request) {
+            $termId = $validated['term_id'] ?? null;
+
             $examData = [
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
@@ -693,6 +697,7 @@ class ExamController extends Controller
                 'max_score' => $validated['max_score'] ?? null,
                 'delivery_mode' => 'in_person',
                 'exam_category_id' => $validated['exam_category_id'],
+                'term_id' => $termId,
                 'created_by' => $validated['created_by'] ?? $request->user()->id,
             ];
 
@@ -701,9 +706,8 @@ class ExamController extends Controller
             $occurrence = $this->enforceTermOccurrence(
                 $exam->id,
                 $validated['exam_category_id'],
-                $validated['term_id'] ?? null
+                $termId
             );
-            $exam->term_id = $validated['term_id'] ?? null;
             $exam->occurrence = $validated['occurrence'] ?? $occurrence;
             $exam->save();
 

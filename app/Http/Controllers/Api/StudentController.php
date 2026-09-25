@@ -2,33 +2,112 @@
 
 namespace App\Http\Controllers\Api;
 
-use Carbon\Carbon;
-use App\Models\User;
-use App\Traits\Filter;
-use App\Models\Homework;
-use App\Traits\CommonCRUD;
 use App\Enums\UserRoleType;
-use Illuminate\Http\Request;
-use App\Models\StudySession;
-use App\Models\StudentProfile;
-use App\Models\TermEnrollment;
-use Illuminate\Http\JsonResponse;
-use App\Models\DisciplinaryRecord;
-use App\Models\InPersonExamResult;
 use App\Http\Controllers\Controller;
+use App\Models\DisciplinaryRecord;
+use App\Models\Homework;
+use App\Models\InPersonExamResult;
+use App\Models\SchoolClass;
+use App\Models\StudentProfile;
+use App\Models\StudySession;
+use App\Models\User;
+use App\Services\TermEnrollmentService;
+use App\Services\TermService;
+use App\Traits\CommonCRUD;
+use App\Traits\Filter;
+use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class StudentController extends Controller
 {
     use CommonCRUD, Filter;
 
+
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('admin_or_permission:students.view')->only(['index', 'show']);
-        $this->middleware('admin_or_permission:students.create')->only(['store']);
-        $this->middleware('admin_or_permission:students.update')->only(['update']);
-        $this->middleware('admin_or_permission:students.delete')->only(['destroy']);
+
+        $staffRoles = implode('|', [
+            UserRoleType::Admin->value,
+            UserRoleType::Manager->value,
+            UserRoleType::Staff->value,
+        ]);
+
+        // متدهایی که فقط و فقط کادر مدرسه و مدیران اجازه دسترسی به آن‌ها را دارند
+        $this->middleware("role:{$staffRoles}")->only([
+            'index',
+            'store',
+            'destroy',
+            'studyHoursGeneralReport',
+            'studyHoursStudentReport',
+        ]);
+
+        // سایر متدها (show, update, dashboard و گزارش‌های شخصی) برای هر ۵ نقش مجاز هستند
+        $allRoles = implode('|', [
+            UserRoleType::Admin->value,
+            UserRoleType::Manager->value,
+            UserRoleType::Staff->value,
+            UserRoleType::Student->value,
+            UserRoleType::Guardian->value,
+        ]);
+
+        $this->middleware("role:{$allRoles}")->except([
+            'index',
+            'store',
+            'destroy',
+            'studyHoursGeneralReport',
+            'studyHoursStudentReport',
+        ]);
+    }
+
+    /**
+     * بررسی دسترسی کادر مدرسه، خود دانش‌آموز یا ولی مربوطه
+     */
+    private function validateStudentAccess(User $currentUser, User|int $student): User
+    {
+        $studentModel = $student instanceof User
+            ? $student
+            : User::where('id', $student)
+                ->whereHas('roles', fn ($q) => $q->where('name', UserRoleType::Student->value))
+                ->firstOrFail();
+
+        // ۱. ادمین، مدیر یا کادر به همه دسترسی دارند
+        if ($this->isStaffUser($currentUser)) {
+            return $studentModel;
+        }
+
+        // ۲. دانش‌آموز فقط به رکورد خودش دسترسی دارد
+        if ($currentUser->hasRole(UserRoleType::Student->value)) {
+            if ($currentUser->id === $studentModel->id) {
+                return $studentModel;
+            }
+        }
+
+        // ۳. اولیاء فقط به فرزندان متصل به خود دسترسی دارند
+        if ($currentUser->hasRole(UserRoleType::Guardian->value)) {
+            $isChild = $studentModel->studentProfile()
+                ->whereHas('guardians', fn ($q) => $q->where('guardian_records.user_id', $currentUser->id))
+                ->exists();
+
+            if ($isChild) {
+                return $studentModel;
+            }
+        }
+
+        abort(403, 'دسترسی لازم برای مشاهده یا ویرایش این اطلاعات را ندارید.');
+    }
+
+    private function isStaffUser(User $user): bool
+    {
+        return $user->hasAnyRole([
+            UserRoleType::Admin->value,
+            UserRoleType::Manager->value,
+            UserRoleType::Staff->value,
+        ]);
     }
 
     public function index(Request $request): JsonResponse
@@ -41,6 +120,9 @@ class StudentController extends Controller
                 'mobile',
                 'email',
                 'national_id',
+            ],
+            'filterKeysIn' => [
+                'id',
             ],
             'filterKeysExact' => [],
             'filterOnMultipleColumnKeys' => [
@@ -146,13 +228,16 @@ class StudentController extends Controller
         return $this->jsonResponseOk($modelQuery->paginate($perPage));
     }
 
-    public function store(Request $request): JsonResponse
-    {
+    public function store(
+        Request $request,
+        TermService $termService,
+        TermEnrollmentService $termEnrollmentService
+    ): JsonResponse {
         $request->validate([
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'username' => 'required|string|unique:users,username',
-            'password' => 'required|string|min:6',
+            'password' => 'required|string|min:6', // یا پسورد پیش‌فرض دلخواهت
             'mobile' => 'nullable|string|max:20|unique:users,mobile',
             'national_id' => 'nullable|string|max:20',
             'student_code' => 'nullable|string|max:50',
@@ -161,73 +246,117 @@ class StudentController extends Controller
             'address' => 'nullable|string',
             'description' => 'nullable|string',
             'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
-            'class_id' => 'nullable|exists:classes,id',
+            'class_ids' => 'required|array|distinct',
+            'class_ids.*' => 'required|integer|exists:classes,id',
         ]);
 
-        $data = $request->only([
-            'first_name', 'last_name', 'username', 'password', 'mobile',
-            'national_id', 'birth_date', 'email', 'address', 'description',
-        ]);
+        $user = DB::transaction(function () use ($request, $termService, $termEnrollmentService) {
+            $data = $request->only([
+                'first_name', 'last_name', 'username', 'password', 'mobile',
+                'national_id', 'birth_date', 'email', 'address', 'description',
+            ]);
 
-        if ($request->hasFile('picture')) {
-            $data['picture'] = $request->file('picture')->store('student-pictures', 'public');
-        }
+            if ($request->hasFile('picture')) {
+                $data['picture'] = $request->file('picture')->store('student-pictures', 'public');
+            }
 
-        $user = User::create($data);
-        $user->assignRole(UserRoleType::Student->value);
+            $user = User::create($data);
+            $user->assignRole(UserRoleType::Student->value);
 
-        if ($request->filled('student_code')) {
             StudentProfile::create([
                 'user_id' => $user->id,
                 'code' => $request->input('student_code'),
             ]);
-        }
 
-        if ($request->filled('class_id')) {
-            TermEnrollment::create([
-                'user_id' => $user->id,
-                'class_id' => $request->class_id,
-            ]);
-        }
+            $classes = SchoolClass::with('academicLevel.academicField.school')
+                ->whereIn('id', $request->class_ids)
+                ->get();
+
+            $activeTermsCache = [];
+
+            foreach ($classes as $schoolClass) {
+                $schoolId = $schoolClass->academicLevel?->academicField?->school?->id;
+
+                if (! $schoolId) {
+                    throw ValidationException::withMessages([
+                        'class_ids' => 'مدرسه کلاس انتخاب‌شده مشخص نیست.',
+                    ]);
+                }
+
+                if (! array_key_exists($schoolId, $activeTermsCache)) {
+                    $activeTerm = $termService->getActiveTermWithParents($schoolId);
+                    $activeTermsCache[$schoolId] = $activeTerm?->id;
+                }
+
+                $termId = $activeTermsCache[$schoolId];
+
+                if (! $termId) {
+                    throw ValidationException::withMessages([
+                        'class_ids' => 'برای مدرسه کلاس انتخاب‌شده ترم فعال وجود ندارد.',
+                    ]);
+                }
+
+                $termEnrollmentService->enrollStudent(
+                    $schoolClass->id,
+                    $user->id,
+                    $termId
+                );
+            }
+
+            return $user;
+        });
 
         return $this->jsonResponseOk($user->load('studentProfile', 'termEnrollments.schoolClass'));
     }
 
     public function show(Request $request, $id): JsonResponse
     {
-        $student = User::where('id', $id)
-            ->whereHas('roles', fn ($q) => $q->where('name', 'student'))
-            ->with([
-                'termEnrollments.schoolClass.academicLevel.academicField.school',
-                'studentProfile.guardians.user',
-                'roles',
-                'permissions',
-            ])
-            ->findOrFail($id);
+        $student = $this->validateStudentAccess($request->user(), (int) $id);
+
+        $student->load([
+            'termEnrollments.schoolClass.academicLevel.academicField.school',
+            'studentProfile.guardians.user',
+            'roles',
+            'permissions',
+        ]);
 
         return $this->jsonResponseOk($student);
     }
 
     public function update(Request $request, User $student): JsonResponse
     {
-        $request->validate([
-            'first_name' => 'sometimes|required|string|max:255',
-            'last_name' => 'sometimes|required|string|max:255',
-            'username' => 'sometimes|required|string|unique:users,username,'.$student->id,
-            'password' => 'nullable|string|min:6',
-            'mobile' => 'sometimes|nullable|string|max:20|unique:users,mobile,'.$student->id,
-            'national_id' => 'nullable|string|max:20',
-            'birth_date' => 'nullable|date',
-            'email' => 'nullable|email|max:255',
-            'address' => 'nullable|string',
-            'description' => 'nullable|string',
-            'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
-        ]);
+        $user = $request->user();
+        $student = $this->validateStudentAccess($user, $student);
 
-        $data = $request->only([
-            'first_name', 'last_name', 'username', 'password', 'mobile',
-            'national_id', 'birth_date', 'email', 'address', 'description',
-        ]);
+        $isStaff = $this->isStaffUser($user);
+
+        if ($isStaff) {
+            $request->validate([
+                'first_name' => 'sometimes|required|string|max:255',
+                'last_name' => 'sometimes|required|string|max:255',
+                'username' => 'sometimes|required|string|unique:users,username,'.$student->id,
+                'password' => 'nullable|string|min:6',
+                'mobile' => 'sometimes|nullable|string|max:20|unique:users,mobile,'.$student->id,
+                'national_id' => 'nullable|string|max:20',
+                'birth_date' => 'nullable|date',
+                'email' => 'nullable|email|max:255',
+                'address' => 'nullable|string',
+                'description' => 'nullable|string',
+                'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
+            ]);
+
+            $data = $request->only([
+                'first_name', 'last_name', 'username', 'password', 'mobile',
+                'national_id', 'birth_date', 'email', 'address', 'description',
+            ]);
+        } else {
+            // دانش‌آموز یا ولی فقط حق تغییر عکس دارند
+            $request->validate([
+                'picture' => 'required|image|mimes:jpeg,jpg,png,gif|max:2048',
+            ]);
+
+            $data = [];
+        }
 
         if ($request->hasFile('picture')) {
             if ($student->picture && Storage::disk('public')->exists($student->picture)) {
@@ -237,8 +366,10 @@ class StudentController extends Controller
             $data['picture'] = $request->file('picture')->store('student-pictures', 'public');
         }
 
-        $student->fill($data);
-        $student->save();
+        if (! empty($data)) {
+            $student->fill($data);
+            $student->save();
+        }
 
         return $this->jsonResponseOk($student->load('studentProfile', 'guardianRecords.user', 'termEnrollments.schoolClass'));
     }
@@ -468,15 +599,14 @@ class StudentController extends Controller
             ->limit(3)
             ->get();
 
-
         $pendingHomework = Homework::forStudent($studentId)
             ->whereDoesntHave('submissions', function ($q) use ($studentId) {
                 $q->where('student_id', $studentId);
             })
             // اگر می‌خواهی فقط تکالیفی که هنوز مهلت دارند شمرده شوند:
-             ->where(function ($q) {
-                 $q->whereNull('due_date')->orWhereDate('due_date', '>=', now());
-             })
+            ->where(function ($q) {
+                $q->whereNull('due_date')->orWhereDate('due_date', '>=', now());
+            })
             ->count();
 
         return $this->jsonResponseOk([

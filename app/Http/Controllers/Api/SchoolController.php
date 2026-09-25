@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Traits\Filter;
+use App\Enums\UserRoleType;
+use App\Http\Controllers\Controller;
 use App\Models\School;
 use App\Traits\CommonCRUD;
-use App\Models\AcademicTerm;
-use Illuminate\Http\Request;
+use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
-use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 
@@ -20,10 +20,7 @@ class SchoolController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('admin_or_permission:schools.view')->only(['index', 'show']);
-        $this->middleware('admin_or_permission:schools.create')->only(['store']);
-        $this->middleware('admin_or_permission:schools.update')->only(['update']);
-        $this->middleware('admin_or_permission:schools.delete')->only(['destroy']);
+        $this->middleware('role:'.UserRoleType::Admin->value)->only(['store', 'update', 'destroy']);
     }
 
     public function index(Request $request): JsonResponse
@@ -32,6 +29,9 @@ class SchoolController extends Controller
             'filterKeys' => [
                 'name',
                 'type',
+            ],
+            'filterKeysIn' => [
+                'id',
             ],
             'filterKeysExact' => [
                 'type',
@@ -112,101 +112,30 @@ class SchoolController extends Controller
         return $this->commonDestroy($school);
     }
 
-    public function termsIndex(Request $request, $schoolId): JsonResponse
-    {
-        $school = School::findOrFail($schoolId);
-
-        $terms = AcademicTerm::where('school_id', $school->id)
-            ->with(['children' => fn ($q) => $q->with('children')])
-            ->whereNull('parent_id')
-            ->get();
-
-        return $this->jsonResponseOk($terms);
-    }
-
-    public function termsStore(Request $request, $schoolId): JsonResponse
-    {
-        $school = School::findOrFail($schoolId);
-
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'type' => 'required|string|in:school_year,seasonal,sub_term',
-            'academic_year' => 'nullable|string|max:20',
-            'season' => 'nullable|string|max:20',
-            'period' => 'nullable|integer',
-            'starts_at' => 'nullable|date',
-            'ends_at' => 'nullable|date|after:starts_at',
-            'is_active' => 'nullable|boolean',
-            'parent_id' => 'nullable|exists:academic_terms,id',
-        ]);
-
-        $term = AcademicTerm::create(array_merge(
-            $request->all(),
-            ['school_id' => $school->id]
-        ));
-
-        return $this->jsonResponseOk($term, 201);
-    }
-
-    public function termsShow(Request $request, $schoolId, $termId): JsonResponse
-    {
-        $term = AcademicTerm::where('school_id', $schoolId)->findOrFail($termId);
-
-        return $this->jsonResponseOk($term->load(['children.children', 'parentTerm']));
-    }
-
-    public function termsUpdate(Request $request, $schoolId, $termId): JsonResponse
-    {
-        $term = AcademicTerm::where('school_id', $schoolId)->findOrFail($termId);
-
-        $request->validate([
-            'name' => 'sometimes|required|string|max:255',
-            'type' => 'sometimes|required|string|in:school_year,seasonal,sub_term',
-            'academic_year' => 'nullable|string|max:20',
-            'season' => 'nullable|string|max:20',
-            'period' => 'nullable|integer',
-            'starts_at' => 'nullable|date',
-            'ends_at' => 'nullable|date|after:starts_at',
-            'is_active' => 'nullable|boolean',
-            'parent_id' => 'nullable|exists:academic_terms,id',
-        ]);
-
-        $term->update($request->all());
-
-        return $this->jsonResponseOk($term);
-    }
-
-    public function termsDestroy(Request $request, $schoolId, $termId): JsonResponse
-    {
-        $term = AcademicTerm::where('school_id', $schoolId)->findOrFail($termId);
-
-        $term->delete();
-
-        return $this->jsonResponseOk([
-            'message' => 'ترم با موفقیت حذف شد.',
-        ]);
-    }
-
     public function getBySlug(string $slug): JsonResponse
     {
         // کش رو با یه کلیدِ منحصر به فرد ذخیره می‌کنیم
         // مثلا: school_slug_mobtakeran
         // تایم رو هم مثلا ۱ ساعت (۳۶۰۰ ثانیه) می‌ذاریم که نه خیلی سنگین باشه نه دیتابیس رو شلوغ کنه
-        $school = Cache::remember("school_slug_{$slug}", 3600, function () use ($slug) {
-            return School::where('slug', $slug)->first();
+        $schoolData = Cache::remember("school_slug_{$slug}", 3600, function () use ($slug) {
+            $school = School::where('slug', $slug)->first();
+
+            if (! $school) {
+                return null;
+            }
+
+            return [
+                'name' => $school->name,
+                'logo' => $school->logo,
+                'type' => $school->type,
+            ];
         });
 
-        if (!$school) {
+        if (! $schoolData) {
             return response()->json(['message' => 'مدرسه‌ای با این مشخصات یافت نشد.'], 404);
         }
 
-        return response()->json([
-            'data' => [
-                'name' => $school->name,
-                'logo' => $school->logo ? asset('storage/' . $school->logo) : null,
-                'type' => $school->type,
-            ]
-        ]);
+        return $this->jsonResponseOk($schoolData);
     }
 
     /**
@@ -215,7 +144,7 @@ class SchoolController extends Controller
     protected function storeLogo(UploadedFile $file, string $schoolSlug): string
     {
         // نام‌گذاری هوشمندانه و بدون تداخل با Timestamp یا Hash
-        $filename = 'logo_' . time() . '.' . $file->getClientOriginalExtension();
+        $filename = 'logo_'.time().'.'.$file->getClientOriginalExtension();
 
         // مسیر دلخواه: مثلاً schools/SCH-101/logos
         $directory = "schools/{$schoolSlug}/logos";
@@ -224,7 +153,7 @@ class SchoolController extends Controller
         $path = $file->storeAs($directory, $filename, 'public');
 
         // یا اگر ترجیح می‌دی فقط Relative Path ذخیره بشه (پیشنهاد لاراول):
-         return $path;
+        return $path;
     }
 
     protected function deleteOldLogo(?string $logoUrl): void
