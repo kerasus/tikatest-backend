@@ -590,8 +590,8 @@ class StudentController extends Controller
             ->get();
 
         $totalStudyMinutes = StudySession::where('student_id', $studentId)
-            ->whereMonth('started_at', now()->month)
-            ->sum('duration_minutes');
+            ->whereBetween('started_at', [now()->startOfMonth(), now()->endOfMonth()])
+            ->sumDurationMinutes();
 
         $recentDisciplinary = DisciplinaryRecord::where('student_id', $studentId)
             ->with('disciplinaryCase')

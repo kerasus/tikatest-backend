@@ -451,21 +451,47 @@ class OnlineExamSessionController extends Controller
                     ->firstOrFail();
 
                 if (! in_array($lockedSession->status, ['submitted', 'graded'], true)) {
+                    $now = now();
                     $timeUsedSeconds = $lockedSession->started_at
-                        ? (int) $lockedSession->started_at->diffInSeconds(now())
+                        ? (int) $lockedSession->started_at->diffInSeconds($now)
                         : (int) ($lockedSession->time_used_seconds ?? 0);
 
-                    if ($lockedSession->duration_limit_seconds) {
-                        $timeUsedSeconds = min(
-                            $timeUsedSeconds,
-                            $lockedSession->duration_limit_seconds
+                    $durationLimit = $lockedSession->duration_limit_seconds;
+                    $gracePeriodSeconds = 15; // ۱۵ ثانیه مهلت بابت لگ شبکه و تاخیر کلاینت
+
+                    // 🛑 بررسی انقضای زمانی آزمون
+                    if ($durationLimit && $timeUsedSeconds > ($durationLimit + $gracePeriodSeconds)) {
+                        // آزمون منقضی شده، ارسال دیرهنگام
+                        $actualEndTime = $lockedSession->started_at
+                            ? $lockedSession->started_at->copy()->addSeconds($durationLimit)
+                            : $now;
+
+                        $lockedSession->update([
+                            'status' => 'expired',
+                            'submitted_at' => $actualEndTime,
+                            'time_used_seconds' => $durationLimit,
+                            'is_locked' => true,
+                        ]);
+
+                        // در صورت نیاز به تصحیح تا آخرین لحظه:
+                        $scoreData = $this->scoringService->calculateSessionScore(
+                            $lockedSession->load(['responses', 'exam.onlineExamDetail.booklets'])
                         );
+
+                        $lockedSession->update([
+                            'percent' => $scoreData['percent'],
+                            'score' => $scoreData['obtained_marks'],
+                        ]);
+
+                        return;
                     }
 
+                    // ✅ ارسال در بازه زمانی قانونی
+                    $finalTimeUsed = $durationLimit ? min($timeUsedSeconds, $durationLimit) : $timeUsedSeconds;
                     $lockedSession->update([
                         'status' => 'submitted',
-                        'submitted_at' => now(),
-                        'time_used_seconds' => max(0, $timeUsedSeconds),
+                        'submitted_at' => $now,
+                        'time_used_seconds' => max(0, $finalTimeUsed),
                     ]);
 
                     $scoreData = $this->scoringService->calculateSessionScore(

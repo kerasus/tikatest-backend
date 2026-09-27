@@ -141,6 +141,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('student-portal')->group(function () {
+        Route::get('dashboard', [StudentController::class, 'dashboard']);
         Route::get('grades', [StudentController::class, 'myGrades']);
         Route::get('report-card', [StudentController::class, 'myReportCard']);
         Route::get('absences', [StudentController::class, 'myAbsences']);
@@ -161,7 +162,6 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('online-exam-sessions', [OnlineExamSessionController::class, 'mySessions']);
         Route::get('online-exams/{examId}/result', [OnlineExamSessionController::class, 'getResultByExamId']);
         Route::get('online-exams', [ExamController::class, 'studentOnlineExams']);
-        Route::get('dashboard', [StudentController::class, 'dashboard']);
     });
 
     Route::prefix('exam-management')->group(function () {

@@ -3,8 +3,9 @@
 namespace App\Models;
 
 use App\Enums\StudySessionSource;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class StudySession extends Model
@@ -43,5 +44,13 @@ class StudySession extends Model
     public function term(): BelongsTo
     {
         return $this->belongsTo(AcademicTerm::class);
+    }
+
+    public function scopeSumDurationMinutes(Builder $query): int
+    {
+        return (int) $query
+            ->whereNotNull('ended_at')
+            ->selectRaw('COALESCE(SUM(TIMESTAMPDIFF(MINUTE, started_at, ended_at)), 0) as total_minutes')
+            ->value('total_minutes');
     }
 }
