@@ -29,7 +29,7 @@ return new class extends Migration
                 ->nullOnDelete();
 
             // برای محاسبه تراز نمره
-            $table->decimal('z_score', 10, 4)->nullable();
+            $table->decimal('t_score', 10, 4)->nullable();
 
             $table->timestamps();
 

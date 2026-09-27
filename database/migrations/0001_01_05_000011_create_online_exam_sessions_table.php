@@ -31,7 +31,7 @@ return new class extends Migration
             $table->unsignedInteger('time_used_seconds')->default(0);
 
             // نتایج نهایی (Cache شده برای سرعت در کارنامه)
-            $table->decimal('score', 5, 2)->default(0);
+            $table->decimal('t_score', 5, 2)->default(0);
             $table->decimal('percent', 5, 2)->default(0);
 
             // فیلدهای فنی

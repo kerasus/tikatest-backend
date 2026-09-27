@@ -34,31 +34,35 @@ class LessonController extends Controller
                     'relationColumn' => 'name',
                     'exact' => false,
                 ],
+                [
+                    'requestKey' => 'class_id',
+                    'relationName' => 'classes',
+                    'relationColumn' => 'classes.id',
+                    'exact' => true,
+                ],
+                [
+                    'requestKey' => 'field_id',
+                    'relationName' => 'academicLevel.academicField',
+                    'relationColumn' => 'academic_fields.id',
+                    'exact' => true,
+                ],
+                [
+                    'requestKey' => 'school_id',
+                    'relationName' => 'academicLevel.academicField.school',
+                    'relationColumn' => 'schools.id',
+                    'exact' => true,
+                ],
+            ],
+            'scopes' => [
+                'forClassWithFallback',
             ],
             'filterKeysIn' => [
                 'id',
             ],
             'eagerLoads' => ['academicLevel.academicField.school'],
-            'returnModelQuery' => true,
         ];
 
-        $result = $this->commonIndex($request, Lesson::class, $config);
-
-        if (is_array($result) && isset($result['modelQuery'])) {
-            if ($request->filled('field_id')) {
-                $result['modelQuery']->whereHas('academicLevel.academicField', function ($query) use ($request) {
-                    $query->where('academic_fields.id', $request->get('field_id'));
-                });
-            }
-
-            if ($request->filled('school_id')) {
-                $result['modelQuery']->whereHas('academicLevel.academicField.school', function ($query) use ($request) {
-                    $query->where('schools.id', $request->get('school_id'));
-                });
-            }
-        }
-
-        return $result['responseWithAttachedCollection']($result['modelQuery']);
+        return $this->commonIndex($request, Lesson::class, $config);
     }
 
     public function store(Request $request): JsonResponse

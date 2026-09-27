@@ -282,7 +282,7 @@ class HomeworkController extends Controller
     {
         $studentId = auth()->id();
 
-        $homework = Homework::with(['lesson', 'schoolClass', 'submissions', 'attachments'])->findOrFail($homeworkId);
+        $homework = Homework::with(['lesson', 'classes', 'academicLevels', 'submissions', 'attachments'])->findOrFail($homeworkId);
 
         if ($homework->class_id) {
             $isEnrolled = TermEnrollment::where('user_id', $studentId)

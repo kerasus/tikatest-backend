@@ -52,7 +52,7 @@ class OnlineExamSessionController extends Controller
             'submitted_at' => 'nullable|date',
             'duration_limit_seconds' => 'nullable|integer|min:0',
             'time_used_seconds' => 'nullable|integer|min:0',
-            'score' => 'nullable|numeric|min:0',
+            't_score' => 'nullable|numeric|min:0',
             'percent' => 'nullable|numeric|min:0|max:100',
             'ip_address' => 'nullable|ip',
             'user_agent' => 'nullable|string',
@@ -147,7 +147,7 @@ class OnlineExamSessionController extends Controller
             'submitted_at' => 'nullable|date',
             'duration_limit_seconds' => 'nullable|integer|min:0',
             'time_used_seconds' => 'nullable|integer|min:0',
-            'score' => 'nullable|numeric|min:0',
+            't_score' => 'nullable|numeric|min:0',
             'percent' => 'nullable|numeric|min:0|max:100',
             'ip_address' => 'nullable|ip',
             'user_agent' => 'nullable|string',
@@ -480,7 +480,7 @@ class OnlineExamSessionController extends Controller
 
                         $lockedSession->update([
                             'percent' => $scoreData['percent'],
-                            'score' => $scoreData['obtained_marks'],
+                            't_score' => $scoreData['obtained_marks'],
                         ]);
 
                         return;
@@ -500,7 +500,7 @@ class OnlineExamSessionController extends Controller
 
                     $lockedSession->update([
                         'percent' => $scoreData['percent'],
-                        'score' => $scoreData['obtained_marks'],
+                        't_score' => $scoreData['obtained_marks'],
                         'status' => 'graded',
                     ]);
                 }

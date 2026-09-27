@@ -16,13 +16,13 @@ class InPersonExamResult extends Model
         'raw_score',
         'scaled_score',
         'recorded_by',
-        'z_score',
+        't_score',
     ];
 
     protected $casts = [
         'raw_score' => 'decimal:2',
         'scaled_score' => 'decimal:2',
-        'z_score' => 'decimal:4',
+        't_score' => 'decimal:4',
     ];
 
     protected $appends = [

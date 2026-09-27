@@ -114,6 +114,26 @@ class SchoolController extends Controller
 
     public function getBySlug(string $slug): JsonResponse
     {
+        // داده‌های ثابت برای اسلاگ‌های سیستمی و مهمان
+        $staticSchools = [
+            'guest' => [
+                'name' => 'مهمان',
+                'logo' => null,
+                'type' => 'guest',
+            ],
+            'system' => [
+                'name' => 'سامانه تیکا تست',
+                'logo' => null,
+                'type' => 'system',
+            ],
+        ];
+
+        // اگر اسلاگ از نوع ثابت بود، بدون درگیر کردن دیتابیس و کش فوراً برمی‌گردانیم
+        if (isset($staticSchools[$slug])) {
+            return $this->jsonResponseOk($staticSchools[$slug]);
+        }
+
+
         // کش رو با یه کلیدِ منحصر به فرد ذخیره می‌کنیم
         // مثلا: school_slug_mobtakeran
         // تایم رو هم مثلا ۱ ساعت (۳۶۰۰ ثانیه) می‌ذاریم که نه خیلی سنگین باشه نه دیتابیس رو شلوغ کنه

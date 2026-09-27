@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -49,6 +50,35 @@ class TermEnrollment extends Model
 
     public function isActive(): bool
     {
-        return is_null($this->left_at) || $this->left_at->isFuture();
+        $hasStarted = is_null($this->enrolled_at) || $this->enrolled_at->isPast();
+        $hasNotLeft = is_null($this->left_at) || $this->left_at->isFuture();
+
+        return $hasStarted && $hasNotLeft;
+    }
+
+    public function scopeActive(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q) {
+            $q->whereNull('enrolled_at')
+                ->orWhere('enrolled_at', '<=', now());
+        })->where(function (Builder $q) {
+            $q->whereNull('left_at')
+                ->orWhere('left_at', '>', now());
+        });
+    }
+
+    public function scopeWhereTermIsActive(Builder $query): Builder
+    {
+        return $query->whereHas('term', function (Builder $q) {
+            $q->where('is_active', true)
+                ->where(function (Builder $dateQuery) {
+                    $dateQuery->whereNull('starts_at')
+                        ->orWhere('starts_at', '<=', now());
+                })
+                ->where(function (Builder $dateQuery) {
+                    $dateQuery->whereNull('ends_at')
+                        ->orWhere('ends_at', '>=', now());
+                });
+        });
     }
 }

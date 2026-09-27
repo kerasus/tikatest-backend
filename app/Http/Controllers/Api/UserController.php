@@ -2,13 +2,18 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\User;
-use App\Traits\Filter;
-use App\Traits\CommonCRUD;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
+use App\Enums\UserRoleType;
 use App\Http\Controllers\Controller;
+use App\Models\SchoolUser;
+use App\Models\User;
+use App\Traits\CommonCRUD;
+use App\Traits\Filter;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
+use Throwable;
 
 class UserController extends Controller
 {
@@ -18,10 +23,11 @@ class UserController extends Controller
     {
         $this->middleware('auth:sanctum');
         $this->middleware('admin_or_permission:users.view')->only(['index', 'show']);
-        $this->middleware('admin_or_permission:users.create')->only(['store']);
+        $this->middleware('role:'.UserRoleType::Admin->value.'|'.UserRoleType::Manager->value)->only(['store']);
         $this->middleware('admin_or_permission:users.update')->only(['update']);
         $this->middleware('admin_or_permission:users.delete')->only(['destroy']);
-        $this->middleware('admin_or_permission:users.manage-roles')->only(['assignRole', 'removeRole']);
+        $this->middleware('role:'.UserRoleType::Admin->value.'|'.UserRoleType::Manager->value)
+            ->only(['assignRole', 'removeRole']);
     }
 
     public function index(Request $request): JsonResponse
@@ -52,7 +58,7 @@ class UserController extends Controller
             ],
             'filterRelationIds' => [
                 [
-                    'requestKey'   => 'school_id',
+                    'requestKey' => 'school_id',
                     'relationName' => 'schools',
                 ],
             ],
@@ -77,25 +83,63 @@ class UserController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $request->validate([
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'username' => 'required|string|unique:users',
-            'mobile' => 'required|string|unique:users',
-            'email' => 'nullable|string|email|unique:users',
-            'password' => 'required|string|min:6',
-            'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
-        ]);
+        /** @var User $creator */
+        $creator = $request->user();
+        $isSystemAdmin = $creator->hasRole(UserRoleType::Admin->value);
+        $picturePath = null;
 
-        $data = $request->only([
-            'first_name', 'last_name', 'username', 'mobile', 'email', 'password',
-        ]);
+        try {
+            $user = DB::transaction(function () use ($request, $creator, $isSystemAdmin, &$picturePath) {
+                $schoolIdRules = $isSystemAdmin
+                    ? ['nullable', 'integer', 'exists:schools,id']
+                    : [
+                        'required',
+                        'integer',
+                        Rule::exists('school_user', 'school_id')
+                            ->where(fn ($query) => $query
+                                ->where('user_id', $creator->id)
+                                ->where('is_active', true)),
+                    ];
 
-        if ($request->hasFile('picture')) {
-            $data['picture'] = $request->file('picture')->store('user-pictures', 'public');
+                $request->validate([
+                    'first_name' => 'required|string|max:255',
+                    'last_name' => 'required|string|max:255',
+                    'username' => 'required|string|unique:users',
+                    'mobile' => 'required|string|unique:users',
+                    'email' => 'nullable|string|email|unique:users',
+                    'password' => 'required|string|min:6',
+                    'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
+                    'school_id' => $schoolIdRules,
+                ]);
+
+                $data = $request->only([
+                    'first_name', 'last_name', 'username', 'mobile', 'email', 'password',
+                ]);
+
+                if ($request->hasFile('picture')) {
+                    $picturePath = $request->file('picture')->store('user-pictures', 'public');
+                    $data['picture'] = $picturePath;
+                }
+
+                $user = User::create($data);
+
+                if (! $isSystemAdmin) {
+                    SchoolUser::create([
+                        'school_id' => $request->integer('school_id'),
+                        'user_id' => $user->id,
+                        'is_active' => true,
+                    ]);
+                }
+
+                return $user;
+            });
+        } catch (Throwable $exception) {
+            if ($picturePath !== null) {
+                Storage::disk('public')->delete($picturePath);
+            }
+
+            throw $exception;
         }
-
-        $user = User::create($data);
 
         return $this->jsonResponseOk($user);
     }
@@ -154,7 +198,13 @@ class UserController extends Controller
             'role' => 'required|string|exists:roles,name',
         ]);
 
-        $user->assignRole($request->input('role'));
+        $role = $request->string('role')->toString();
+        $accessError = $this->getRoleManagementAccessError($request->user(), $user, $role);
+        if ($accessError !== null) {
+            return $accessError;
+        }
+
+        $user->assignRole($role);
 
         return response()->json([
             'message' => 'نقش کاربر با موفقیت اختصاص داده شد.',
@@ -170,7 +220,13 @@ class UserController extends Controller
             'role' => 'required|string|exists:roles,name',
         ]);
 
-        $user->removeRole($request->input('role'));
+        $role = $request->string('role')->toString();
+        $accessError = $this->getRoleManagementAccessError($request->user(), $user, $role);
+        if ($accessError !== null) {
+            return $accessError;
+        }
+
+        $user->removeRole($role);
 
         return response()->json([
             'message' => 'نقش کاربر با موفقیت حذف شد.',
@@ -178,6 +234,36 @@ class UserController extends Controller
                 'user' => $user->load('roles', 'permissions'),
             ],
         ]);
+    }
+
+    private function getRoleManagementAccessError(User $actor, User $targetUser, string $role): ?JsonResponse
+    {
+        if ($actor->hasRole(UserRoleType::Admin->value)) {
+            return null;
+        }
+
+        if (! $actor->hasRole(UserRoleType::Manager->value)) {
+            return $this->jsonResponseError('شما مجاز به مدیریت نقش‌های کاربران نیستید.', 403);
+        }
+
+        if ($role === UserRoleType::Admin->value) {
+            return $this->jsonResponseError('مدیر مدرسه مجاز به مدیریت نقش مدیرکل نیست.', 403);
+        }
+
+        $hasSharedActiveSchool = SchoolUser::query()
+            ->where('user_id', $targetUser->id)
+            ->where('is_active', true)
+            ->whereIn('school_id', SchoolUser::query()
+                ->select('school_id')
+                ->where('user_id', $actor->id)
+                ->where('is_active', true))
+            ->exists();
+
+        if (! $hasSharedActiveSchool) {
+            return $this->jsonResponseError('شما فقط می‌توانید نقش کاربران مدرسه خود را مدیریت کنید.', 403);
+        }
+
+        return null;
     }
 
     public function me(Request $request): JsonResponse

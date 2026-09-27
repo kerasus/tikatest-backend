@@ -228,7 +228,7 @@ class ReportService
                 'descriptive_value' => $result->raw_score,
                 'descriptive_label' => $this->getDescriptiveLabel($result->raw_score),
                 'min_passing_score' => $result->inPersonExamDetail?->exam?->min_passing_score,
-                'z_score' => $result->z_score,
+                't_score' => $result->t_score,
                 'is_visible' => true,
                 'explanation' => null,
             ];
@@ -307,7 +307,7 @@ class ReportService
                 'grade_type_label' => $this->getGradeTypeLabel($gradeType),
                 'calculated_grade' => $result->scaled_score,
                 'grade_date' => $result->exam_date,
-                'z_score' => $result->z_score,
+                't_score' => $result->t_score,
             ];
 
             if (isset($averagesByTerm[$gradeType])) {

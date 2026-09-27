@@ -40,7 +40,7 @@ class InPersonExamResultController extends Controller
             'raw_score' => 'required|numeric|min:0',
             'scaled_score' => 'required|numeric|min:0',
             'recorded_by' => 'nullable|exists:users,id',
-            'z_score' => 'nullable|numeric',
+            't_score' => 'nullable|numeric',
         ]);
 
         return $this->commonStore($request, InPersonExamResult::class);
@@ -61,7 +61,7 @@ class InPersonExamResultController extends Controller
             'raw_score' => 'sometimes|required|numeric|min:0',
             'scaled_score' => 'sometimes|required|numeric|min:0',
             'recorded_by' => 'nullable|exists:users,id',
-            'z_score' => 'nullable|numeric',
+            't_score' => 'nullable|numeric',
         ]);
 
         return $this->commonUpdate($request, $inPersonExamResult);

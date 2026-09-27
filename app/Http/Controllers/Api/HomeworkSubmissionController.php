@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\UserRoleType;
 use App\Http\Controllers\Controller;
 use App\Models\HomeworkSubmission;
 use App\Traits\CommonCRUD;
@@ -84,8 +85,8 @@ class HomeworkSubmissionController extends Controller
     public function markAsSeen(HomeworkSubmission $homeworkSubmission): JsonResponse
     {
         if ($homeworkSubmission->operator_seen_at === null) {
-//            $homeworkSubmission->operator_seen_at = now();
-//            $homeworkSubmission->save();
+            //            $homeworkSubmission->operator_seen_at = now();
+            //            $homeworkSubmission->save();
             $homeworkSubmission->update([
                 'operator_seen_at' => now(),
             ]);
@@ -96,6 +97,17 @@ class HomeworkSubmissionController extends Controller
 
     public function sendFeedback(Request $request, HomeworkSubmission $homeworkSubmission): JsonResponse
     {
+        $canSendFeedback = $request->user()->hasAnyRole([
+            UserRoleType::Admin->value,
+            UserRoleType::Manager->value,
+            UserRoleType::Teacher->value,
+            UserRoleType::Staff->value,
+        ]);
+
+        if (! $canSendFeedback) {
+            return $this->jsonResponseError('شما مجاز به ارسال بازخورد نیستید.', 403);
+        }
+
         $request->validate([
             'feedback' => 'nullable|string',
         ]);

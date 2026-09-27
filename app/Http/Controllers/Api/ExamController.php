@@ -277,14 +277,14 @@ class ExamController extends Controller
 
                         'raw_score' => $latestInPersonResult->raw_score,
                         'scaled_score' => $latestInPersonResult->scaled_score,
-                        'z_score' => $latestInPersonResult->z_score,
+                        't_score' => $latestInPersonResult->t_score,
 
                         'recorded_at' => $latestInPersonResult->created_at,
                     ];
                 }
             } elseif ($exam->delivery_mode === 'online') {
                 if ($latestOnlineSession) {
-                    $hasScore = $latestOnlineSession->score !== null
+                    $hasScore = $latestOnlineSession->t_score !== null
                         && $latestOnlineSession->status === 'graded';
 
                     $result = [
@@ -293,7 +293,7 @@ class ExamController extends Controller
                         'has_result' => $hasScore,
 
                         'score' => $hasScore
-                            ? $latestOnlineSession->score
+                            ? $latestOnlineSession->t_score
                             : null,
 
                         'percent' => $hasScore
@@ -349,13 +349,13 @@ class ExamController extends Controller
             return [
                 'raw_score' => $inPersonResult->raw_score,
                 'scaled_score' => $inPersonResult->scaled_score,
-                'z_score' => $inPersonResult->z_score,
+                't_score' => $inPersonResult->t_score,
             ];
         }
 
         if ($onlineSession) {
             return [
-                'score' => $onlineSession->score,
+                'score' => $onlineSession->t_score,
                 'percent' => $onlineSession->percent,
                 'status' => $onlineSession->status,
             ];
@@ -727,7 +727,7 @@ class ExamController extends Controller
                         'raw_score' => $result['raw_score'] ?? null,
                         'scaled_score' => $result['scaled_score'] ?? null,
                         'recorded_by' => $request->user()->id,
-                        'z_score' => $result['z_score'] ?? null,
+                        't_score' => $result['t_score'] ?? null,
                     ]);
                 }
             }
@@ -866,7 +866,7 @@ class ExamController extends Controller
             'results.*.user_id' => 'required|exists:users,id',
             'results.*.raw_score' => 'required|numeric|min:0',
             'results.*.scaled_score' => 'required|numeric|min:0',
-            'results.*.z_score' => 'nullable|numeric',
+            'results.*.t_score' => 'nullable|numeric',
         ];
 
         return $request->validate($rules);

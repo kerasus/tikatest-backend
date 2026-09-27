@@ -118,7 +118,7 @@ class OnlineExamScoringService
 
             $session->update([
                 'percent' => $scoreData['percent'],
-                'score' => $scoreData['obtained_marks'],
+                't_score' => $scoreData['obtained_marks'],
                 'started_at' => $session->started_at,
                 'submitted_at' => $session->submitted_at,
             ]);
@@ -138,7 +138,7 @@ class OnlineExamScoringService
                 'student_id' => $session->student_id,
                 'student_name' => $session->student->full_name ?? 'Unknown',
                 'percent' => $session->percent,
-                'score' => $session->score,
+                't_score' => $session->t_score,
                 'started_at' => $session->started_at,
                 'ended_at' => $session->submitted_at,
                 'status' => $session->status,

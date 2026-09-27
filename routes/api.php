@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CalendarController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CalendarEventTargetController;
 use App\Http\Controllers\Api\CalendarUserController;
+use App\Http\Controllers\Api\ClassLessonController;
 use App\Http\Controllers\Api\DisciplinaryCaseController;
 use App\Http\Controllers\Api\DisciplinaryRecordController;
 use App\Http\Controllers\Api\ExamCategoryController;
@@ -68,6 +69,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('academic-fields', AcademicFieldController::class);
     Route::apiResource('academic-levels', AcademicLevelController::class);
     Route::get('classes/{schoolClass}/skyroom-rooms', [SkyroomRoomController::class, 'index']);
+    Route::apiResource('classes.lessons', ClassLessonController::class)
+        ->parameters([
+            'classes' => 'schoolClass',
+            'lessons' => 'classLesson',
+        ]);
     Route::apiResource('classes', SchoolClassController::class);
     Route::apiResource('students', StudentController::class);
     Route::apiResource('student-guardians', StudentGuardianController::class);
@@ -94,7 +100,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('online-exam-session-responses', OnlineExamSessionResponseController::class);
     Route::apiResource('online-exam-answer-keys', OnlineExamAnswerKeyController::class);
     Route::apiResource('online-exam-booklets', OnlineExamBookletController::class);
-    Route::get('online-exam-details/{id}/results-with-rank', [OnlineExamDetailController::class, 'resultsWithRank']);
+//    Route::get('online-exam-details/{id}/results-with-rank', [OnlineExamDetailController::class, 'resultsWithRank']);
 
     Route::prefix('online-exam-sessions')->group(function () {
         Route::get('my-sessions', [OnlineExamSessionController::class, 'mySessions']);
