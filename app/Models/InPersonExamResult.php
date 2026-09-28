@@ -6,6 +6,41 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property int $in_person_exam_id
+ * @property int $user_id
+ * @property numeric $raw_score
+ * @property numeric|null $scaled_score
+ * @property int|null $recorded_by
+ * @property numeric|null $t_score
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read array $class_ids
+ * @property-read \App\Models\Exam|null $exam
+ * @property-read string|null $exam_date
+ * @property-read int|null $exam_id
+ * @property-read string|null $grade_type
+ * @property-read bool|null $is_descriptive
+ * @property-read bool $is_report_card
+ * @property-read int|null $lesson_id
+ * @property-read \App\Models\InPersonExamDetail $inPersonExamDetail
+ * @property-read \App\Models\User|null $recordedBy
+ * @property-read \App\Models\User $student
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult whereInPersonExamId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult whereRawScore($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult whereRecordedBy($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult whereScaledScore($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult whereTScore($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|InPersonExamResult whereUserId($value)
+ * @mixin \Eloquent
+ */
 class InPersonExamResult extends Model
 {
     use HasFactory;

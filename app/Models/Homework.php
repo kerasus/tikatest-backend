@@ -10,6 +10,48 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
+/**
+ * @property int $id
+ * @property string $title
+ * @property string|null $description
+ * @property int $lesson_id
+ * @property int $term_id
+ * @property \Illuminate\Support\Carbon|null $due_date
+ * @property int $created_by
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\AcademicLevel> $academicLevels
+ * @property-read int|null $academic_levels_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\HomeworkAttachment> $attachments
+ * @property-read int|null $attachments_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\SchoolClass> $classes
+ * @property-read int|null $classes_count
+ * @property-read \App\Models\User $createdBy
+ * @property-read \App\Models\Lesson|null $lesson
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\HomeworkSubmission> $submissions
+ * @property-read int|null $submissions_count
+ * @property-read \App\Models\AcademicTerm $term
+ * @method static Builder<static>|Homework forStudent(\App\Models\User|int $student, bool $activeEnrollmentsOnly = true)
+ * @method static Builder<static>|Homework inSchool($schoolId)
+ * @method static Builder<static>|Homework newModelQuery()
+ * @method static Builder<static>|Homework newQuery()
+ * @method static Builder<static>|Homework onlyTrashed()
+ * @method static Builder<static>|Homework query()
+ * @method static Builder<static>|Homework whereCreatedAt($value)
+ * @method static Builder<static>|Homework whereCreatedBy($value)
+ * @method static Builder<static>|Homework whereDeletedAt($value)
+ * @method static Builder<static>|Homework whereDescription($value)
+ * @method static Builder<static>|Homework whereDueDate($value)
+ * @method static Builder<static>|Homework whereId($value)
+ * @method static Builder<static>|Homework whereLessonId($value)
+ * @method static Builder<static>|Homework whereTermId($value)
+ * @method static Builder<static>|Homework whereTitle($value)
+ * @method static Builder<static>|Homework whereUpdatedAt($value)
+ * @method static Builder<static>|Homework withTrashed(bool $withTrashed = true)
+ * @method static Builder<static>|Homework withoutTrashed()
+ * @mixin \Eloquent
+ */
 class Homework extends Model
 {
     use HasFactory, SoftDeletes;

@@ -11,6 +11,59 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
+/**
+ * @property int $id
+ * @property string $name
+ * @property string|null $description
+ * @property int|null $lesson_id
+ * @property numeric|null $min_passing_score
+ * @property numeric|null $max_score
+ * @property string $delivery_mode
+ * @property int $exam_category_id
+ * @property int $term_id
+ * @property int|null $occurrence
+ * @property int|null $created_by
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\AcademicLevel> $academicLevels
+ * @property-read int|null $academic_levels_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\OnlineExamAnswerKey> $answerKeys
+ * @property-read int|null $answer_keys_count
+ * @property-read \App\Models\ExamCategory $category
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\SchoolClass> $classes
+ * @property-read int|null $classes_count
+ * @property-read \App\Models\User|null $createdBy
+ * @property-read \App\Models\InPersonExamDetail|null $inPersonExamDetail
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\InPersonExamResult> $inPersonExamResults
+ * @property-read int|null $in_person_exam_results_count
+ * @property-read \App\Models\Lesson|null $lesson
+ * @property-read \App\Models\OnlineExamDetail|null $onlineExamDetail
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\OnlineExamSessionResponse> $onlineExamSessionResponses
+ * @property-read int|null $online_exam_session_responses_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\OnlineExamSessionResult> $onlineExamSessionResults
+ * @property-read int|null $online_exam_session_results_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\OnlineExamSession> $onlineExamSessions
+ * @property-read int|null $online_exam_sessions_count
+ * @property-read \App\Models\AcademicTerm $term
+ * @method static Builder<static>|Exam inSchool($schoolId)
+ * @method static Builder<static>|Exam newModelQuery()
+ * @method static Builder<static>|Exam newQuery()
+ * @method static Builder<static>|Exam query()
+ * @method static Builder<static>|Exam whereCreatedAt($value)
+ * @method static Builder<static>|Exam whereCreatedBy($value)
+ * @method static Builder<static>|Exam whereDeliveryMode($value)
+ * @method static Builder<static>|Exam whereDescription($value)
+ * @method static Builder<static>|Exam whereExamCategoryId($value)
+ * @method static Builder<static>|Exam whereId($value)
+ * @method static Builder<static>|Exam whereLessonId($value)
+ * @method static Builder<static>|Exam whereMaxScore($value)
+ * @method static Builder<static>|Exam whereMinPassingScore($value)
+ * @method static Builder<static>|Exam whereName($value)
+ * @method static Builder<static>|Exam whereOccurrence($value)
+ * @method static Builder<static>|Exam whereTermId($value)
+ * @method static Builder<static>|Exam whereUpdatedAt($value)
+ * @mixin \Eloquent
+ */
 class Exam extends Model
 {
     use HasFactory;

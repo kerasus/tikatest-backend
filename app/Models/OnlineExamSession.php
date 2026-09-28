@@ -7,6 +7,50 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property int $exam_id
+ * @property int $student_id
+ * @property string $status
+ * @property \Illuminate\Support\Carbon|null $started_at
+ * @property \Illuminate\Support\Carbon|null $submitted_at
+ * @property int|null $duration_limit_seconds
+ * @property int $time_used_seconds
+ * @property numeric $t_score
+ * @property numeric $percent
+ * @property string|null $ip_address
+ * @property string|null $user_agent
+ * @property int $attempt_number
+ * @property bool $is_locked
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Models\Exam $exam
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\OnlineExamSessionResponse> $responses
+ * @property-read int|null $responses_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\OnlineExamSessionResult> $results
+ * @property-read int|null $results_count
+ * @property-read \App\Models\User $student
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession query()
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereAttemptNumber($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereDurationLimitSeconds($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereExamId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereIpAddress($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereIsLocked($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession wherePercent($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereStartedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereStatus($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereStudentId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereSubmittedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereTScore($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereTimeUsedSeconds($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder<static>|OnlineExamSession whereUserAgent($value)
+ * @mixin \Eloquent
+ */
 class OnlineExamSession extends Model
 {
     use HasFactory;

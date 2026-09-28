@@ -272,7 +272,7 @@ class UserController extends Controller
         $user = $request->user();
 
         // لود تنبل/Lazy Load رابطه‌ها روی کاربر لاگین‌شده
-        $user->load(['roles', 'permissions', 'schools']);
+        $user->load(['roles', 'permissions', 'schools', 'termEnrollments.schoolClass.academicLevel.academicField.school']);
 
         return $this->jsonResponseOk($user);
     }

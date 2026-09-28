@@ -15,6 +15,94 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
+/**
+ * @property int $id
+ * @property string $first_name
+ * @property string $last_name
+ * @property string $username
+ * @property string|null $mobile
+ * @property string|null $email
+ * @property string|null $address
+ * @property string|null $national_id
+ * @property \Illuminate\Support\Carbon|null $email_verified_at
+ * @property \Illuminate\Support\Carbon|null $mobile_verified_at
+ * @property string|null $mobile_verification_code
+ * @property string|null $description
+ * @property string $password
+ * @property string|null $remember_token
+ * @property \Illuminate\Support\Carbon|null $birth_date
+ * @property string|null $picture
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\DisciplinaryRecord> $disciplinaryRecorded
+ * @property-read int|null $disciplinary_recorded_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\DisciplinaryRecord> $disciplinaryRecords
+ * @property-read int|null $disciplinary_records_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Exam> $examsCreated
+ * @property-read int|null $exams_created_count
+ * @property-read string $full_name
+ * @property-read array $permissions_list
+ * @property-read array $roles_list
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\StudentGuardian> $guardianRecords
+ * @property-read int|null $guardian_records_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Homework> $homeworkCreated
+ * @property-read int|null $homework_created_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\HomeworkSubmission> $homeworkGraded
+ * @property-read int|null $homework_graded_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\HomeworkSubmission> $homeworkSubmissions
+ * @property-read int|null $homework_submissions_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\InPersonExamResult> $inPersonExamResults
+ * @property-read int|null $in_person_exam_results_count
+ * @property-read \Illuminate\Notifications\DatabaseNotificationCollection<int, \Illuminate\Notifications\DatabaseNotification> $notifications
+ * @property-read int|null $notifications_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \Spatie\Permission\Models\Permission> $permissions
+ * @property-read int|null $permissions_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\MessageOwner> $receivedMessages
+ * @property-read int|null $received_messages_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \Spatie\Permission\Models\Role> $roles
+ * @property-read int|null $roles_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\School> $schools
+ * @property-read int|null $schools_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Message> $sentMessages
+ * @property-read int|null $sent_messages_count
+ * @property-read \App\Models\StudentProfile|null $studentProfile
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \Spatie\Permission\Models\Permission> $teams
+ * @property-read int|null $teams_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\TermEnrollment> $termEnrollments
+ * @property-read int|null $term_enrollments_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \Laravel\Sanctum\PersonalAccessToken> $tokens
+ * @property-read int|null $tokens_count
+ * @method static \Database\Factories\UserFactory factory($count = null, $state = [])
+ * @method static Builder<static>|User newModelQuery()
+ * @method static Builder<static>|User newQuery()
+ * @method static Builder<static>|User nonStudent()
+ * @method static Builder<static>|User permission($permissions, bool $without = false)
+ * @method static Builder<static>|User query()
+ * @method static Builder<static>|User role($roles, ?string $guard = null, bool $without = false)
+ * @method static Builder<static>|User team($teams, bool $without = false)
+ * @method static Builder<static>|User whereAddress($value)
+ * @method static Builder<static>|User whereBirthDate($value)
+ * @method static Builder<static>|User whereCreatedAt($value)
+ * @method static Builder<static>|User whereDescription($value)
+ * @method static Builder<static>|User whereEmail($value)
+ * @method static Builder<static>|User whereEmailVerifiedAt($value)
+ * @method static Builder<static>|User whereFirstName($value)
+ * @method static Builder<static>|User whereId($value)
+ * @method static Builder<static>|User whereLastName($value)
+ * @method static Builder<static>|User whereMobile($value)
+ * @method static Builder<static>|User whereMobileVerificationCode($value)
+ * @method static Builder<static>|User whereMobileVerifiedAt($value)
+ * @method static Builder<static>|User whereNationalId($value)
+ * @method static Builder<static>|User wherePassword($value)
+ * @method static Builder<static>|User wherePicture($value)
+ * @method static Builder<static>|User whereRememberToken($value)
+ * @method static Builder<static>|User whereUpdatedAt($value)
+ * @method static Builder<static>|User whereUsername($value)
+ * @method static Builder<static>|User withoutPermission($permissions)
+ * @method static Builder<static>|User withoutRole($roles, ?string $guard = null)
+ * @method static Builder<static>|User withoutTeam($teams)
+ * @mixin \Eloquent
+ */
 class User extends Authenticatable
 {
     use HasApiTokens, HasFactory, HasRoles, Notifiable;

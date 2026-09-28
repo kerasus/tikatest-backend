@@ -4,24 +4,16 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Exam;
-use App\Models\InPersonExamDetail;
-use App\Models\InPersonExamResult;
-use App\Models\OnlineExamDetail;
 use App\Models\SchoolClass;
-use App\Models\AcademicTerm;
-use App\Models\ExamCategoryTermLimit;
 use App\Models\User;
 use App\Models\TermEnrollment;
-use App\Models\OnlineExamBooklet;
-use App\Models\OnlineExamAnswerKey;
+use App\Services\ExamService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class ExamController extends Controller
@@ -140,209 +132,32 @@ class ExamController extends Controller
         return $this->jsonResponseOk($exams);
     }
 
-    public function myExams(Request $request): JsonResponse
+    public function myOnlineExams(Request $request, ExamService $examService): JsonResponse
     {
-        $studentId = auth()->id();
+        $studentId = $request->user()->id;
 
-        $config = [
-            'filterKeys' => [
-                'name',
-                'description',
-            ],
+        // پارامترهای اختیاری از فرانت‌اند
+        $from = $request->query('from');
+        $to = $request->query('to');
 
-            'filterDate' => [
-                'created_at',
-            ],
+        // اگر پاس نداد، دیفالتش همون منطق مدنظرت باشه (مثلاً false یا true طبق دلخواهت)
+        $onlyPendingOrInProgress = $request->boolean('only_pending_or_in_progress', false);
 
-            'filterKeysExact' => [
-                'lesson_id',
-                'exam_category_id',
-                'delivery_mode',
-            ],
+        $perPage = (int) $request->query('length', 10);
 
-            'filterRelationKeys' => [
-                [
-                    'requestKey' => 'lesson_name',
-                    'relationName' => 'lesson',
-                    'relationColumn' => 'name',
-                    'exact' => false,
-                ],
-                [
-                    'requestKey' => 'category_name',
-                    'relationName' => 'category',
-                    'relationColumn' => 'name',
-                    'exact' => false,
-                ],
-                [
-                    'requestKey' => 'academic_level_id',
-                    'relationName' => 'academicLevels',
-                    'relationColumn' => 'academic_levels.id',
-                    'exact' => true,
-                ],
-                [
-                    'requestKey' => 'class_id',
-                    'relationName' => 'classes',
-                    'relationColumn' => 'classes.id',
-                    'exact' => true,
-                ],
-            ],
-
-            'eagerLoads' => [
-                'category',
-                'lesson',
-                'academicLevels',
-                'classes',
-            ],
-        ];
-
-        $modelQuery = Exam::query()
-            /*
-             * آزمون‌هایی که دانش‌آموز اجازه دیدن آن‌ها را دارد:
-             *
-             * 1. آزمون عمومی:
-             *    به هیچ کلاس یا پایه‌ای متصل نشده باشد.
-             *
-             * 2. آزمون مخصوص کلاس دانش‌آموز
-             *
-             * 3. آزمون مخصوص پایه‌ای که دانش‌آموز در کلاس‌های آن پایه ثبت‌نام است
-             */
-            ->where(function ($query) use ($studentId) {
-                $query
-                    ->whereHas('classes.termEnrollments', function ($classQuery) use ($studentId) {
-                        $classQuery->where('user_id', $studentId);
-                    })
-                    ->orWhereHas('academicLevels.classes.termEnrollments', function ($classQuery) use ($studentId) {
-                        $classQuery->where('user_id', $studentId);
-                    })
-                    ->orWhere(function ($globalExamQuery) {
-                        $globalExamQuery
-                            ->doesntHave('classes')
-                            ->doesntHave('academicLevels');
-                    });
-            });
-
-        /*
-         * اعمال فیلترها، جستجوها و eager loadingهای عمومی
-         */
-        $this->buildFilterQuery(
-            $request,
-            $modelQuery,
-            Exam::class,
-            $this->getConfigArray($config)
-        );
-
-        /*
-         * فقط نتیجه‌ی همین دانش‌آموز را لود می‌کنیم.
-         *
-         * برای آزمون حضوری:
-         * نتیجه از طریق in_person_exam_details به in_person_exam_results
-         * مرتبط است؛ بنابراین رابطه Exam باید به‌درستی تعریف شده باشد.
-         */
-        $modelQuery
-            ->with([
-                'inPersonExamDetail',
-
-                'inPersonExamResults' => function ($resultQuery) use ($studentId) {
-                    $resultQuery
-                        ->where('user_id', $studentId)
-                        ->latest('created_at');
-                },
-
-                'onlineExamDetail',
-
-                'onlineExamSessions' => function ($sessionQuery) use ($studentId) {
-                    $sessionQuery
-                        ->where('student_id', $studentId)
-                        ->latest('attempt_number');
-                },
-            ])
-            ->latest('created_at');
-
-        $perPage = (int) $request->get('length', 10);
-
-        $exams = $modelQuery->paginate($perPage);
-
-        $exams->getCollection()->transform(function (Exam $exam) {
-            $latestInPersonResult = $exam->inPersonExamResults->first();
-            $latestOnlineSession = $exam->onlineExamSessions->first();
-
-            $result = null;
-
-            if ($exam->delivery_mode === 'in_person') {
-                if ($latestInPersonResult) {
-                    $result = [
-                        'type' => 'in_person',
-                        'status' => 'recorded',
-                        'has_result' => true,
-
-                        'raw_score' => $latestInPersonResult->raw_score,
-                        'scaled_score' => $latestInPersonResult->scaled_score,
-                        't_score' => $latestInPersonResult->t_score,
-
-                        'recorded_at' => $latestInPersonResult->created_at,
-                    ];
-                }
-            } elseif ($exam->delivery_mode === 'online') {
-                if ($latestOnlineSession) {
-                    $hasScore = $latestOnlineSession->t_score !== null
-                        && $latestOnlineSession->status === 'graded';
-
-                    $result = [
-                        'type' => 'online',
-                        'status' => $latestOnlineSession->status,
-                        'has_result' => $hasScore,
-
-                        'score' => $hasScore
-                            ? $latestOnlineSession->t_score
-                            : null,
-
-                        'percent' => $hasScore
-                            ? $latestOnlineSession->percent
-                            : null,
-
-                        'attempt_number' => $latestOnlineSession->attempt_number,
-                        'started_at' => $latestOnlineSession->started_at,
-                        'submitted_at' => $latestOnlineSession->submitted_at,
-                    ];
-                }
-            }
-
-            /*
-             * اطلاعات اضافی را به شکل یکسان برای API اضافه می‌کنیم.
-             */
-            $exam->setAttribute('my_result', $result);
-
-            /*
-             * اگر آزمون نتیجه نداشته باشد، مقدار score برابر null است.
-             * این باعث می‌شود آزمون همچنان در لیست باقی بماند.
-             */
-            $exam->setAttribute(
-                'score',
-                $this->extractScore(
-                    $latestInPersonResult,
-                    $latestOnlineSession
-                )
-            );
-
-            $exam->setAttribute(
-                'has_result',
-                $result !== null && ($result['has_result'] ?? false)
-            );
-
-            /*
-             * چون نتیجه داخل my_result قرار گرفت،
-             * بهتر است رابطه‌های خام در خروجی نیایند.
-             */
-            $exam->makeHidden([
-                'inPersonExamResults',
-                'onlineExamSessions',
-            ]);
-
-            return $exam;
-        });
+        // کوئری آماده و تمیز از سرویس
+        $exams = $examService->listStudentRelatedExams(
+            studentUserId: $studentId,
+            from: $from,
+            to: $to,
+            onlyOnline: true,
+            onlyPendingOrInProgress: $onlyPendingOrInProgress
+        )
+            ->paginate($perPage);
 
         return $this->jsonResponseOk($exams);
     }
+
     private function extractScore ($inPersonResult = null, $onlineSession = null): ?array
     {
         if ($inPersonResult) {
@@ -362,36 +177,6 @@ class ExamController extends Controller
         }
 
         return null;
-    }
-
-    public function store(Request $request): JsonResponse
-    {
-        $validated = $this->validateExam($request);
-
-        return DB::transaction(function () use ($request, $validated) {
-            $exam = Exam::create($validated);
-
-            if ($exam->term_id && ($validated['occurrence'] ?? null) === null) {
-                $exam->occurrence = $this->enforceTermOccurrence(
-                    $exam->id,
-                    $exam->exam_category_id,
-                    $exam->term_id
-                );
-                $exam->save();
-            }
-
-            $this->storeDetail($exam, $request);
-
-            if ($request->filled('class_ids')) {
-                $exam->classes()->sync($request->class_ids, false);
-            }
-
-            if ($request->filled('academic_level_ids')) {
-                $exam->academicLevels()->sync($request->academic_level_ids, false);
-            }
-
-            return $this->show($request, $exam->id);
-        });
     }
 
     public function show(Request $request, $id): JsonResponse
@@ -444,41 +229,15 @@ class ExamController extends Controller
         return $this->jsonResponseOk($query->paginate($perPage));
     }
 
-    public function update(Request $request, Exam $exam): JsonResponse
+    public function update(Request $request, Exam $exam, ExamService $examService): JsonResponse
     {
         $validated = $this->validateExam($request, true);
 
-        return DB::transaction(function () use ($exam, $validated, $request) {
-            $exam->update($validated);
-
-            if ($request->filled('term_id')) {
-                $exam->term_id = $request->input('term_id');
-            } elseif ($validated['term_id'] ?? null) {
-                $exam->term_id = $validated['term_id'];
-            }
-            if (array_key_exists('occurrence', $validated) && $validated['occurrence'] !== null) {
-                $exam->occurrence = $validated['occurrence'];
-            } elseif ($exam->term_id) {
-                $exam->occurrence = $this->enforceTermOccurrence(
-                    $exam->id,
-                    $exam->exam_category_id,
-                    $exam->term_id
-                );
-            }
-            $exam->save();
-
-            $this->updateDetail($exam, $request);
-
-            if ($request->filled('class_ids')) {
-                $exam->classes()->sync($request->class_ids);
-            }
-
-            if ($request->filled('academic_level_ids')) {
-                $exam->academicLevels()->sync($request->academic_level_ids);
-            }
-
-            return $this->show($request, $exam->id);
+        $exam = DB::transaction(function () use ($exam, $validated, $request, $examService) {
+            return $examService->updateExam($exam, $validated, $request);
         });
+
+        return $this->show($request, $exam->id);
     }
 
     public function destroy(Exam $exam): JsonResponse
@@ -486,262 +245,41 @@ class ExamController extends Controller
         return $this->commonDestroy($exam);
     }
 
-    public function storeWithOnlineDetail(Request $request): JsonResponse
+    public function storeWithOnlineDetail(Request $request, ExamService $examService): JsonResponse
     {
         $validated = $this->validateOnlineExam($request);
 
         $this->validateLessonOrBookletsExclusive($validated);
 
-        return DB::transaction(function () use ($validated, $request) {
-            $termId = $validated['term_id'] ?? null;
-            $examData = [
-                'name' => $validated['name'],
-                'description' => $validated['description'] ?? null,
-                'lesson_id' => $validated['lesson_id'],
-                'min_passing_score' => $validated['min_passing_score'] ?? null,
-                'max_score' => $validated['max_score'] ?? null,
-                'delivery_mode' => 'online',
-                'exam_category_id' => $validated['exam_category_id'],
-                'term_id' => $termId,
-                'created_by' => $validated['created_by'] ?? $request->user()->id,
-            ];
-
-            $exam = Exam::create($examData);
-
-            $occurrence = $this->enforceTermOccurrence(
-                $exam->id,
-                $validated['exam_category_id'],
-                $termId
-            );
-            $exam->term_id = $validated['term_id'] ?? null;
-            $exam->occurrence = $validated['occurrence'] ?? $occurrence;
-            $exam->save();
-
-            $content = $this->processExamContent($request, 'content');
-            $solution = $this->processExamContent($request, 'solution');
-
-            $onlineDetail = OnlineExamDetail::create([
-                'exam_id' => $exam->id,
-                'starts_at' => $validated['starts_at'],
-                'ends_at' => $validated['ends_at'],
-                'time_limit_minutes' => $validated['time_limit_minutes'] ?? null,
-                'visible_at' => $validated['visible_at'] ?? null,
-                'answers_visible_at' => $validated['answers_visible_at'] ?? null,
-                'content' => $content,
-                'solution' => $solution,
-                'created_by' => $request->user()->id,
-            ]);
-
-            if (!empty($validated['booklets'])) {
-                $examHasLesson = !empty($validated['lesson_id']);
-                foreach ($validated['booklets'] as $booklet) {
-                    OnlineExamBooklet::create([
-                        'online_exam_id' => $onlineDetail->id,
-                        'lesson_id' => $examHasLesson ? null : ($booklet['lesson_id'] ?? null),
-                        'title' => $booklet['title'],
-                        'from_question' => $booklet['from_question'] ?? null,
-                        'to_question' => $booklet['to_question'] ?? null,
-                        'booklet_scores' => $booklet['booklet_scores'] ?? null,
-                    ]);
-                }
-            }
-
-            if (!empty($validated['answer_keys'])) {
-                foreach ($validated['answer_keys'] as $answerKey) {
-                    OnlineExamAnswerKey::create([
-                        'exam_id' => $exam->id,
-                        'question_number' => $answerKey['question_number'],
-                        'number_of_choices' => $answerKey['number_of_choices'] ?? 4,
-                        'correct_option' => $answerKey['correct_option'],
-                        'weight' => $answerKey['weight'] ?? 0,
-                        'has_negative_mark' => $answerKey['has_negative_mark'] ?? false,
-                        'is_active' => $answerKey['is_active'] ?? true,
-                    ]);
-                }
-            }
-
-            if (!empty($validated['class_ids'])) {
-                $exam->classes()->sync($validated['class_ids'], false);
-            }
-
-            if (!empty($validated['academic_level_ids'])) {
-                $exam->academicLevels()->sync($validated['academic_level_ids'], false);
-            }
-
-            return $this->show($request, $exam->id);
+        $exam = DB::transaction(function () use ($validated, $request, $examService) {
+            return $examService->createOnlineExam($validated, $request);
         });
+
+        return $this->show($request, $exam->id);
     }
 
-    public function updateWithOnlineDetail(Request $request, Exam $exam): JsonResponse
+    public function updateWithOnlineDetail(Request $request, Exam $exam, ExamService $examService): JsonResponse
     {
         $validated = $this->validateOnlineExam($request);
 
         $this->validateLessonOrBookletsExclusive($validated);
 
-        return DB::transaction(function () use ($exam, $validated, $request) {
-            $examData = [
-                'name' => $validated['name'],
-                'description' => $validated['description'] ?? null,
-                'lesson_id' => $validated['lesson_id'],
-                'min_passing_score' => $validated['min_passing_score'] ?? null,
-                'max_score' => $validated['max_score'] ?? null,
-                'delivery_mode' => 'online',
-                'exam_category_id' => $validated['exam_category_id'],
-                'created_by' => $validated['created_by'] ?? $request->user()->id,
-            ];
-
-            $exam->update($examData);
-
-            $exam->term_id = $validated['term_id'] ?? $exam->term_id;
-            if (array_key_exists('occurrence', $validated) && $validated['occurrence'] !== null) {
-                $exam->occurrence = $validated['occurrence'];
-            } elseif ($validated['term_id'] ?? null) {
-                $exam->occurrence = $this->enforceTermOccurrence(
-                    $exam->id,
-                    $exam->exam_category_id,
-                    $validated['term_id']
-                );
-            }
-            $exam->save();
-
-            $existingDetail = OnlineExamDetail::where('exam_id', $exam->id)->first();
-
-            $updateData = [
-                'starts_at' => $validated['starts_at'],
-                'ends_at' => $validated['ends_at'],
-                'time_limit_minutes' => $validated['time_limit_minutes'] ?? null,
-                'visible_at' => $validated['visible_at'] ?? null,
-                'answers_visible_at' => $validated['answers_visible_at'] ?? null,
-                'created_by' => $request->user()->id,
-            ];
-
-            if ($request->has('content') || $request->hasFile('content_file')) {
-                $content = $this->processExamContent($request, 'content');
-                if (!$request->hasFile('content_file') && $existingDetail?->content && $content) {
-                    if (isset($existingDetail->content['path']) && !isset($content['path'])) {
-                        $content['path'] = $existingDetail->content['path'];
-                    }
-                }
-                $updateData['content'] = $content;
-            }
-
-            if ($request->has('solution') || $request->hasFile('solution_file')) {
-                $solution = $this->processExamContent($request, 'solution');
-                if (!$request->hasFile('solution_file') && $existingDetail?->solution && $solution) {
-                    if (isset($existingDetail->solution['path']) && !isset($solution['path'])) {
-                        $solution['path'] = $existingDetail->solution['path'];
-                    }
-                }
-                $updateData['solution'] = $solution;
-            }
-
-            OnlineExamDetail::updateOrCreate(
-                ['exam_id' => $exam->id],
-                $updateData
-            );
-
-            if (isset($validated['booklets'])) {
-                $exam->onlineExamDetail?->booklets()->delete();
-                $examHasLesson = !empty($validated['lesson_id']);
-                foreach ($validated['booklets'] as $booklet) {
-                    OnlineExamBooklet::create([
-                        'online_exam_id' => $exam->onlineExamDetail->id,
-                        'lesson_id' => $examHasLesson ? null : ($booklet['lesson_id'] ?? null),
-                        'title' => $booklet['title'],
-                        'from_question' => $booklet['from_question'] ?? null,
-                        'to_question' => $booklet['to_question'] ?? null,
-                        'booklet_scores' => $booklet['booklet_scores'] ?? null,
-                    ]);
-                }
-            }
-
-            if (isset($validated['answer_keys'])) {
-                OnlineExamAnswerKey::where('exam_id', $exam->id)->delete();
-                foreach ($validated['answer_keys'] as $answerKey) {
-                    OnlineExamAnswerKey::create([
-                        'exam_id' => $exam->id,
-                        'question_number' => $answerKey['question_number'],
-                        'number_of_choices' => $answerKey['number_of_choices'] ?? 4,
-                        'correct_option' => $answerKey['correct_option'],
-                        'weight' => $answerKey['weight'] ?? 0,
-                        'has_negative_mark' => $answerKey['has_negative_mark'] ?? false,
-                        'is_active' => $answerKey['is_active'] ?? true,
-                    ]);
-                }
-            }
-
-            if (!empty($validated['class_ids'])) {
-                $exam->classes()->sync($validated['class_ids']);
-            }
-
-            if (!empty($validated['academic_level_ids'])) {
-                $exam->academicLevels()->sync($validated['academic_level_ids']);
-            }
-
-            return $this->show($request, $exam->id);
+        $exam = DB::transaction(function () use ($exam, $validated, $request, $examService) {
+            return $examService->updateOnlineExam($exam, $validated, $request);
         });
+
+        return $this->show($request, $exam->id);
     }
 
-    public function storeWithInPersonDetailAndResults(Request $request): JsonResponse
+    public function storeWithInPersonDetailAndResults(Request $request, ExamService $examService): JsonResponse
     {
         $validated = $this->validateInPersonExam($request);
 
-        return DB::transaction(function () use ($validated, $request) {
-            $termId = $validated['term_id'] ?? null;
-
-            $examData = [
-                'name' => $validated['name'],
-                'description' => $validated['description'] ?? null,
-                'lesson_id' => $validated['lesson_id'],
-                'min_passing_score' => $validated['min_passing_score'] ?? null,
-                'max_score' => $validated['max_score'] ?? null,
-                'delivery_mode' => 'in_person',
-                'exam_category_id' => $validated['exam_category_id'],
-                'term_id' => $termId,
-                'created_by' => $validated['created_by'] ?? $request->user()->id,
-            ];
-
-            $exam = Exam::create($examData);
-
-            $occurrence = $this->enforceTermOccurrence(
-                $exam->id,
-                $validated['exam_category_id'],
-                $termId
-            );
-            $exam->occurrence = $validated['occurrence'] ?? $occurrence;
-            $exam->save();
-
-            $detail = InPersonExamDetail::create([
-                'exam_id' => $exam->id,
-                'held_at' => $validated['held_at'],
-                'is_descriptive' => $validated['is_descriptive'] ?? false,
-                'results_visible_at' => $validated['results_visible_at'] ?? null,
-                'created_by' => $request->user()->id,
-            ]);
-
-            if (!empty($validated['results'])) {
-                foreach ($validated['results'] as $result) {
-                    InPersonExamResult::create([
-                        'in_person_exam_id' => $detail->id,
-                        'user_id' => $result['user_id'],
-                        'raw_score' => $result['raw_score'] ?? null,
-                        'scaled_score' => $result['scaled_score'] ?? null,
-                        'recorded_by' => $request->user()->id,
-                        't_score' => $result['t_score'] ?? null,
-                    ]);
-                }
-            }
-
-            if ($request->filled('class_ids')) {
-                $exam->classes()->sync($request->class_ids, false);
-            }
-
-            if ($request->filled('academic_level_ids')) {
-                $exam->academicLevels()->sync($request->academic_level_ids, false);
-            }
-
-            return $this->show($request, $exam->id);
+        $exam = DB::transaction(function () use ($validated, $request, $examService) {
+            return $examService->createInPersonExam($validated, $request);
         });
+
+        return $this->show($request, $exam->id);
     }
 
     protected function validateExam(Request $request, bool $isUpdate = false): array
@@ -872,205 +410,4 @@ class ExamController extends Controller
         return $request->validate($rules);
     }
 
-    protected function storeDetail(Exam $exam, Request $request): void
-    {
-        if ($exam->isInPerson()) {
-            InPersonExamDetail::create([
-                'exam_id' => $exam->id,
-                'held_at' => $request->input('held_at'),
-                'is_descriptive' => $request->boolean('is_descriptive', false),
-                'results_visible_at' => $request->input('results_visible_at'),
-                'created_by' => $request->user()->id,
-            ]);
-        } elseif ($exam->isOnline()) {
-            OnlineExamDetail::create([
-                'exam_id' => $exam->id,
-                'starts_at' => $request->input('starts_at'),
-                'ends_at' => $request->input('ends_at'),
-                'time_limit_minutes' => $request->input('time_limit_minutes'),
-                'visible_at' => $request->input('visible_at'),
-                'answers_visible_at' => $request->input('answers_visible_at'),
-                'content' => $request->input('content'),
-                'solution' => $request->input('solution'),
-                'created_by' => $request->user()->id,
-            ]);
-        }
-    }
-
-    protected function updateDetail(Exam $exam, Request $request): void
-    {
-        if ($exam->isInPerson()) {
-            InPersonExamDetail::updateOrCreate(
-                ['exam_id' => $exam->id],
-                [
-                    'held_at' => $request->input('held_at'),
-                    'is_descriptive' => $request->boolean('is_descriptive', false),
-                    'results_visible_at' => $request->input('results_visible_at'),
-                    'created_by' => $request->user()->id,
-                ]
-            );
-        } elseif ($exam->isOnline()) {
-            $existingDetail = OnlineExamDetail::where('exam_id', $exam->id)->first();
-
-            $updateData = [
-                'starts_at' => $request->input('starts_at'),
-                'ends_at' => $request->input('ends_at'),
-                'time_limit_minutes' => $request->input('time_limit_minutes'),
-                'visible_at' => $request->input('visible_at'),
-                'answers_visible_at' => $request->input('answers_visible_at'),
-                'created_by' => $request->user()->id,
-            ];
-
-            $mustDeleteOldContentFile = false;
-            $mustDeleteOldSolutionFile = false;
-            $oldContentPath = null;
-            $oldSolutionPath = null;
-            // ================= مدیریت Content =================
-            if ($request->has('content') || $request->hasFile('content_file')) {
-                // استخراج مسیر فایل قدیمی به صورت امن
-                $oldContent = $existingDetail?->content;
-                $oldContentPath = is_array($oldContent) ? ($oldContent['path'] ?? null) : null;
-
-                // پردازش محتوای جدید (اگر فایل جدید باشد، مسیر جدید را جایگزین می‌کند)
-                $newContent = $this->processExamContent($request, 'content');
-                $newContent = is_array($newContent) ? $newContent : [];
-
-                // اگر فایل جدیدی آپلود نشده، مسیر فایل قدیمی را حفظ کن
-                if (!$request->hasFile('content_file') && $oldContentPath) {
-                    $newContent['path'] = $oldContentPath;
-                }
-
-                $updateData['content'] = !empty($newContent) ? $newContent : null;
-
-                // ⚠️ حذف فایل قدیمی از استوریج فقط در صورتی که فایل جدید آپلود شده باشد
-                if ($request->hasFile('content_file') && $oldContentPath) {
-                    $mustDeleteOldContentFile = true;
-                }
-            }
-
-            // ================= مدیریت Solution =================
-            if ($request->has('solution') || $request->hasFile('solution_file')) {
-                // استخراج مسیر فایل قدیمی به صورت امن
-                $oldSolution = $existingDetail?->solution;
-                $oldSolutionPath = is_array($oldSolution) ? ($oldSolution['path'] ?? null) : null;
-
-                // پردازش محتوای جدید
-                $newSolution = $this->processExamContent($request, 'solution');
-                $newSolution = is_array($newSolution) ? $newSolution : [];
-
-                // اگر فایل جدیدی آپلود نشده، مسیر فایل قدیمی را حفظ کن
-                if (!$request->hasFile('solution_file') && $oldSolutionPath) {
-                    $newSolution['path'] = $oldSolutionPath;
-                }
-
-                $updateData['solution'] = !empty($newSolution) ? $newSolution : null;
-
-                // ⚠️ حذف فایل قدیمی از استوریج فقط در صورتی که فایل جدید آپلود شده باشد
-                if ($request->hasFile('solution_file') && $oldSolutionPath) {
-                    $mustDeleteOldSolutionFile = true;
-                }
-            }
-
-            OnlineExamDetail::updateOrCreate(
-                ['exam_id' => $exam->id],
-                $updateData
-            );
-            if ($mustDeleteOldContentFile) {
-                Storage::disk('public')->delete($oldContentPath);
-            }
-            if ($mustDeleteOldSolutionFile) {
-                Storage::disk('public')->delete($oldSolutionPath);
-            }
-        }
-    }
-
-    /**
-     * بررسی و اعمال محدودیت تعداد برگزاری آزمون یک دسته‌بندی در یک ترم.
-     * اگر max_occurrences تعریف نشده باشد، رقم اولویت (occurrence) به‌صورت خودکار
-     * برابر تعداد پیشین + ۱ محاسبه می‌شود. اگر ۰ باشد، برگزاری غیرممکن است.
-     * در غیر این صورت اگر تعداد برگزاری‌ها به حداکثر برسد، خطا می‌دهد.
-     */
-    protected function enforceTermOccurrence (int $examId, int $categoryId, ?int $termId): ?int
-    {
-        if (!$termId) {
-            return null;
-        }
-
-        $term = AcademicTerm::find($termId);
-
-        // شناسایی ترم‌های مرتبط برای جستجوی محدودیت: خود ترم + ترم والد (در صورتی که زیرترم باشد)
-        $limitTermIds = [$termId];
-        if ($term && $term->parent_id) {
-            $limitTermIds[] = $term->parent_id;
-        }
-
-        $limit = ExamCategoryTermLimit::where('exam_category_id', $categoryId)
-            ->whereIn('term_id', $limitTermIds)
-            ->latest('id')
-            ->first();
-
-        if (!$limit) {
-            // محدودیتی تعریف نشده؛ رقم اولویت به‌صورت خودکار محاسبه می‌شود
-            $count = Exam::where('exam_category_id', $categoryId)
-                ->where('term_id', $termId)
-                ->where('id', '!=', $examId)
-                ->count();
-
-            return $count + 1;
-        }
-
-        if ($limit->max_occurrences === 0) {
-            throw ValidationException::withMessages([
-                'term_id' => "برگزاری آزمون در این ترم ممنوع شده است (حداکثر ۰ بار).",
-            ]);
-        }
-
-        $count = Exam::where('exam_category_id', $categoryId)
-            ->where('term_id', $termId)
-            ->where('id', '!=', $examId)
-            ->count();
-
-        if ($limit->isUnlimited()) {
-            return $count + 1;
-        }
-
-        if ($count >= $limit->max_occurrences) {
-            throw ValidationException::withMessages([
-                'term_id' => sprintf(
-                    'تعداد برگزاری آزمون در این ترم به حداکثر (%d) رسیده است.',
-                    $limit->max_occurrences
-                ),
-            ]);
-        }
-
-        return $count + 1;
-    }
-
-    private function processExamContent(Request $request, string $field): ?array
-    {
-        $content = $request->input($field);
-        $content = is_string($content) ? json_decode($content, true) : $content;
-
-        $fileField = $field . '_file';
-        if ($request->hasFile($fileField)) {
-            $file = $request->file($fileField);
-            $path = $this->storeExamFile($file, $field);
-            $content = $content ?? [];
-            $content['path'] = $path;
-            if (!isset($content['type'])) {
-                $content['type'] = in_array($file->getClientMimeType(), ['application/pdf']) ? 'pdf' : 'image';
-            }
-        }
-
-        return $content;
-    }
-
-    private function storeExamFile(UploadedFile $file, string $prefix = ''): string
-    {
-        $extension = $file->getClientOriginalExtension();
-        $filename = sprintf('exam_%s_%s.%s', $prefix, uniqid(), $extension);
-        $directory = 'exam-files';
-
-        return $file->storeAs($directory, $filename, 'public');
-    }
 }

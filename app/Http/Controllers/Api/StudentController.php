@@ -4,13 +4,17 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\UserRoleType;
 use App\Http\Controllers\Controller;
+use App\Models\CalendarEvent;
 use App\Models\DisciplinaryRecord;
+use App\Models\Exam;
 use App\Models\Homework;
 use App\Models\InPersonExamResult;
+use App\Models\OnlineExamSession;
 use App\Models\SchoolClass;
 use App\Models\StudentProfile;
 use App\Models\StudySession;
 use App\Models\User;
+use App\Services\ExamService;
 use App\Services\TermEnrollmentService;
 use App\Services\TermService;
 use App\Traits\CommonCRUD;
@@ -25,7 +29,6 @@ use Illuminate\Validation\ValidationException;
 class StudentController extends Controller
 {
     use CommonCRUD, Filter;
-
 
     public function __construct()
     {
@@ -573,48 +576,141 @@ class StudentController extends Controller
         return $this->jsonResponseOk($results);
     }
 
-    public function dashboard(Request $request): JsonResponse
+    public function dashboard(Request $request, ExamService $examService): JsonResponse
     {
-        $studentId = auth()->id();
+        $studentId = $request->user()->id;
+        $enrollments = $request->user()->termEnrollments()
+            ->active()
+            ->get(['class_id', 'school_id']);
+        $schoolIds = $enrollments->pluck('school_id')->filter()->unique()->values();
 
-        $recentResults = InPersonExamResult::where('user_id', $studentId)
+        $upcomingExams = $examService->listStudentRelatedExams(
+            studentUserId: $studentId,
+            from: now()->toDateTimeString(),
+            to: null,
+            onlyOnline: true,
+            onlyPendingOrInProgress: true
+        )
+            ->get()
+            ->take(5)
+            ->values();
+
+        $pendingHomeworks = Homework::query()
+            ->where(function ($homeworkQuery) use ($studentId) {
+                $homeworkQuery->forStudent($studentId)
+                    ->orWhere(function ($globalHomeworkQuery) {
+                        $globalHomeworkQuery->doesntHave('classes')
+                            ->doesntHave('academicLevels');
+                    });
+            })
+            ->whereDoesntHave('submissions', function ($submissionQuery) use ($studentId) {
+                $submissionQuery->where('student_id', $studentId)
+                    ->whereNotNull('submitted_at');
+            })
+            ->where(function ($dueDateQuery) {
+                $dueDateQuery->whereNull('due_date')
+                    ->orWhereDate('due_date', '>=', today());
+            })
+            ->with(['lesson', 'classes', 'academicLevels'])
+            ->orderByRaw('due_date IS NULL, due_date ASC')
+            ->limit(5)
+            ->get();
+
+        $inPersonGrades = InPersonExamResult::where('user_id', $studentId)
+            ->whereHas('inPersonExamDetail', function ($detailQuery) {
+                $detailQuery->where(function ($visibilityQuery) {
+                    $visibilityQuery->whereNull('results_visible_at')
+                        ->orWhere('results_visible_at', '<=', now());
+                });
+            })
             ->with('inPersonExamDetail.exam.lesson')
-            ->orderBy('created_at', 'desc')
+            ->latest('created_at')
             ->limit(5)
-            ->get();
+            ->get()
+            ->map(function (InPersonExamResult $result) {
+                $exam = $result->inPersonExamDetail?->exam;
 
-        $recentStudySessions = StudySession::where('student_id', $studentId)
-            ->with('lesson')
-            ->orderBy('started_at', 'desc')
+                return [
+                    'id' => 'in_person_'.$result->id,
+                    'type' => 'in_person',
+                    'exam_id' => $exam?->id,
+                    'exam_name' => $exam?->name,
+                    'lesson_name' => $exam?->lesson?->name,
+                    'score' => $result->raw_score,
+                    'scaled_score' => $result->scaled_score,
+                    't_score' => $result->t_score,
+                    'percent' => null,
+                    'graded_at' => $result->created_at,
+                ];
+            });
+
+        $onlineGrades = OnlineExamSession::where('student_id', $studentId)
+            ->where('status', 'graded')
+            ->whereNotNull('t_score')
+            ->with('exam.lesson')
+            ->latest('submitted_at')
             ->limit(5)
-            ->get();
+            ->get()
+            ->map(function (OnlineExamSession $session) {
+                return [
+                    'id' => 'online_'.$session->id,
+                    'type' => 'online',
+                    'exam_id' => $session->exam?->id,
+                    'exam_name' => $session->exam?->name,
+                    'lesson_name' => $session->exam?->lesson?->name,
+                    'score' => $session->t_score,
+                    'scaled_score' => null,
+                    't_score' => $session->t_score,
+                    'percent' => $session->percent,
+                    'graded_at' => $session->submitted_at ?? $session->updated_at,
+                ];
+            });
+
+        $recentGrades = $inPersonGrades
+            ->concat($onlineGrades)
+            ->sortByDesc('graded_at')
+            ->take(5)
+            ->values();
 
         $totalStudyMinutes = StudySession::where('student_id', $studentId)
             ->whereBetween('started_at', [now()->startOfMonth(), now()->endOfMonth()])
             ->sumDurationMinutes();
 
-        $recentDisciplinary = DisciplinaryRecord::where('student_id', $studentId)
-            ->with('disciplinaryCase')
-            ->orderBy('incident_date', 'desc')
-            ->limit(3)
+        $upcomingEvents = CalendarEvent::query()
+            ->where('status', 'active')
+            ->whereBetween('starts_at', [now(), now()->copy()->addDays(14)->endOfDay()])
+            ->whereHas('calendar', function ($calendarQuery) use ($studentId, $schoolIds) {
+                $calendarQuery->where('is_active', true)
+                    ->where(function ($accessQuery) use ($studentId, $schoolIds) {
+                        $accessQuery->where('user_id', $studentId)
+                            ->orWhere(function ($schoolCalendarQuery) use ($schoolIds) {
+                                $schoolCalendarQuery->whereNull('user_id')
+                                    ->whereIn('school_id', $schoolIds);
+                            })
+                            ->orWhere(function ($globalCalendarQuery) {
+                                $globalCalendarQuery->whereNull('user_id')
+                                    ->whereNull('school_id');
+                            })
+                            ->orWhereIn('id', function ($calendarUserQuery) use ($studentId) {
+                                $calendarUserQuery->select('calendar_id')
+                                    ->from('calendar_user')
+                                    ->where('user_id', $studentId)
+                                    ->where('is_visible', true);
+                            });
+                    });
+            })
+            ->with('calendar')
+            ->orderBy('starts_at')
+            ->limit(6)
             ->get();
 
-        $pendingHomework = Homework::forStudent($studentId)
-            ->whereDoesntHave('submissions', function ($q) use ($studentId) {
-                $q->where('student_id', $studentId);
-            })
-            // اگر می‌خواهی فقط تکالیفی که هنوز مهلت دارند شمرده شوند:
-            ->where(function ($q) {
-                $q->whereNull('due_date')->orWhereDate('due_date', '>=', now());
-            })
-            ->count();
-
         return $this->jsonResponseOk([
-            'recent_grades' => $recentResults,
-            'recent_study_sessions' => $recentStudySessions,
+            'upcoming_exams' => $upcomingExams,
+            'pending_homeworks' => $pendingHomeworks,
+            'recent_grades' => $recentGrades,
+            'upcoming_events' => $upcomingEvents,
             'total_study_minutes_this_month' => $totalStudyMinutes,
-            'recent_disciplinary' => $recentDisciplinary,
-            'pending_homework_count' => $pendingHomework,
+            'total_study_hours_this_month' => round($totalStudyMinutes / 60, 2),
         ]);
     }
 

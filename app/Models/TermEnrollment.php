@@ -8,6 +8,41 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property int $class_id
+ * @property int $school_id
+ * @property int $term_id
+ * @property \Illuminate\Support\Carbon|null $enrolled_at
+ * @property \Illuminate\Support\Carbon|null $left_at
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property \Illuminate\Support\Carbon|null $deleted_at
+ * @property-read \App\Models\School|null $school
+ * @property-read \App\Models\SchoolClass|null $schoolClass
+ * @property-read \App\Models\AcademicTerm $term
+ * @property-read \App\Models\User $user
+ * @method static Builder<static>|TermEnrollment active()
+ * @method static Builder<static>|TermEnrollment newModelQuery()
+ * @method static Builder<static>|TermEnrollment newQuery()
+ * @method static Builder<static>|TermEnrollment onlyTrashed()
+ * @method static Builder<static>|TermEnrollment query()
+ * @method static Builder<static>|TermEnrollment whereClassId($value)
+ * @method static Builder<static>|TermEnrollment whereCreatedAt($value)
+ * @method static Builder<static>|TermEnrollment whereDeletedAt($value)
+ * @method static Builder<static>|TermEnrollment whereEnrolledAt($value)
+ * @method static Builder<static>|TermEnrollment whereId($value)
+ * @method static Builder<static>|TermEnrollment whereLeftAt($value)
+ * @method static Builder<static>|TermEnrollment whereSchoolId($value)
+ * @method static Builder<static>|TermEnrollment whereTermId($value)
+ * @method static Builder<static>|TermEnrollment whereTermIsActive()
+ * @method static Builder<static>|TermEnrollment whereUpdatedAt($value)
+ * @method static Builder<static>|TermEnrollment whereUserId($value)
+ * @method static Builder<static>|TermEnrollment withTrashed(bool $withTrashed = true)
+ * @method static Builder<static>|TermEnrollment withoutTrashed()
+ * @mixin \Eloquent
+ */
 class TermEnrollment extends Model
 {
     use HasFactory, SoftDeletes;

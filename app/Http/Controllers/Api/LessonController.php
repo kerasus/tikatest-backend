@@ -58,6 +58,7 @@ class LessonController extends Controller
             ],
             'filterKeysIn' => [
                 'id',
+                'academic_level_id',
             ],
             'eagerLoads' => ['academicLevel.academicField.school'],
         ];
