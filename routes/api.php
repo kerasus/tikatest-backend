@@ -103,12 +103,13 @@ Route::middleware('auth:sanctum')->group(function () {
 //    Route::get('online-exam-details/{id}/results-with-rank', [OnlineExamDetailController::class, 'resultsWithRank']);
 
     Route::prefix('online-exam-sessions')->group(function () {
+        Route::get('{sessionId}/result', [OnlineExamSessionController::class, 'getResultBySessionId'])
+            ->whereNumber('sessionId');
         Route::get('my-sessions', [OnlineExamSessionController::class, 'mySessions']);
         Route::post('auto-expire', [OnlineExamSessionController::class, 'autoExpire']);
         Route::post('{examId}/start', [OnlineExamSessionController::class, 'startSession']);
         Route::get('{examId}/sessions', [OnlineExamSessionController::class, 'getExamSessions']);
-        Route::get('{examId}/result', [OnlineExamSessionController::class, 'getResultByExamId']);
-        Route::get('{sessionId}/view', [OnlineExamSessionController::class, 'getSession']);
+        Route::get('{examId}/my-result', [OnlineExamSessionController::class, 'getMyResultByExamId']);
         Route::post('{sessionId}/answer', [OnlineExamSessionController::class, 'submitAnswer']);
         Route::post('{sessionId}/submit', [OnlineExamSessionController::class, 'submitSession']);
     });

@@ -249,8 +249,13 @@ class StudentController extends Controller
             'address' => 'nullable|string',
             'description' => 'nullable|string',
             'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
-            'class_ids' => 'required|array|distinct',
-            'class_ids.*' => 'required|integer|exists:classes,id',
+//            'class_ids' => 'required|array|distinct',
+//            'class_ids.*' => 'required|integer|exists:classes,id',
+
+
+            'enrollments'             => 'required|array|min:1',
+            'enrollments.*.class_id'  => 'required|integer|exists:classes,id',
+            'enrollments.*.term_id'   => 'required|integer|exists:terms,id',
         ]);
 
         $user = DB::transaction(function () use ($request, $termService, $termEnrollmentService) {
@@ -271,38 +276,29 @@ class StudentController extends Controller
                 'code' => $request->input('student_code'),
             ]);
 
+            // استخراج همه class_id ها برای لود یک‌باره کلاس‌ها
+            $enrollments = collect($request->input('enrollments'));
+            $classIds = $enrollments->pluck('class_id')->unique();
+
             $classes = SchoolClass::with('academicLevel.academicField.school')
-                ->whereIn('id', $request->class_ids)
+                ->whereIn('id', $classIds)
                 ->get();
 
-            $activeTermsCache = [];
 
-            foreach ($classes as $schoolClass) {
-                $schoolId = $schoolClass->academicLevel?->academicField?->school?->id;
+            foreach ($enrollments as $item) {
+                $schoolClass = $classes->get($item['class_id']);
 
-                if (! $schoolId) {
+                if (! $schoolClass) {
                     throw ValidationException::withMessages([
-                        'class_ids' => 'مدرسه کلاس انتخاب‌شده مشخص نیست.',
+                        'enrollments' => "کلاس با شناسه {$item['class_id']} معتبر نیست.",
                     ]);
                 }
 
-                if (! array_key_exists($schoolId, $activeTermsCache)) {
-                    $activeTerm = $termService->getActiveTermWithParents($schoolId);
-                    $activeTermsCache[$schoolId] = $activeTerm?->id;
-                }
-
-                $termId = $activeTermsCache[$schoolId];
-
-                if (! $termId) {
-                    throw ValidationException::withMessages([
-                        'class_ids' => 'برای مدرسه کلاس انتخاب‌شده ترم فعال وجود ندارد.',
-                    ]);
-                }
-
+                // ثبت‌نام بدون نیاز به چک کردن ترم فعال از ترم‌سرویس!
                 $termEnrollmentService->enrollStudent(
                     $schoolClass->id,
                     $user->id,
-                    $termId
+                    $item['term_id']
                 );
             }
 

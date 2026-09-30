@@ -59,4 +59,10 @@ class OnlineExamAnswerKey extends Model
     {
         return $this->belongsTo(Exam::class);
     }
+
+    public function onlineExamDetail(): BelongsTo
+    {
+        return $this->belongsTo(OnlineExamDetail::class, 'exam_id', 'exam_id');
+    }
+
 }

@@ -82,6 +82,19 @@ class OnlineExamSession extends Model
         'is_locked' => 'boolean',
     ];
 
+    protected static function booted(): void
+    {
+        static::deleting(function (OnlineExamSession $session) {
+            // حذف تمام پاسخ‌های مربوط به این سشن
+            $session->responses()->delete();
+
+            // حذف تمام نتایج (کارنامه/بوکلت) مربوط به این سشن
+            if (method_exists($session, 'results')) {
+                $session->results()->delete();
+            }
+        });
+    }
+
     public function exam(): BelongsTo
     {
         return $this->belongsTo(Exam::class);

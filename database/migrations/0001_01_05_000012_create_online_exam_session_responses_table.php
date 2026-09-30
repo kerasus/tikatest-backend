@@ -33,6 +33,10 @@ return new class extends Migration
             $table->timestamp('answered_at')->nullable(); // زمان دقیق پاسخ به این سوال
             $table->timestamps();
 
+            $table->foreignId('online_exam_session_id')
+                ->constrained('online_exam_sessions', 'id', 'fk_online_responses_session_id')
+                ->cascadeOnDelete();
+
             // ۱. ایندکس جهت پیدا کردن سریع "آخرین پاسخ دانش‌آموز به یک سوال خاص"
             $table->index(
                 ['online_exam_session_id', 'question_number', 'id'],

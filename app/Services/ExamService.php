@@ -264,15 +264,38 @@ class ExamService
 
         $this->updateDetail($exam, $request);
 
-        if ($request->filled('class_ids')) {
-            $exam->classes()->sync($request->class_ids);
+        if ($request->has('class_ids')) {
+            $classIds = $this->normalizeIds($request->input('class_ids'));
+            $exam->classes()->sync($classIds);
         }
 
-        if ($request->filled('academic_level_ids')) {
-            $exam->academicLevels()->sync($request->academic_level_ids);
+        if ($request->has('academic_level_ids')) {
+            $academicLevelIds = $this->normalizeIds($request->input('academic_level_ids'));
+            $exam->academicLevels()->sync($academicLevelIds);
         }
 
         return $exam;
+    }
+
+    /**
+     * تبدیل ورودی‌های تکی، آرایه‌ای یا رشته‌های JSON به آرایه‌ای تمیز از شناسه‌های عددی
+     */
+    private function normalizeIds(mixed $ids): array
+    {
+        if (is_null($ids) || $ids === '') {
+            return [];
+        }
+
+        if (is_string($ids)) {
+            $decoded = json_decode($ids, true);
+            $ids = is_array($decoded) ? $decoded : explode(',', $ids);
+        }
+
+        return collect((array) $ids)
+            ->map(fn ($id) => is_numeric($id) ? (int) $id : null)
+            ->filter(fn ($id) => ! is_null($id))
+            ->values()
+            ->all();
     }
 
     private function updateDetail(Exam $exam, Request $request): void

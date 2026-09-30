@@ -88,4 +88,12 @@ class OnlineExamDetail extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    public function answerKeys(): HasMany
+    {
+        // foreignKey: exam_id روی جدول online_exam_answer_keys
+        // localKey: exam_id روی جدول online_exam_details
+        return $this->hasMany(OnlineExamAnswerKey::class, 'exam_id', 'exam_id')
+            ->orderBy('question_number');
+    }
 }

@@ -24,7 +24,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int $correct_count
  * @property int $wrong_count
  * @property int $unanswered_count
- * @property numeric|null $z_score
+ * @property numeric|null $t_score
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
  * @property-read \App\Models\Exam $exam
@@ -80,7 +80,7 @@ class OnlineExamSessionResult extends Model
         'correct_count',
         'wrong_count',
         'unanswered_count',
-        'z_score',
+        't_score',
     ];
 
     protected $casts = [
@@ -94,7 +94,7 @@ class OnlineExamSessionResult extends Model
         'correct_count' => 'integer',
         'wrong_count' => 'integer',
         'unanswered_count' => 'integer',
-        'z_score' => 'decimal:4',
+        't_score' => 'decimal:4',
     ];
 
     public function onlineExamSession(): BelongsTo
@@ -117,8 +117,18 @@ class OnlineExamSessionResult extends Model
         return $this->belongsTo(OnlineExamBooklet::class);
     }
 
+    public function booklet(): BelongsTo
+    {
+        return $this->belongsTo(OnlineExamBooklet::class, 'online_exam_booklet_id');
+    }
+
     public function lesson(): BelongsTo
     {
-        return $this->belongsTo(Lesson::class);
+        return $this->belongsTo(Lesson::class, 'lesson_id');
+    }
+
+    public function session(): BelongsTo
+    {
+        return $this->belongsTo(OnlineExamSession::class, 'online_exam_session_id');
     }
 }

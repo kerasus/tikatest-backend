@@ -118,11 +118,6 @@ class Exam extends Model
         return $this->hasOne(OnlineExamDetail::class);
     }
 
-    public function answerKeys(): HasMany
-    {
-        return $this->hasMany(OnlineExamAnswerKey::class);
-    }
-
     public function classes(): BelongsToMany
     {
         return $this->belongsToMany(SchoolClass::class, 'exam_classes', 'exam_id', 'class_id');

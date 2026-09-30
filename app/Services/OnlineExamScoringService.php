@@ -2,125 +2,185 @@
 
 namespace App\Services;
 
-use App\Models\OnlineExamAnswerKey;
 use App\Models\OnlineExamDetail;
 use App\Models\OnlineExamSession;
+use Illuminate\Support\Collection;
+use App\Models\OnlineExamAnswerKey;
+use App\Models\OnlineExamSessionResult;
 
 class OnlineExamScoringService
 {
+    /**
+     * تصحیح کامل یک نشست آزمون و ثبت خروجی در online_exam_session_results
+     */
     public function calculateSessionScore(OnlineExamSession $session): array
     {
-        $totalMarks = 0;
-        $obtainedMarks = 0;
+        // ۱. کش کردن کلیدها با یک کوئری سریع بر اساس شماره سوال
+        // اگر از قبل answerKeys لود شده بود (توسط SessionService)، از همون استفاده کن؛ وگرنه کوئری بزن
+        $answerKeys = ($session->relationLoaded('exam') && $session->exam?->relationLoaded('answerKeys'))
+            ? $session->exam->answerKeys->where('is_active', true)->keyBy('question_number')
+            : OnlineExamAnswerKey::where('exam_id', $session->exam_id)
+                ->where('is_active', true)
+                ->get()
+                ->keyBy('question_number');
 
-        $responses = $session->responses;
-        $onlineExamDetail = $session->exam->onlineExamDetail ?? null;
+        $responses = $session->responses->keyBy('question_number');
+        $exam = $session->exam;
+        $booklets = $exam->onlineExamDetail?->booklets ?? collect();
 
-        foreach ($responses as $response) {
-            $answerKey = OnlineExamAnswerKey::where('exam_id', $session->exam_id)
-                ->where('question_number', $response->question_number)
-                ->first();
+        // ۲. تصحیح و ذخیره وضعیت تک‌تک پاسخ‌های دانش‌آموز (Response ها)
+        foreach ($session->responses as $response) {
+            $key = $answerKeys->get($response->question_number);
+            if (! $key) {
+                continue;
+            }
 
-            $points = ($answerKey->weight ?? 1);
-            $totalMarks += $points;
+            $hasOption = ! empty($response->submitted_option);
+            $isCorrect = $hasOption && ((string) $response->submitted_option === (string) $key->correct_option);
+            $weight = (float) ($key->weight ?? 1);
 
-            if ($answerKey && $answerKey->is_active) {
-                $correctOption = $answerKey->correct_option;
-                if ($response->submitted_option === $correctOption) {
-                    $obtainedMarks += $points;
-                    $response->is_correct = true;
-                } elseif ($answerKey->has_negative_mark && $response->submitted_option !== null && $response->submitted_option !== $correctOption) {
-                    $response->is_correct = false;
-                } else {
-                    $response->is_correct = false;
-                }
+            $response->is_correct = $isCorrect;
+            $response->marks_obtained = $isCorrect ? $weight : 0.0;
+            $response->save();
+        }
 
-                $response->marks_obtained = $response->is_correct ? $points : 0;
-                $response->save();
+        // ۳. پاک‌سازی نتایج قبلی این سشن برای جلوگیری از ثبت تکراری (در ری‌ترای یا آزمون‌های مجدد)
+        OnlineExamSessionResult::where('online_exam_session_id', $session->id)->delete();
+
+        // ۴. محاسبه و ذخیره نتایج تفکیک‌شده به ازای هر دفترچه (scope = booklet)
+        $bookletScores = [];
+        if ($booklets->isNotEmpty()) {
+            foreach ($booklets as $booklet) {
+                // فیلتر کردن سوالات بازه دفترچه
+                $filteredKeys = $answerKeys->filter(fn ($k) =>
+                    $k->question_number >= $booklet->from_question &&
+                    $k->question_number <= $booklet->to_question
+                );
+
+                $metrics = $this->calculateMetrics($filteredKeys, $responses);
+
+                // تعیین درس دفترچه با قانون ارث‌بری
+                $lessonId = $booklet->lesson_id ?? $exam->lesson_id;
+                $lessonTitle = $booklet->lesson?->title ?? $exam->lesson?->title ?? $booklet->title;
+
+                OnlineExamSessionResult::create([
+                    'online_exam_session_id' => $session->id,
+                    'exam_id'                => $exam->id,
+                    'student_id'             => $session->student_id,
+                    'online_exam_booklet_id' => $booklet->id,
+                    'lesson_id'              => $lessonId,
+                    'lesson_title'           => $lessonTitle,
+                    'scope'                  => 'booklet',
+                    'raw_score'              => $metrics['raw_score'],
+                    'max_score'              => $metrics['max_score'],
+                    'scaled_score'           => null,
+                    'percent'                => $metrics['percent'],
+                    'question_count'         => $metrics['question_count'],
+                    'answered_count'         => $metrics['answered_count'],
+                    'correct_count'          => $metrics['correct_count'],
+                    'wrong_count'            => $metrics['wrong_count'],
+                    'unanswered_count'       => $metrics['unanswered_count'],
+                ]);
+
+                $bookletScores[] = array_merge(['id' => $booklet->id, 'title' => $booklet->title], $metrics);
             }
         }
 
-        $percentage = $totalMarks > 0 ? ($obtainedMarks / $totalMarks) * 100 : 0;
+        // ۵. محاسبه و ذخیره نتیجه کل آزمون (scope = exam)
+        $totalMetrics = $this->calculateMetrics($answerKeys, $responses);
 
-        $bookletScores = $this->calculateBookletScores($session);
+        OnlineExamSessionResult::create([
+            'online_exam_session_id' => $session->id,
+            'exam_id'                => $exam->id,
+            'student_id'             => $session->student_id,
+            'online_exam_booklet_id' => null,
+            'lesson_id'              => $exam->lesson_id,
+            'lesson_title'           => $exam->lesson?->title ?? $exam->name,
+            'scope'                  => 'exam',
+            'raw_score'              => $totalMetrics['raw_score'],
+            'max_score'              => $totalMetrics['max_score'],
+            'scaled_score'           => null,
+            'percent'                => $totalMetrics['percent'],
+            'question_count'         => $totalMetrics['question_count'],
+            'answered_count'         => $totalMetrics['answered_count'],
+            'correct_count'          => $totalMetrics['correct_count'],
+            'wrong_count'            => $totalMetrics['wrong_count'],
+            'unanswered_count'       => $totalMetrics['unanswered_count'],
+        ]);
 
         return [
-            'percent' => max(0, $percentage),
-            'total_marks' => $totalMarks,
-            'obtained_marks' => $obtainedMarks,
-            'booklet_scores' => $bookletScores,
+            'percent'          => $totalMetrics['percent'],
+            'total_marks'      => $totalMetrics['max_score'],
+            'obtained_marks'   => $totalMetrics['raw_score'],
+            'booklet_scores'   => $bookletScores,
+            'summary'          => $totalMetrics,
         ];
     }
 
-    public function calculateBookletScores(OnlineExamSession $session): array
+    /**
+     * فرمول دقیق نمره منفی و محاسبه آمار بر اساس سوالات انتخابی
+     */
+    private function calculateMetrics(Collection $keys, Collection $responses): array
     {
-        $onlineExamDetail = $session->exam->onlineExamDetail ?? null;
+        $questionCount = $keys->count();
+        $correctCount = 0;
+        $wrongCount = 0;
+        $unansweredCount = 0;
+        $rawScore = 0.0;
+        $maxScore = 0.0;
 
-        if (! $onlineExamDetail) {
-            return [];
-        }
+        foreach ($keys as $key) {
+            $weight = (float) ($key->weight ?? 1);
+            $maxScore += $weight;
 
-        $booklets = $onlineExamDetail->booklets ?? [];
+            $resp = $responses->get($key->question_number);
+            $submitted = $resp?->submitted_option;
 
-        if ($booklets->isEmpty()) {
-            return [];
-        }
-
-        $responses = $session->responses;
-        $scores = [];
-
-        foreach ($booklets as $booklet) {
-            $bookletTotal = 0;
-            $bookletObtained = 0;
-
-            foreach ($responses as $response) {
-                if ($response->question_number < $booklet->from_question
-                    || $response->question_number > $booklet->to_question) {
-                    continue;
-                }
-
-                $answerKey = OnlineExamAnswerKey::where('exam_id', $session->exam_id)
-                    ->where('question_number', $response->question_number)
-                    ->first();
-
-                $points = ($answerKey->weight ?? 1);
-                $bookletTotal += $points;
-
-                if ($answerKey && $answerKey->is_active) {
-                    if ($response->submitted_option === $answerKey->correct_option) {
-                        $bookletObtained += $points;
-                    }
-                }
+            if ($submitted === null || $submitted === '') {
+                $unansweredCount++;
+                continue;
             }
 
-            $percent = $bookletTotal > 0 ? max(0, round(($bookletObtained / $bookletTotal) * 100, 2)) : 0;
-
-            $scores[] = [
-                'id' => $booklet->id,
-                'title' => $booklet->title,
-                'from_question' => $booklet->from_question,
-                'to_question' => $booklet->to_question,
-                'total_marks' => $bookletTotal,
-                'obtained_marks' => $bookletObtained,
-                'percent' => $percent,
-            ];
+            if ((string) $submitted === (string) $key->correct_option) {
+                $correctCount++;
+                $rawScore += $weight;
+            } else {
+                $wrongCount++;
+                // کسر نمره منفی در صورت فعال بودن
+                if ($key->has_negative_mark) {
+                    $choices = max((int) ($key->number_of_choices ?? 4), 2);
+                    $rawScore -= ($weight / ($choices - 1));
+                }
+            }
         }
 
-        return $scores;
+        $answeredCount = $correctCount + $wrongCount;
+        $percent = $maxScore > 0 ? round(($rawScore / $maxScore) * 100, 2) : 0.0;
+
+        return [
+            'question_count'   => $questionCount,
+            'answered_count'   => $answeredCount,
+            'correct_count'    => $correctCount,
+            'wrong_count'      => $wrongCount,
+            'unanswered_count' => $unansweredCount,
+            'raw_score'        => round(max(0, $rawScore), 2),
+            'max_score'        => round($maxScore, 2),
+            'percent'          => max(0, $percent),
+        ];
     }
 
     public function recalculateAllSessions(OnlineExamDetail $onlineExamDetail): void
     {
-        $sessions = OnlineExamSession::where('exam_id', $onlineExamDetail->exam_id)->get();
+        $sessions = OnlineExamSession::where('exam_id', $onlineExamDetail->exam_id)
+            ->with(['responses', 'exam.onlineExamDetail.booklets.lesson', 'exam.lesson'])
+            ->get();
 
         foreach ($sessions as $session) {
-            $scoreData = $this->calculateSessionScore($session->load(['responses', 'exam.onlineExamDetail.booklets']));
+            $scoreData = $this->calculateSessionScore($session);
 
             $session->update([
                 'percent' => $scoreData['percent'],
                 't_score' => $scoreData['obtained_marks'],
-                'started_at' => $session->started_at,
-                'submitted_at' => $session->submitted_at,
             ]);
         }
     }
@@ -128,31 +188,27 @@ class OnlineExamScoringService
     public function getRankings(OnlineExamDetail $onlineExamDetail): array
     {
         $sessions = OnlineExamSession::where('exam_id', $onlineExamDetail->exam_id)
-            ->where('status', 'submitted')
-            ->orWhere('status', 'graded')
+            ->whereIn('status', ['submitted', 'graded'])
             ->with('student')
             ->get();
 
-        $ranked = $sessions->map(function ($session) {
+        return $sessions->map(function ($session) {
             return [
-                'student_id' => $session->student_id,
+                'student_id'   => $session->student_id,
                 'student_name' => $session->student->full_name ?? 'Unknown',
-                'percent' => $session->percent,
-                't_score' => $session->t_score,
-                'started_at' => $session->started_at,
-                'ended_at' => $session->submitted_at,
-                'status' => $session->status,
+                'percent'      => $session->percent,
+                't_score'      => $session->t_score,
+                'started_at'   => $session->started_at,
+                'ended_at'     => $session->submitted_at,
+                'status'       => $session->status,
             ];
         })
             ->sortByDesc('percent')
             ->values()
             ->map(function ($item, $index) {
                 $item['rank'] = $index + 1;
-
                 return $item;
             })
             ->toArray();
-
-        return $ranked;
     }
 }

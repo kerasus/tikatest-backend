@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Models\Exam;
-use App\Models\SchoolClass;
 use App\Models\User;
-use App\Models\TermEnrollment;
-use App\Services\ExamService;
-use App\Traits\CommonCRUD;
+use App\Models\Exam;
 use App\Traits\Filter;
-use Illuminate\Http\JsonResponse;
+use App\Traits\CommonCRUD;
+use App\Models\SchoolClass;
 use Illuminate\Http\Request;
+use App\Services\ExamService;
+use App\Models\TermEnrollment;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\Controller;
+use App\Http\Resources\ExamResource;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
@@ -29,6 +30,7 @@ class ExamController extends Controller
         $this->middleware('admin_or_permission:exams.delete')->only(['destroy']);
     }
 
+    // tick
     public function index(Request $request): JsonResponse
     {
         $config = [
@@ -132,6 +134,7 @@ class ExamController extends Controller
         return $this->jsonResponseOk($exams);
     }
 
+    // tick
     public function myOnlineExams(Request $request, ExamService $examService): JsonResponse
     {
         $studentId = $request->user()->id;
@@ -179,6 +182,7 @@ class ExamController extends Controller
         return null;
     }
 
+    // tick
     public function show(Request $request, $id): JsonResponse
     {
         $exam = Exam::with([
@@ -187,7 +191,6 @@ class ExamController extends Controller
              'createdBy',
              'inPersonExamDetail',
              'onlineExamDetail.booklets',
-             'answerKeys',
              'classes',
              'academicLevels',
              'inPersonExamResults.student',
@@ -195,7 +198,7 @@ class ExamController extends Controller
             'term.parentTerm',
         ])->findOrFail($id);
 
-        return $this->jsonResponseOk($exam);
+        return $this->jsonResponseOk(new ExamResource($exam));
     }
 
     public function examStudents(Request $request, $id): JsonResponse
@@ -229,6 +232,7 @@ class ExamController extends Controller
         return $this->jsonResponseOk($query->paginate($perPage));
     }
 
+    // tick
     public function update(Request $request, Exam $exam, ExamService $examService): JsonResponse
     {
         $validated = $this->validateExam($request, true);
@@ -258,6 +262,7 @@ class ExamController extends Controller
         return $this->show($request, $exam->id);
     }
 
+    // tick
     public function updateWithOnlineDetail(Request $request, Exam $exam, ExamService $examService): JsonResponse
     {
         $validated = $this->validateOnlineExam($request);
@@ -271,6 +276,7 @@ class ExamController extends Controller
         return $this->show($request, $exam->id);
     }
 
+    // tick
     public function storeWithInPersonDetailAndResults(Request $request, ExamService $examService): JsonResponse
     {
         $validated = $this->validateInPersonExam($request);
