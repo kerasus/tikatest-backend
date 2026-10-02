@@ -79,6 +79,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('student-guardians', StudentGuardianController::class);
     Route::post('student-guardians/create-with-user', [StudentGuardianController::class, 'createWithUser']);
     Route::apiResource('school-users', SchoolUserController::class);
+    Route::get('lessons/mine', [LessonController::class, 'myLessons'])->name('lessons.my-lessons');
     Route::apiResource('lessons', LessonController::class);
     Route::apiResource('study-sessions', StudySessionController::class);
     Route::apiResource('learning-activities', LearningActivityController::class);
@@ -91,6 +92,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('exams/update-with-online-detail/{exam}', [ExamController::class, 'updateWithOnlineDetail']);
     Route::post('exams/store-with-inperson-results', [ExamController::class, 'storeWithInPersonDetailAndResults']);
     Route::get('exams/{exam}/students', [ExamController::class, 'examStudents']);
+    Route::get('exam-categories/mine', [ExamCategoryController::class, 'mine'])
+        ->name('exam-categories.mine');
     Route::apiResource('exam-categories', ExamCategoryController::class);
     Route::apiResource('exam-category-term-limits', ExamCategoryTermLimitController::class);
     Route::apiResource('in-person-exam-details', InPersonExamDetailController::class);
@@ -118,7 +121,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('disciplinary-records', DisciplinaryRecordController::class);
     Route::post('disciplinary/absenteeism', [DisciplinaryRecordController::class, 'registerAbsenteeism']);
     Route::get('disciplinary/absences', [DisciplinaryRecordController::class, 'viewAbsences']);
-    Route::get('homework/mine', [HomeworkController::class, 'myHomework']);
+    Route::get('homework/mine', [HomeworkController::class, 'myHomeworks']);
     Route::get('homework/{homeworkId}/view', [HomeworkController::class, 'viewHomework']);
     Route::apiResource('homework', HomeworkController::class);
     Route::post('homework/{homeworkId}/submit', [HomeworkController::class, 'submitHomework']);
@@ -163,16 +166,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('study-sessions/{id}', [StudentController::class, 'updateStudySession']);
         Route::delete('study-sessions/{id}', [StudentController::class, 'destroyStudySession']);
         Route::get('homework/my-submissions', [HomeworkController::class, 'mySubmissions']);
-        Route::get('my-online-exams', [ExamController::class, 'myOnlineExams']);
+        Route::get('my-grades', [ExamController::class, 'myGrades']);
         Route::get('homework-submissions', [HomeworkSubmissionController::class, 'index']);
         Route::put('homework-submissions/{homeworkSubmission}/feedback', [HomeworkSubmissionController::class, 'sendFeedback']);
         Route::get('online-exam-sessions', [OnlineExamSessionController::class, 'mySessions']);
-        Route::get('online-exams/{examId}/result', [OnlineExamSessionController::class, 'getResultByExamId']);
+//        Route::get('online-exams/{examId}/result', [OnlineExamSessionController::class, 'getResultByExamId']);
         Route::get('online-exams', [ExamController::class, 'studentOnlineExams']);
-    });
-
-    Route::prefix('exam-management')->group(function () {
-        Route::post('online-exam-sessions/auto-expire', [OnlineExamSessionController::class, 'autoExpire']);
+        Route::get('online-exams/{id}', [ExamController::class, 'studentShow']);
     });
 
     Route::prefix('skyroom-rooms')->group(function () {

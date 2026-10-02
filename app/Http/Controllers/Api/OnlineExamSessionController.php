@@ -10,9 +10,9 @@ use App\Services\OnlineExamSessionService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -26,11 +26,10 @@ class OnlineExamSessionController extends Controller
         $this->middleware('auth:sanctum');
         $this->middleware('admin_or_permission:exams.view')->only(['index', 'getExamSessions']);
         $this->middleware('admin_or_permission:exams.create')->only(['store']);
-        $this->middleware('admin_or_permission:exams.update')->only(['update', 'autoExpire']);
+        $this->middleware('admin_or_permission:exams.update')->only(['update']);
         $this->middleware('admin_or_permission:exams.delete')->only(['destroy']);
     }
 
-    // tick
     public function index(Request $request): JsonResponse
     {
         $config = [
@@ -45,7 +44,9 @@ class OnlineExamSessionController extends Controller
 
     public function show(Request $request, $id): JsonResponse
     {
-        $session = OnlineExamSession::with($this->sessionService->getSessionDetailRelations())->findOrFail($id);
+        $session = OnlineExamSession::query()
+            ->with($this->sessionService->getSessionDetailRelations())
+            ->findOrFail($id);
 
         $user = $request->user();
         $canViewAll = $user->hasRole(UserRoleType::Admin->value) || $user->hasPermissionTo('exams.view');
@@ -74,7 +75,6 @@ class OnlineExamSessionController extends Controller
             return $this->jsonResponseError($e->getMessage(), 404);
         }
     }
-
 
     public function getResultBySessionId(Request $request, int $sessionId): JsonResponse
     {
@@ -113,7 +113,7 @@ class OnlineExamSessionController extends Controller
             ->whereKey($examId)
             ->where('delivery_mode', 'online')
             ->with([
-                'onlineExamDetail.answerKeys' => fn ($q) => $q->where('is_active', true)
+                'onlineExamDetail.answerKeys' => fn ($q) => $q->where('is_active', true),
             ])
             ->first();
 
@@ -122,13 +122,15 @@ class OnlineExamSessionController extends Controller
         }
 
         try {
-            $payload = $this->sessionService->startOrCreateSession(
-                exam: $exam,
-                user: $request->user(),
-                attemptNumber: $request->integer('attempt_number', 1),
-                ip: $request->ip(),
-                userAgent: $request->userAgent()
-            );
+            $payload = DB::transaction(function () use ($exam, $request) {
+                return $this->sessionService->startOrCreateSession(
+                    exam: $exam,
+                    user: $request->user(),
+                    attemptNumber: $request->integer('attempt_number', 1),
+                    ip: $request->ip(),
+                    userAgent: $request->userAgent()
+                );
+            });
 
             return $this->jsonResponseOk($payload);
         } catch (HttpException $e) {
@@ -149,14 +151,16 @@ class OnlineExamSessionController extends Controller
             'answer_text' => 'nullable|string',
         ]);
 
-        $session = OnlineExamSession::with('exam.onlineExamDetail')->find($sessionId);
+        $session = OnlineExamSession::query()
+            ->with('exam.onlineExamDetail')
+            ->find($sessionId);
 
         if (! $session) {
             return $this->jsonResponseError('جلسه آزمون یافت نشد.', 404);
         }
 
         try {
-            $response = $this->sessionService->saveAnswer(
+            $this->sessionService->saveAnswer(
                 session: $session,
                 userId: auth()->id(),
                 questionNumber: $request->integer('question_number'),
@@ -166,8 +170,8 @@ class OnlineExamSessionController extends Controller
 
             return $this->jsonResponseOk([
                 'message' => 'پاسخ با موفقیت ذخیره شد.',
-                'response' => $response,
-                'remaining_time' => max(0, (int) $this->sessionService->calculateRemainingTime($session)),
+//                'response' => $response,
+//                'remaining_time' => max(0, (int) $this->sessionService->calculateRemainingTime($session)),
             ]);
         } catch (HttpException $e) {
             return $this->jsonResponseError($e->getMessage(), $e->getStatusCode());
@@ -181,14 +185,18 @@ class OnlineExamSessionController extends Controller
      */
     public function submitSession(Request $request, int $sessionId): JsonResponse
     {
-        $session = OnlineExamSession::with('exam.onlineExamDetail')->find($sessionId);
+        $session = OnlineExamSession::query()
+            ->with('exam.onlineExamDetail')
+            ->find($sessionId);
 
         if (! $session) {
             return $this->jsonResponseError('جلسه آزمون یافت نشد.', 404);
         }
 
         try {
-            $gradedSession = $this->sessionService->submitAndGradeSession($session, auth()->id());
+            $gradedSession = DB::transaction(function () use ($session) {
+                return $this->sessionService->submitAndGradeSession($session, auth()->id());
+            });
 
             return $this->jsonResponseOk([
                 'message' => 'آزمون با موفقیت ثبت و نمره‌دهی شد.',
@@ -215,7 +223,8 @@ class OnlineExamSessionController extends Controller
 
     public function getExamSessions(int $examId): JsonResponse
     {
-        $sessions = OnlineExamSession::where('exam_id', $examId)
+        $sessions = OnlineExamSession::query()
+            ->where('exam_id', $examId)
             ->with(['student', 'exam.category', 'exam.lesson'])
             ->orderBy('started_at', 'desc')
             ->get();
@@ -223,48 +232,21 @@ class OnlineExamSessionController extends Controller
         return $this->jsonResponseOk($sessions);
     }
 
-    public function autoExpire(Request $request): JsonResponse
-    {
-        $now = now();
-        $expiredSessions = OnlineExamSession::where('status', 'in_progress')
-            ->where(function ($query) use ($now) {
-                $query->whereHas('exam.onlineExamDetail', fn ($q) => $q->where('ends_at', '<', $now))
-                    ->orWhere(function ($q) use ($now) {
-                        $q->whereRaw('started_at + INTERVAL duration_limit_seconds SECOND < ?', [$now->toDateTimeString()])
-                            ->whereNotNull('started_at')
-                            ->whereNotNull('duration_limit_seconds');
-                    });
-            })
-            ->get();
-
-        $count = 0;
-        foreach ($expiredSessions as $session) {
-            $session->update(['status' => 'expired', 'is_locked' => true]);
-            $count++;
-        }
-
-        return $this->jsonResponseOk(['message' => "{$count} sessions expired"]);
-    }
-
     public function destroy($id): JsonResponse
     {
-        // ۱. پیدا کردن سشن مورد نظر
         $session = OnlineExamSession::query()->find($id);
 
-        if (!$session) {
+        if (! $session) {
             return response()->json([
                 'message' => 'نشست آزمون مورد نظر یافت نشد.',
             ], Response::HTTP_NOT_FOUND);
         }
 
-        // ۲. حذف در قالب ترنزکشن (جهت اطمینان از پاک شدن پاسخ‌ها در صورت عدم وجود cascade)
         DB::transaction(function () use ($session) {
-            // اگر رابطه responses رو داری و CASCADE در دیتابیس ست نشده:
             if (method_exists($session, 'responses')) {
                 $session->responses()->delete();
             }
 
-            // حذف خود نشست
             $session->delete();
         });
 
@@ -282,5 +264,4 @@ class OnlineExamSessionController extends Controller
             'student:id,first_name,last_name',
         ];
     }
-
 }

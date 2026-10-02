@@ -33,20 +33,22 @@ return new class extends Migration
             $table->timestamp('answered_at')->nullable(); // زمان دقیق پاسخ به این سوال
             $table->timestamps();
 
-            $table->foreignId('online_exam_session_id')
-                ->constrained('online_exam_sessions', 'id', 'fk_online_responses_session_id')
-                ->cascadeOnDelete();
-
-            // ۱. ایندکس جهت پیدا کردن سریع "آخرین پاسخ دانش‌آموز به یک سوال خاص"
-            $table->index(
-                ['online_exam_session_id', 'question_number', 'id'],
-                'idx_session_question_latest'
+            // 0) قفل اصلی ضد ریس کاندیشن (مهم‌ترین)
+            $table->unique(
+                ['online_exam_session_id', 'question_number'],
+                'uniq_session_question'
             );
 
-            // ۲. ایندکس جهت آنالیز و گزارش‌گیری روی سوالات
+            // 1) برای گزارش‌گیری/آنالیتیکس
             $table->index(
                 ['exam_id', 'question_number', 'is_correct'],
                 'idx_exam_question_analytics'
+            );
+
+            // 2) اگر زیاد با session->responses و sort بر اساس شماره سوال کار می‌کنی:
+            $table->index(
+                ['online_exam_session_id', 'question_number'],
+                'idx_session_question'
             );
         });
     }

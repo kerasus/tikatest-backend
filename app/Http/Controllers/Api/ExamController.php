@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use Carbon\Carbon;
 use App\Models\User;
 use App\Models\Exam;
 use App\Traits\Filter;
@@ -10,20 +11,32 @@ use App\Models\SchoolClass;
 use Illuminate\Http\Request;
 use App\Services\ExamService;
 use App\Models\TermEnrollment;
+use App\Models\OnlineExamSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ExamResource;
 use Illuminate\Support\Facades\Validator;
+use App\Services\OnlineExamSessionService;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class ExamController extends Controller
 {
     use CommonCRUD, Filter;
 
-    public function __construct()
+    public function __construct(
+        protected OnlineExamSessionService $onlineExamSessionService
+    )
     {
         $this->middleware('auth:sanctum');
+        $this->middleware(function ($request, $next) {
+            if ($request->user()?->hasRole('student')) {
+                abort(403, 'دانش‌آموز اجازه دسترسی به نمایش مدیریتی آزمون را ندارد.');
+            }
+
+            return $next($request);
+        })->only(['show']);
         $this->middleware('admin_or_permission:exams.view')->only(['index', 'show', 'examStudents']);
         $this->middleware('admin_or_permission:exams.create')->only(['store']);
         $this->middleware('admin_or_permission:exams.update')->only(['update']);
@@ -109,24 +122,52 @@ class ExamController extends Controller
                 'category',
                 'lesson',
                 'onlineExamDetail',
-                'onlineExamSessions' => function ($sessionQuery) use ($studentId) {
-                    $sessionQuery->where('student_id', $studentId)
-                        ->orderByDesc('attempt_number');
-                },
+                'onlineExamSession' => fn ($q) => $q->where('student_id', $studentId),
             ])
             ->orderByDesc('created_at');
 
         $exams = $query->paginate($perPage);
 
-        $exams->getCollection()->transform(function (Exam $exam) {
-            $latestSession = $exam->onlineExamSessions->first();
+        $exams->getCollection()->transform(function (Exam $exam) use ($studentId) {
+            $session = $exam->onlineExamSession;
 
             if ($exam->onlineExamDetail) {
                 $exam->onlineExamDetail->makeHidden(['content', 'solution']);
             }
 
-            $exam->setAttribute('latest_session', $latestSession);
-            $exam->setAttribute('session_status', $latestSession?->status ?? 'not_started');
+            // 🎯 جادوی اصلاح وضعیت (Self-Healing)
+            if ($session && $session->status === 'in_progress') {
+                $isExpiredByDuration = false;
+
+                if ($session->started_at && $session->duration_limit_seconds) {
+                    $startTime = Carbon::parse($session->started_at);
+                    $endTime = $startTime->copy()->addSeconds($session->duration_limit_seconds);
+                    $isExpiredByDuration = $endTime->isPast();
+                }
+
+                $endsAt = $exam->onlineExamDetail?->ends_at;
+                $isExamWindowClosed = $endsAt && Carbon::parse($endsAt)->isPast();
+
+                // اگر زمان مجاز سشن تمام شده یا پنجره آزمون بسته شده است
+                if ($isExpiredByDuration || $isExamWindowClosed) {
+                    try {
+                        $session = DB::transaction(function () use ($session, $studentId) {
+                            return $this->onlineExamSessionService->submitAndGradeSession($session, $studentId);
+                        });
+                    } catch (Throwable $e) {
+                        // در صورت بروز هرگونه خطای همزمانی، سشن قفل و اکسپایر شود تا در لوپ گیر نکند
+                        $session->update([
+                            'status' => 'expired',
+                            'is_locked' => true,
+                        ]);
+                        $session->status = 'expired';
+                        logger()->error("Failed to auto-grade expired session #{$session->id}: {$e->getMessage()}");
+                    }
+                }
+            }
+
+            $exam->setAttribute('latest_session', $session);
+            $exam->setAttribute('session_status', $session?->status ?? 'not_started');
 
             return $exam;
         });
@@ -161,25 +202,56 @@ class ExamController extends Controller
         return $this->jsonResponseOk($exams);
     }
 
-    private function extractScore ($inPersonResult = null, $onlineSession = null): ?array
+    public function myGrades(Request $request): JsonResponse
     {
-        if ($inPersonResult) {
-            return [
-                'raw_score' => $inPersonResult->raw_score,
-                'scaled_score' => $inPersonResult->scaled_score,
-                't_score' => $inPersonResult->t_score,
-            ];
-        }
+        $studentId = $request->user()->id;
 
-        if ($onlineSession) {
-            return [
-                'score' => $onlineSession->t_score,
-                'percent' => $onlineSession->percent,
-                'status' => $onlineSession->status,
-            ];
-        }
+        $request->merge([
+            'delivery_mode' => 'in_person',
+            'forStudent'    => $studentId,
+        ]);
 
-        return null;
+        $config = [
+            'filterKeys' => ['name', 'delivery_mode'],
+            'filterKeysExact' => ['lesson_id', 'exam_category_id'],
+            'filterDate' => [
+                'created_at',
+            ],
+            'filterRelationIds' => [
+                [
+                    'requestKey' => 'field_id',
+                    'relationName' => 'academicLevels.academicField',
+                ],
+                [
+                    'requestKey' => 'academic_level_id',
+                    'relationName' => 'academicLevels',
+                ],
+                [
+                    'requestKey' => 'class_id',
+                    'relationName' => 'classes',
+                ],
+                [
+                    'requestKey' => 'lesson_id',
+                    'relationName' => 'lesson',
+                ],
+                [
+                    'requestKey' => 'exam_category_id',
+                    'relationName' => 'category',
+                ],
+            ],
+            'scopes' => [
+                'inSchool',
+                'forStudent',
+            ],
+            'eagerLoads' => [
+                'category',
+                'lesson',
+                'inPersonExamDetail',
+                'inPersonExamResult' => fn ($query) => $query->where('user_id', $studentId)
+            ],
+        ];
+
+        return $this->commonIndex($request, Exam::class, $config);
     }
 
     // tick
@@ -187,18 +259,159 @@ class ExamController extends Controller
     {
         $exam = Exam::with([
             'category',
-             'lesson',
-             'createdBy',
-             'inPersonExamDetail',
-             'onlineExamDetail.booklets',
-             'classes',
-             'academicLevels',
-             'inPersonExamResults.student',
+            'lesson',
+            'createdBy',
+            'inPersonExamDetail',
+            'onlineExamDetail.booklets',
+            'onlineExamDetail.answerKeys',
+            'classes',
+            'academicLevels',
+            'inPersonExamResults.student',
             'term.school',
             'term.parentTerm',
         ])->findOrFail($id);
 
         return $this->jsonResponseOk(new ExamResource($exam));
+    }
+
+    public function studentShow(
+        Request $request,
+        int $id
+    ): JsonResponse {
+        $student = $request->user();
+
+        abort_unless(
+            $student && $student->hasRole('student'),
+            403,
+            'این مسیر فقط برای دانش‌آموزان قابل استفاده است.'
+        );
+
+        /*
+        * در این مرحله روابط حساس عمداً لود نمی‌شوند.
+        *
+        * استفاده از without باعث می‌شود اگر در مدل
+        * OnlineExamDetail رابطه‌ای در $with تعریف شده باشد،
+        * باز هم booklets و answerKeys به‌صورت خودکار لود نشوند.
+        */
+        $exam = Exam::query()
+            ->whereKey($id)
+            ->with([
+                'category',
+                'lesson',
+                'createdBy',
+                'inPersonExamDetail',
+
+                'onlineExamDetail' => function ($query) {
+                    $query->without([
+                        'booklets',
+                        'answerKeys',
+                    ]);
+                },
+
+                'classes',
+                'academicLevels',
+                'term.school',
+                'term.parentTerm',
+            ])
+            ->firstOrFail();
+
+        /*
+        * کنترل دسترسی دانش‌آموز به آزمون.
+        *
+        * این متد از OnlineExamSessionService استفاده می‌کند
+        * و منطق تخصیص آزمون به کلاس را متمرکز نگه می‌دارد.
+        */
+        $this->onlineExamSessionService
+            ->validateStudentAccess($exam, $student);
+
+        /*
+        * دریافت آخرین نشست دانش‌آموز برای این آزمون
+        */
+        $session = $this->onlineExamSessionService
+            ->getLatestStudentSession($exam, $student);
+
+        $hasSubmitted = $this->onlineExamSessionService
+            ->hasSubmitted($session);
+
+        $onlineDetail = $exam->onlineExamDetail;
+
+        /*
+        * مشخص‌کردن پایان آزمون.
+        *
+        * اگر ends_at وجود نداشته باشد، بعد از ثبت نهایی دانش‌آموز
+        * می‌توان نتیجه را قابل نمایش در نظر گرفت.
+        */
+        $endsAt = $onlineDetail?->ends_at
+            ? Carbon::parse($onlineDetail->ends_at)
+            : null;
+
+        $isExamFinished = $endsAt
+            ? now()->greaterThan($endsAt)
+            : $hasSubmitted;
+
+        /*
+        * اطلاعات حساس فقط وقتی نمایش داده می‌شوند که:
+        *
+        * ۱. دانش‌آموز پاسخ خود را ارسال کرده باشد
+        * ۲. زمان کلی آزمون به پایان رسیده باشد
+        */
+        $canExposeSensitiveData = $hasSubmitted && $isExamFinished;
+
+        if ($canExposeSensitiveData) {
+            /*
+            * اکنون لود کردن روابط حساس مجاز است.
+            *
+            * answerKeys فقط کلیدهای فعال را می‌گیرد؛
+            * این همان الگوی موجود در OnlineExamSessionService است.
+            */
+            $exam->load([
+                'onlineExamDetail.booklets',
+                'onlineExamDetail.answerKeys' => function ($query) {
+                    $query->where('is_active', true);
+                },
+            ]);
+        } else {
+            /*
+            * دفاع دوم در برابر eager loading یا load شدن قبلی رابطه‌ها
+            */
+            if ($onlineDetail) {
+                $onlineDetail->unsetRelation('booklets');
+                $onlineDetail->unsetRelation('answerKeys');
+            }
+        }
+
+        /*
+        * فقط اطلاعات ضروری سشن را به خروجی اضافه می‌کنیم.
+        *
+        * کل مدل session را مستقیم برنمی‌گردانیم تا مواردی مثل
+        * ip_address و user_agent بی‌دلیل در پاسخ API قرار نگیرند.
+        */
+        $exam->setAttribute(
+            'participation_status',
+            $session?->status ?? 'not_started'
+        );
+
+        $exam->setAttribute(
+            'student_online_exam_session',
+            $session
+                ? [
+                'id' => $session->id,
+                'status' => $session->status,
+                'attempt_number' => $session->attempt_number,
+                'started_at' => $session->started_at,
+                'submitted_at' => $session->submitted_at,
+            ]
+                : null
+        );
+
+        $exam->setAttribute(
+            'sensitive_data_available',
+            $canExposeSensitiveData
+        );
+
+        return $this->jsonResponseOk(
+            new ExamResource($exam)
+        );
     }
 
     public function examStudents(Request $request, $id): JsonResponse

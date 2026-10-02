@@ -16,6 +16,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class HomeworkController extends Controller
 {
@@ -191,74 +193,89 @@ class HomeworkController extends Controller
         return $this->commonDestroy($homework);
     }
 
-    public function myHomework(Request $request): JsonResponse
+    public function myHomeworks(Request $request): JsonResponse
     {
-        $studentId = auth()->id();
+        $user = $request->user();
+
+        // 1. استخراج لیست آیدی مدارسی که کاربر در آن‌ها ثبت‌نام دارد
+        $allowedSchoolIds = $user ? $user->termEnrollments()
+            ->whereNotNull('school_id')
+            ->pluck('school_id')
+            ->unique()
+            ->toArray() : [];
+
+        // 2. ولیدیشن دقیق ریکوئست
+        $validator = Validator::make($request->all(), [
+            'school_id' => [
+                'required',
+                'integer',
+                'exists:schools,id',
+                Rule::in($allowedSchoolIds), // چک می‌کند که school_id حتماً متعلق به این دانش‌آموز باشد
+            ],
+        ], [
+            'school_id.required' => 'شناسه مدرسه الزامی است.',
+            'school_id.exists'   => 'مدرسه انتخاب شده نامعتبر است.',
+            'school_id.in'       => 'شما به دسته‌بندی‌های این مدرسه دسترسی ندارید.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => $validator->errors()->first(),
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+        $schoolId = $request->integer('school_id');
+
+        $termEnrollments = $user->termEnrollments()
+            ->where('school_id', $schoolId)
+            ->whereNotNull('class_id')
+            ->with('schoolClass:id,academic_level_id')
+            ->get(['id', 'class_id']);
+
+        $classIds = $termEnrollments
+            ->pluck('class_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+
+        $academicLevelIds = $termEnrollments
+            ->pluck('schoolClass.academic_level_id')
+            ->filter()
+            ->unique()
+            ->values()
+            ->toArray();
+
+        $request->merge([
+            'inSchool' => $schoolId,
+            'forStudentTargets' => [
+                'class_ids' => $classIds,
+                'academic_level_ids' => $academicLevelIds,
+            ],
+        ]);
+
+        $studentId = $user->id;
 
         $config = [
             'filterKeys' => ['title'],
             'filterDate' => ['due_date', 'created_at'],
-            'filterKeysExact' => ['lesson_id'],
-            'filterRelationKeys' => [
-                [
-                    'requestKey' => 'lesson_name',
-                    'relationName' => 'lesson',
-                    'relationColumn' => 'name',
-                    'exact' => false,
-                ],
-                [
-                    'requestKey' => 'class_name',
-                    'relationName' => 'schoolClass',
-                    'relationColumn' => 'name',
-                    'exact' => false,
-                ],
-                [
-                    'requestKey' => 'academic_level_id',
-                    'relationName' => 'schoolClass.academicLevel',
-                    'relationColumn' => 'id',
-                    'exact' => true,
-                ],
+            'filterKeysExact' => ['lesson_id', 'term_id'],
+            'filterKeysIn' => [
+                'id',
+            ],
+            'scopes' => [
+                'inSchool',
+                'forStudentTargets',
             ],
             'eagerLoads' => [
-//                'attachments',
-                'academicLevels',
-                'classes',
-                'createdBy',
                 'lesson',
-                'submissions',
+                'submission' => function ($query) use ($studentId) {
+                    $query->where('student_id', $studentId);
+                },
             ],
         ];
 
-        $modelQuery = Homework::query()
-            ->where(function ($query) use ($studentId) {
-                $query->whereHas('classes.termEnrollments', function ($classQuery) use ($studentId) {
-                    $classQuery->where('user_id', $studentId);
-                })
-                    ->orWhereHas('academicLevels', function ($levelQuery) use ($studentId) {
-                        $levelQuery->whereHas('classes.termEnrollments', function ($classQuery) use ($studentId) {
-                            $classQuery->where('user_id', $studentId);
-                        });
-                    })
-                    ->orWhere(function ($globalHomeworkQuery) {
-                        $globalHomeworkQuery
-                            ->doesntHave('classes')
-                            ->doesntHave('academicLevels');
-                    });
-            });
-
-        $perPage = $request->has('length') ? $request->get('length') : 10;
-
-        $this->buildFilterQuery(
-            $request,
-            $modelQuery,
-            Homework::class,
-            $this->getConfigArray($config)
-        );
-
-        return $this->jsonResponseOk($modelQuery
-            ->latest('due_date')
-            ->paginate($perPage)
-        );
+        return $this->commonIndex($request, Homework::class, $config);
     }
 
     public function mySubmissions(Request $request): JsonResponse
@@ -282,7 +299,7 @@ class HomeworkController extends Controller
     {
         $studentId = auth()->id();
 
-        $homework = Homework::with(['lesson', 'classes', 'academicLevels', 'submissions', 'attachments'])->findOrFail($homeworkId);
+        $homework = Homework::with(['lesson', 'attachments'])->findOrFail($homeworkId);
 
         if ($homework->class_id) {
             $isEnrolled = TermEnrollment::where('user_id', $studentId)

@@ -236,6 +236,7 @@ class StudentController extends Controller
         TermService $termService,
         TermEnrollmentService $termEnrollmentService
     ): JsonResponse {
+
         $request->validate([
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
@@ -255,7 +256,7 @@ class StudentController extends Controller
 
             'enrollments'             => 'required|array|min:1',
             'enrollments.*.class_id'  => 'required|integer|exists:classes,id',
-            'enrollments.*.term_id'   => 'required|integer|exists:terms,id',
+            'enrollments.*.term_id'   => 'required|integer|exists:academic_terms,id',
         ]);
 
         $user = DB::transaction(function () use ($request, $termService, $termEnrollmentService) {
@@ -282,7 +283,8 @@ class StudentController extends Controller
 
             $classes = SchoolClass::with('academicLevel.academicField.school')
                 ->whereIn('id', $classIds)
-                ->get();
+                ->get()
+                ->keyBy('id'); // 👈 کلید کالکشن می‌شه همون id کلاس
 
 
             foreach ($enrollments as $item) {

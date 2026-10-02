@@ -99,4 +99,61 @@ class LessonController extends Controller
     {
         return $this->commonDestroy($lesson);
     }
+
+    public function myLessons(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $classIds = $user->termEnrollments()
+            ->whereNotNull('class_id')
+            ->pluck('class_id')
+            ->unique()
+            ->values()
+            ->toArray();
+
+        $request->merge([
+            'forClassWithFallback' => ! empty($classIds) ? $classIds : null,
+        ]);
+
+        $config = [
+            'filterKeys' => ['name'],
+            'filterKeysExact' => ['academic_level_id'],
+            'filterRelationKeys' => [
+                [
+                    'requestKey' => 'level_name',
+                    'relationName' => 'academicLevel',
+                    'relationColumn' => 'name',
+                    'exact' => false,
+                ],
+                [
+                    'requestKey' => 'class_id',
+                    'relationName' => 'classes',
+                    'relationColumn' => 'classes.id',
+                    'exact' => true,
+                ],
+                [
+                    'requestKey' => 'field_id',
+                    'relationName' => 'academicLevel.academicField',
+                    'relationColumn' => 'academic_fields.id',
+                    'exact' => true,
+                ],
+                [
+                    'requestKey' => 'school_id',
+                    'relationName' => 'academicLevel.academicField.school',
+                    'relationColumn' => 'schools.id',
+                    'exact' => true,
+                ],
+            ],
+            'scopes' => [
+                'forClassWithFallback',
+            ],
+            'filterKeysIn' => [
+                'id',
+                'academic_level_id',
+            ],
+            'eagerLoads' => ['academicLevel.academicField.school'],
+        ];
+
+        return $this->commonIndex($request, Lesson::class, $config);
+    }
 }

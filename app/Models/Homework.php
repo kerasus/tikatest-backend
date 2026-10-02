@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -91,6 +92,15 @@ class Homework extends Model
         return $this->hasMany(HomeworkSubmission::class);
     }
 
+    /**
+     * دریافت سابمیشن مختص یک دانش‌آموز
+     * (به صورت پیش‌فرض یا همراه با لود شرطی)
+     */
+    public function submission(): HasOne
+    {
+        return $this->hasOne(HomeworkSubmission::class);
+    }
+
     public function attachments(): HasMany
     {
         return $this->hasMany(HomeworkAttachment::class);
@@ -142,4 +152,35 @@ class Homework extends Model
                 });
         });
     }
+
+    public function scopeForStudentTargets(Builder $query, array $targetData): Builder
+    {
+        $classIds = $targetData['class_ids'] ?? [];
+        $academicLevelIds = $targetData['academic_level_ids'] ?? [];
+
+        // اگر دانش‌آموز به هیچ کلاسی یا پایه‌ای انتساب نداشت، هیچ تکلیفی نبیند
+        if (empty($classIds) && empty($academicLevelIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->where(function (Builder $q) use ($classIds, $academicLevelIds) {
+            // حالت اول: کلاسی مشخص شده باشد و دانش‌آموز عضو آن کلاس باشد
+            if (!empty($classIds)) {
+                $q->whereHas('classes', function (Builder $classQ) use ($classIds) {
+                    $classQ->whereIn('classes.id', $classIds);
+                });
+            }
+
+            // حالت دوم: هیچ کلاسی تعیین نشده باشد (عمومی برای مقطع) و مقطع دانش‌آموز با مقطع تکلیف یکی باشد
+            if (!empty($academicLevelIds)) {
+                $q->orWhere(function (Builder $subQ) use ($academicLevelIds) {
+                    $subQ->doesntHave('classes')
+                        ->whereHas('academicLevels', function (Builder $levelQ) use ($academicLevelIds) {
+                            $levelQ->whereIn('academic_levels.id', $academicLevelIds);
+                        });
+                });
+            }
+        });
+    }
+
 }

@@ -8,8 +8,9 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 /**
  * @property int $id
@@ -140,6 +141,18 @@ class Exam extends Model
         );
     }
 
+    public function inPersonExamResult(): HasOneThrough
+    {
+        return $this->hasOneThrough(
+            InPersonExamResult::class,
+            InPersonExamDetail::class,
+            'exam_id',           // Foreign key on in_person_exam_details table...
+            'in_person_exam_id', // Foreign key on in_person_exam_results table...
+            'id',                // Local key on exams table...
+            'id'                 // Local key on in_person_exam_details table...
+        );
+    }
+
     public function grades()
     {
         return $this->inPersonExamResult();
@@ -148,6 +161,11 @@ class Exam extends Model
     public function onlineExamSessions(): HasMany
     {
         return $this->hasMany(OnlineExamSession::class);
+    }
+
+    public function onlineExamSession(): HasOne
+    {
+        return $this->hasOne(OnlineExamSession::class)->latestOfMany('attempt_number');
     }
 
     public function onlineExamSessionResponses(): HasMany
@@ -187,4 +205,12 @@ class Exam extends Model
             });
         });
     }
+
+    public function scopeForStudent(Builder $query, int $studentId): Builder
+    {
+        return $query->whereHas('inPersonExamResults', function (Builder $q) use ($studentId) {
+            $q->where('user_id', $studentId);
+        });
+    }
+
 }

@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Models\ExamCategory;
-use App\Traits\CommonCRUD;
 use App\Traits\Filter;
+use App\Traits\CommonCRUD;
 use App\Enums\UserRoleType;
-use Illuminate\Http\JsonResponse;
+use App\Models\ExamCategory;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Http\JsonResponse;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Validator;
 
 class ExamCategoryController extends Controller
 {
@@ -93,5 +95,61 @@ class ExamCategoryController extends Controller
         }
 
         return $this->commonDestroy($examCategory);
+    }
+
+    public function mine(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        // 1. استخراج لیست آیدی مدارسی که کاربر در آن‌ها ثبت‌نام دارد
+        $allowedSchoolIds = $user ? $user->termEnrollments()
+            ->whereNotNull('school_id')
+            ->pluck('school_id')
+            ->unique()
+            ->toArray() : [];
+
+        // 2. ولیدیشن دقیق ریکوئست
+        $validator = Validator::make($request->all(), [
+            'school_id' => [
+                'required',
+                'integer',
+                'exists:schools,id',
+                Rule::in($allowedSchoolIds), // چک می‌کند که school_id حتماً متعلق به این دانش‌آموز باشد
+            ],
+        ], [
+            'school_id.required' => 'شناسه مدرسه الزامی است.',
+            'school_id.exists'   => 'مدرسه انتخاب شده نامعتبر است.',
+            'school_id.in'       => 'شما به دسته‌بندی‌های این مدرسه دسترسی ندارید.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => $validator->errors()->first(),
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $config = [
+            'filterKeys' => [
+                'title'
+            ],
+            'filterKeysExact' => [
+                'id',
+                'is_system',
+                'term_number',
+                'school_id'
+            ],
+            'filterKeysIn' => [
+                'id',
+            ],
+            'scopes' => [
+                'forSchoolOrGlobal'
+            ],
+            'eagerLoads' => [
+                'school'
+            ],
+        ];
+
+        return $this->commonIndex($request, ExamCategory::class, $config);
     }
 }
