@@ -29,6 +29,8 @@ use App\Http\Controllers\Api\OnlineExamSessionResponseController;
 use App\Http\Controllers\Api\ReportCardController;
 use App\Http\Controllers\Api\SchoolClassController;
 use App\Http\Controllers\Api\SchoolController;
+use App\Http\Controllers\Api\SchoolFeatureController;
+use App\Http\Controllers\Api\SchoolSkyroomAccountController;
 use App\Http\Controllers\Api\SchoolUserController;
 use App\Http\Controllers\Api\SkyroomRoomController;
 use App\Http\Controllers\Api\SkyroomRoomScheduleController;
@@ -65,6 +67,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('terms/{term}', [AcademicTermController::class, 'showTerm']);
         Route::put('terms/{term}', [AcademicTermController::class, 'update']);
         Route::delete('terms/{term}', [AcademicTermController::class, 'destroy']);
+        Route::apiResource('skyroom-accounts', SchoolSkyroomAccountController::class)
+            ->parameters(['skyroom-accounts' => 'skyroomAccount']);
+        Route::apiResource('features', SchoolFeatureController::class);
     });
     Route::apiResource('academic-fields', AcademicFieldController::class);
     Route::apiResource('academic-levels', AcademicLevelController::class);
@@ -174,6 +179,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('online-exams', [ExamController::class, 'studentOnlineExams']);
         Route::get('online-exams/{id}', [ExamController::class, 'studentShow']);
     });
+
+    Route::apiResource('skyroom-rooms', SkyroomRoomController::class)
+        ->only(['store', 'update', 'destroy'])
+        ->parameters(['skyroom-rooms' => 'skyroomRoom']);
 
     Route::prefix('skyroom-rooms')->group(function () {
         Route::get('{skyroomRoom}', [SkyroomRoomController::class, 'show']);

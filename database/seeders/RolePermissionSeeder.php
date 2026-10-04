@@ -91,6 +91,16 @@ class RolePermissionSeeder extends Seeder
             'terms.create',
             'terms.update',
             'terms.delete',
+            'skyroom.accounts.view',
+            'skyroom.accounts.create',
+            'skyroom.accounts.update',
+            'skyroom.accounts.delete',
+            'skyroom.rooms.view',
+            'skyroom.rooms.manage',
+            'school.features.view',
+            'school.features.create',
+            'school.features.update',
+            'school.features.delete',
         ];
 
         foreach ($permissions as $permission) {

@@ -192,4 +192,14 @@ class School extends Model
     {
         return $this->users()->wherePivot('role_in_school', 'teacher');
     }
+
+    public function features(): HasMany
+    {
+        return $this->hasMany(SchoolFeature::class);
+    }
+
+    public function skyroomAccounts(): HasMany
+    {
+        return $this->hasMany(SchoolSkyroomAccount::class);
+    }
 }

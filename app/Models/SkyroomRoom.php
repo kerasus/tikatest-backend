@@ -51,6 +51,7 @@ class SkyroomRoom extends Model
 
     protected $fillable = [
         'class_id',
+        'skyroom_account_id',
         'skyroom_id',
         'name',
         'title',
@@ -71,7 +72,12 @@ class SkyroomRoom extends Model
 
     public function class(): BelongsTo
     {
-        return $this->belongsTo(Classes::class, 'class_id');
+        return $this->belongsTo(SchoolClass::class, 'class_id');
+    }
+
+    public function skyroomAccount(): BelongsTo
+    {
+        return $this->belongsTo(SchoolSkyroomAccount::class, 'skyroom_account_id');
     }
 
     public function schedules(): HasMany

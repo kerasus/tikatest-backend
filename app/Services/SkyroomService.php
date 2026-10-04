@@ -26,6 +26,13 @@ class SkyroomService
         $this->apiKey = config('services.skyroom.key');
     }
 
+    public function usingApiKey(string $apiKey): self
+    {
+        $this->apiKey = $apiKey;
+
+        return $this;
+    }
+
     /**
      * متد پایه برای ارسال درخواست به وب‌سرویس اسکای‌روم
      *

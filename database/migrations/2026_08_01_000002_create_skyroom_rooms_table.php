@@ -12,6 +12,10 @@ return new class extends Migration
             $table->id();
             $table->foreignId('class_id')->constrained('classes')->cascadeOnDelete();
 
+            $table->foreignId('skyroom_account_id')
+                ->constrained('school_skyroom_accounts')
+                ->cascadeOnDelete();
+
             // شناسه بازگشتی اتاق از وب‌سرویس اسکای‌روم (createRoom)
             $table->unsignedBigInteger('skyroom_id')->unique()->nullable()->comment('شناسه اتاق در اسکای‌روم');
 

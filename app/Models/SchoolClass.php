@@ -73,4 +73,9 @@ class SchoolClass extends Model
     {
         return $this->hasMany(Homework::class);
     }
+
+    public function skyroomRooms(): HasMany
+    {
+        return $this->hasMany(SkyroomRoom::class, 'class_id');
+    }
 }
