@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
-use App\Models\SchoolClass;
-use App\Traits\CommonCRUD;
 use App\Traits\Filter;
-use Illuminate\Http\JsonResponse;
+use App\Traits\CommonCRUD;
+use App\Models\SchoolClass;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use App\Http\Controllers\Controller;
+use Symfony\Component\HttpFoundation\Response;
 
 class SchoolClassController extends Controller
 {
@@ -89,8 +90,18 @@ class SchoolClassController extends Controller
         return $this->commonUpdate($request, $schoolClass);
     }
 
-    public function destroy(SchoolClass $schoolClass): JsonResponse
+    public function destroy(SchoolClass $class): JsonResponse
     {
-        return $this->commonDestroy($schoolClass);
+        // بررسی وجود دانش‌آموز ثبت‌نام شده در این کلاس
+        $hasStudents = $class->termEnrollments()->exists();
+
+        if ($hasStudents) {
+            return $this->jsonResponseError(
+                'امکان حذف این کلاس وجود ندارد؛ زیرا دانش‌آموزانی در آن ثبت‌نام شده‌اند.',
+                Response::HTTP_UNPROCESSABLE_ENTITY // کد خطای 422 استاندارد اعتبارسنجی
+            );
+        }
+
+        return $this->commonDestroy($class);
     }
 }

@@ -123,4 +123,6 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    'api_prefix' => env('API_PREFIX', 'api'),
+
 ];

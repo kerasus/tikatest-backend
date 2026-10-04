@@ -61,8 +61,7 @@ class UserController extends Controller
                     'requestKey' => 'school_id',
                     'relationName' => 'schools',
                 ],
-            ],
-            'eagerLoads' => ['roles', 'permissions'],
+            ]
         ];
 
         return $this->commonIndex($request, User::class, $config);

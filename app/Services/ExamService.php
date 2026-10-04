@@ -533,7 +533,7 @@ class ExamService
 
         // اگر دانش‌آموز در هیچ کلاسی/پایه‌ای ثبت‌نام فعال ندارد، دست‌خالی برگرد
         if (empty($studentClassIds) && empty($studentLevelIds)) {
-            return collect();
+            return Exam::query()->whereNull('exams.id');
         }
 
         $fromDt = $from ? Carbon::parse($from) : null;
