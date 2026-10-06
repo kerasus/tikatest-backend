@@ -51,8 +51,13 @@ class SkyroomRoomSchedule extends Model
         'day_of_week' => 'integer',
     ];
 
-    public function skyroomRoom(): BelongsTo
+    public function room(): BelongsTo
     {
         return $this->belongsTo(SkyroomRoom::class, 'skyroom_room_id');
+    }
+
+    public function skyroomRoom(): BelongsTo
+    {
+        return $this->room();
     }
 }

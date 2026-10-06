@@ -24,6 +24,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use App\Models\SchoolFeature;
+use App\Models\SkyroomRoomSchedule;
 use Illuminate\Validation\ValidationException;
 
 class StudentController extends Controller
@@ -580,8 +582,97 @@ class StudentController extends Controller
         $enrollments = $request->user()->termEnrollments()
             ->active()
             ->get(['class_id', 'school_id']);
-        $schoolIds = $enrollments->pluck('school_id')->filter()->unique()->values();
 
+        $schoolIds = $enrollments->pluck('school_id')->filter()->unique()->values();
+        $classIds = $enrollments->pluck('class_id')->filter()->unique()->values();
+
+        // -------------------------------------------------------------
+        // ۱. بررسی فیچر اسکای‌روم و پیدا کردن کلاس‌های آنلاین فعال/نزدیک
+        // -------------------------------------------------------------
+        $hasSkyroomFeature = false;
+        $activeOnlineClasses = collect();
+
+        if ($schoolIds->isNotEmpty()) {
+            $hasSkyroomFeature = SchoolFeature::query()
+                ->whereIn('school_id', $schoolIds)
+                ->where('feature_key', 'skyroom') // نام کلید فیچر اسکای‌روم
+                ->where('is_enabled', true)
+                ->where(function ($q) {
+                    $q->whereNull('expires_at')
+                        ->orWhere('expires_at', '>', now());
+                })
+                ->exists();
+        }
+
+        if ($hasSkyroomFeature && $classIds->isNotEmpty()) {
+            $now = now();
+            $todayDate = $now->toDateString();
+            $currentTime = $now->format('H:i:s');
+
+            // بازهٔ آیندهٔ نزدیک (مثلاً کلاس‌هایی که تا ۶۰ دقیقه دیگر شروع می‌شوند)
+            $nearFutureTime = $now->copy()->addMinutes(60)->format('H:i:s');
+
+            // تبدیل روز هفته به فرمت پروژه شما (۰: شنبه ... ۶: جمعه)
+            // Carbon::dayOfWeek: 0: Sunday, 1: Monday, ..., 6: Saturday
+            // تبدیل استاندارد به شنبه=۰: (dayOfWeek + 1) % 7
+            $currentDayOfWeek = ($now->dayOfWeek + 1) % 7;
+
+            $activeOnlineClasses = SkyroomRoomSchedule::query()
+                ->where('is_active', true)
+                ->whereHas('room', function ($roomQuery) use ($classIds) {
+                    $roomQuery->whereIn('class_id', $classIds)
+                        ->where('status', true);
+                })
+                ->where(function ($scheduleQuery) use ($todayDate, $currentDayOfWeek) {
+                    // یا جلسه موردی امروز است، یا جلسه هفتگی متناظر با روز هفته جاری
+                    $scheduleQuery->whereDate('held_date', $todayDate)
+                        ->orWhere(function ($recurringQuery) use ($currentDayOfWeek) {
+                            $recurringQuery->whereNull('held_date')
+                                ->where('day_of_week', $currentDayOfWeek);
+                        });
+                })
+                ->where(function ($timeQuery) use ($currentTime, $nearFutureTime) {
+                    // حالت ۱: کلاس هم‌اکنون در جریان است (شروع شده و هنوز تمام نشده)
+                    $timeQuery->where(function ($ongoingQuery) use ($currentTime) {
+                        $ongoingQuery->where('start_time', '<=', $currentTime)
+                            ->where('end_time', '>=', $currentTime);
+                    })
+                        // حالت ۲: در آیندهٔ نزدیک شروع می‌شود
+                        ->orWhere(function ($upcomingQuery) use ($currentTime, $nearFutureTime) {
+                            $upcomingQuery->where('start_time', '>', $currentTime)
+                                ->where('start_time', '<=', $nearFutureTime);
+                        });
+                })
+                ->with(['room.class']) // برای واکشی اطلاعات اتاق و عنوان کلاس
+                ->orderBy('start_time')
+                ->get()
+                ->map(function (SkyroomRoomSchedule $schedule) use ($currentTime) {
+                    $room = $schedule->room;
+                    $isLiveNow = ($schedule->start_time <= $currentTime && $schedule->end_time >= $currentTime);
+
+                    // ایجاد لینک ورود اسکای‌روم بر اساس اسم یکتای اتاق یا متد اختصاصی اتاق
+                    $roomUrl = method_exists($room, 'getJoinUrl')
+                        ? $room->getJoinUrl()
+                        : "https://www.skyroom.online/ch/{$room->name}";
+
+                    return [
+                        'schedule_id' => $schedule->id,
+                        'room_id' => $room->id,
+                        'class_id' => $room->class_id,
+                        'class_name' => $room->schoolClass?->name ?? $room->title,
+                        'title' => $schedule->title ?? $room->title,
+                        'start_time' => substr($schedule->start_time, 0, 5),
+                        'end_time' => substr($schedule->end_time, 0, 5),
+                        'is_live_now' => $isLiveNow,
+                        'status' => $isLiveNow ? 'live' : 'upcoming',
+                        'join_url' => $roomUrl,
+                    ];
+                });
+        }
+
+        // -------------------------------------------------------------
+        // ۲. بخش‌های قبلی (آزمون‌ها، تکالیف، نمرات، تقویم و ساعات مطالعه)
+        // -------------------------------------------------------------
         $upcomingExams = $examService->listStudentRelatedExams(
             studentUserId: $studentId,
             from: now()->toDateTimeString(),
@@ -703,6 +794,8 @@ class StudentController extends Controller
             ->get();
 
         return $this->jsonResponseOk([
+            'has_skyroom_feature' => $hasSkyroomFeature,
+            'active_online_classes' => $activeOnlineClasses,
             'upcoming_exams' => $upcomingExams,
             'pending_homeworks' => $pendingHomeworks,
             'recent_grades' => $recentGrades,

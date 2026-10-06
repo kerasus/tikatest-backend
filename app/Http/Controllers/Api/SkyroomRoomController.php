@@ -7,7 +7,10 @@ use App\Models\SchoolClass;
 use App\Models\SchoolSkyroomAccount;
 use App\Models\SkyroomRoom;
 use App\Services\SkyroomService;
+use App\Traits\CommonCRUD;
+use App\Traits\Filter;
 use Exception;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -15,6 +18,8 @@ use Illuminate\Validation\Rule;
 
 class SkyroomRoomController extends Controller
 {
+    use CommonCRUD, Filter;
+
     protected int $cacheTtl = 900;
 
     public function __construct(protected SkyroomService $skyroom)
@@ -24,20 +29,35 @@ class SkyroomRoomController extends Controller
         $this->middleware('admin_or_permission:skyroom.rooms.manage')->only(['store', 'update', 'destroy']);
     }
 
-    public function index(SchoolClass $schoolClass): JsonResponse
+    public function index(Request $request, $schoolClass): JsonResponse
     {
-        $cacheKey = "school_class_{$schoolClass->id}_skyroom_rooms";
+        $classId = $schoolClass instanceof Model ? $schoolClass->getKey() : $schoolClass;
 
-        $rooms = Cache::remember($cacheKey, $this->cacheTtl, function () use ($schoolClass) {
-            return $schoolClass->skyroomRooms()
-                ->with([
-                    'skyroomAccount:id,school_id,title,username,is_active',
-                    'schedules' => fn ($query) => $query->where('is_active', true),
-                ])
-                ->get();
-        });
+        $request->merge([
+            'class_id' => $classId,
+        ]);
 
-        return $this->jsonResponseOk($rooms);
+        $config = [
+            'filterKeys' => [
+                'name',
+                'title',
+                'description',
+            ],
+            'filterKeysExact' => [
+                'class_id',
+                'skyroom_account_id',
+                'skyroom_id',
+                'guest_login',
+                'op_login_first',
+                'status',
+            ],
+            'eagerLoads' => [
+                'skyroomAccount:id,school_id,title,username,is_active',
+                'schedules',
+            ],
+        ];
+
+        return $this->commonIndex($request, SkyroomRoom::class, $config);
     }
 
     public function store(Request $request): JsonResponse
