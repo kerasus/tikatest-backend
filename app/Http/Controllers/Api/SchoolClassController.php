@@ -17,7 +17,7 @@ class SchoolClassController extends Controller
 
     public function __construct()
     {
-        $this->middleware('auth:sanctum');
+        $this->middleware('auth:sanctum')->except(['externalIndex']);
         $this->middleware('admin_or_permission:classes.view')->only(['index', 'show']);
         $this->middleware('admin_or_permission:classes.create')->only(['store']);
         $this->middleware('admin_or_permission:classes.update')->only(['update']);
@@ -118,9 +118,13 @@ class SchoolClassController extends Controller
         return response()->json($result, $result['success'] ? 200 : ($result['files'] === [] && isset($result['message']) ? 503 : 200));
     }
 
-
     public function externalIndex(Request $request): JsonResponse
     {
+        // ۱. استخراج مدرسه احراز هویت شده از میدلور (امنیت صددرصدی بدون اتکا به school_id کلاینت)
+        $school = $request->attributes->get('current_school');
+        $request->merge([
+            'school_id' => $school->id,
+        ]);
         $config = [
             'filterKeys' => ['name'],
             'filterKeysExact' => ['academic_level_id'],
@@ -146,6 +150,7 @@ class SchoolClassController extends Controller
                 'academicLevel.academicField.school'
             ],
             'returnModelQuery' => true,
+            'paginate' => false,
         ];
 
         $result = $this->commonIndex($request, SchoolClass::class, $config);

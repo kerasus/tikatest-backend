@@ -17,7 +17,12 @@ trait CommonCRUD
         // load variables
         $modelQuery = $modelClass::query();
         $configArray = $this->getConfigArray($config);
+        $paginate = $configArray['paginate'] ?? true;
         $perPage = ($request->has('length')) ? $request->get('length') : 10;
+
+        \Log::info('commonIndex', [
+            '$configArray' => $configArray,
+        ]);
 
         $this->buildFilterQuery($request, $modelQuery, $modelClass, $configArray);
 
@@ -25,13 +30,18 @@ trait CommonCRUD
         $attachedCollection = null;
         $setAppends = $configArray['setAppends'];
         if ($configArray['returnModelQuery']) {
-            return $this->getModelQueryWithAttachedCollectionClosure($modelQuery, $perPage, $setAppends);
+            return $this->getModelQueryWithAttachedCollectionClosure($modelQuery, $perPage, $setAppends, $paginate);
         } elseif (count($configArray['setAppends']) > 0) {
-            $attachedCollection = $this->getAttachedCollection($modelQuery, $setAppends, $perPage);
+            $attachedCollection = $this->getAttachedCollection($modelQuery, $setAppends, $perPage, $paginate);
             //                $modelQuery->paginate($perPage)
             //                    ->getCollection()->map(function ($item) use ($setAppends) {
             //                    return $item->setAppends($setAppends);
             //                });
+        }
+
+        if (!$paginate) {
+            $collection = isset($attachedCollection) ? $attachedCollection : $modelQuery->get();
+            return $this->jsonResponseOk($collection);
         }
 
         // return json response
@@ -62,6 +72,7 @@ trait CommonCRUD
     private function getConfigArray($config)
     {
         $configArray = [
+            'paginate' => $this->getDefault($config, 'paginate', true),
             'select' => $this->getDefault($config, 'select', []),
             'scopes' => $this->getDefault($config, 'scopes', []),
             'eagerLoads' => $this->getDefault($config, 'eagerLoads', []),
@@ -81,23 +92,34 @@ trait CommonCRUD
         return $configArray;
     }
 
-    private function getAttachedCollection($updatedModelQuery, $setAppends, $perPage)
+    private function getAttachedCollection($updatedModelQuery, $setAppends, $perPage, $paginate = true)
     {
-        return $updatedModelQuery->paginate($perPage)
-            ->getCollection()->map(function ($item) use ($setAppends) {
+        if (! $paginate) {
+            $items = $updatedModelQuery->get();
+            if (count($setAppends) > 0) {
+                return $items->map(function ($item) use ($setAppends) {
+                    return $item->setAppends($setAppends);
+                });
+            }
+            return $items;
+        }
+
+        $paginator = $updatedModelQuery->paginate($perPage);
+        if (count($setAppends) > 0) {
+            $paginator->getCollection()->transform(function ($item) use ($setAppends) {
                 return $item->setAppends($setAppends);
             });
+        }
+
+        return $paginator;
     }
 
-    private function getModelQueryWithAttachedCollectionClosure($modelQuery, $perPage, $setAppends)
+    private function getModelQueryWithAttachedCollectionClosure($modelQuery, $perPage, $setAppends, $paginate = true)
     {
-        $responseWithAttachedCollection = function ($updatedModelQuery) use ($perPage, $setAppends) {
-            $attachedCollection = $this->getAttachedCollection($updatedModelQuery, $setAppends, $perPage);
+        $responseWithAttachedCollection = function ($updatedModelQuery) use ($perPage, $setAppends, $paginate) {
+            $result = $this->getAttachedCollection($updatedModelQuery, $setAppends, $perPage, $paginate);
 
-            return $this->jsonResponseOk(
-                $updatedModelQuery->paginate($perPage)
-                    ->setCollection($attachedCollection)
-            );
+            return $this->jsonResponseOk($result);
         };
 
         return [

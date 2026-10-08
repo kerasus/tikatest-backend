@@ -80,6 +80,11 @@ class ExamResource extends JsonResource
                     $payload['solution_file'] = $onlineDetail->solution_file;
                     $payload['solution_path'] = $onlineDetail->solution_path;
                     $payload['solution_descriptive'] = $onlineDetail->solution_descriptive;
+
+                    // محتوای سوالات آزمون
+                    $payload['content'] = $onlineDetail->content;
+                    $payload['content_file'] = $onlineDetail->content_file ?? null;
+                    $payload['content_path'] = $onlineDetail->content_path ?? null;
                 }
 
                 // دفترچه‌ها (Booklets)
