@@ -53,6 +53,10 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
+    // ⚠️ موقت: فقط برای ادمین - اجرای اسکریپت‌های یک‌بار مصرف
+//    Route::post('/admin/dev/run', [UserController::class, 'runDevScripts'])
+//        ->middleware('role:admin');
+
     Route::get('/users/me', [UserController::class, 'me']);
     Route::post('users/{user}/assign-role', [UserController::class, 'assignRole']);
     Route::post('users/{user}/remove-role', [UserController::class, 'removeRole']);

@@ -10,6 +10,8 @@ use App\Services\SkyroomService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Exception;
+use App\Enums\UserRoleType;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,6 +34,8 @@ class SkyroomRoomController extends Controller
     public function index(Request $request, $schoolClass): JsonResponse
     {
         $classId = $schoolClass instanceof Model ? $schoolClass->getKey() : $schoolClass;
+
+        $this->authorizeClassAccess((int) $classId);
 
         $request->merge([
             'class_id' => $classId,
@@ -63,6 +67,12 @@ class SkyroomRoomController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $this->validateRoom($request);
+
+        $this->ensureAccountMatchesClass(
+            (int) $validated['class_id'],
+            (int) $validated['skyroom_account_id']
+        );
+
         $this->ensureAccountMatchesClass(
             (int) $validated['class_id'],
             (int) $validated['skyroom_account_id']
@@ -77,6 +87,9 @@ class SkyroomRoomController extends Controller
     public function show(Request $request, $id): JsonResponse
     {
         $skyroomRoom = $id instanceof SkyroomRoom ? $id : SkyroomRoom::findOrFail($id);
+
+        $this->authorizeRoomAccess($skyroomRoom);
+
         $cacheKey = "skyroom_room_detail_{$skyroomRoom->id}";
 
         $roomData = Cache::remember($cacheKey, $this->cacheTtl, function () use ($skyroomRoom) {
@@ -109,6 +122,12 @@ class SkyroomRoomController extends Controller
         $validated = $this->validateRoom($request, $skyroomRoom);
         $classId = (int) ($validated['class_id'] ?? $skyroomRoom->class_id);
         $accountId = (int) ($validated['skyroom_account_id'] ?? $skyroomRoom->skyroom_account_id);
+
+        $this->ensureAccountMatchesClass(
+            $classId,
+            $accountId
+        );
+
         $this->ensureAccountMatchesClass($classId, $accountId);
 
         $oldClassId = $skyroomRoom->class_id;
@@ -123,6 +142,8 @@ class SkyroomRoomController extends Controller
 
     public function destroy(SkyroomRoom $skyroomRoom): JsonResponse
     {
+        $this->authorizeRoomAccess($skyroomRoom);
+
         $classId = $skyroomRoom->class_id;
         $roomId = $skyroomRoom->id;
         $skyroomRoom->delete();
@@ -133,21 +154,29 @@ class SkyroomRoomController extends Controller
 
     public function generateLoginUrl(Request $request, SkyroomRoom $skyroomRoom): JsonResponse
     {
+        $this->authorizeRoomAccess($skyroomRoom);
+
         $skyroomRoom->loadMissing('skyroomAccount');
         abort_unless($skyroomRoom->skyroom_id, 422, 'شناسه اتاق اسکای‌روم ثبت نشده است.');
         abort_unless($skyroomRoom->skyroomAccount?->is_active, 422, 'اکانت اسکای‌روم غیرفعال است.');
 
         $user = $request->user();
-        $access = $user->hasAnyRole(['admin', 'teacher'])
+        $access = $user->hasAnyRole([
+            UserRoleType::Admin->value,
+            UserRoleType::Manager->value,
+            UserRoleType::Staff->value,
+            UserRoleType::Teacher->value,
+        ])
             ? SkyroomService::ACCESS_OPERATOR
             : SkyroomService::ACCESS_NORMAL;
+        $nickname = $user->first_name . ' ' . $user->last_name . '(' . $user->id . ')';
 
         $url = $this->skyroom
             ->usingApiKey($skyroomRoom->skyroomAccount->api_key)
             ->createLoginUrl(
                 roomId: $skyroomRoom->skyroom_id,
                 userId: $user->id,
-                nickname: $user->name ?? $user->username,
+                nickname: $nickname,
                 access: $access,
                 ttl: 3600
             );
@@ -193,6 +222,9 @@ class SkyroomRoomController extends Controller
             'مدرسه کلاس قابل تشخیص نیست.'
         );
 
+        // بررسی دسترسی کاربر به مدرسه
+        $this->authorizeSchoolAccess((int) $schoolId);
+
         abort_unless(
             SchoolSkyroomAccount::query()
                 ->whereKey($accountId)
@@ -200,6 +232,91 @@ class SkyroomRoomController extends Controller
                 ->exists(),
             422,
             'اکانت اسکای‌روم باید متعلق به مدرسه همین کلاس باشد.'
+        );
+    }
+
+    private function authorizeClassAccess(int $classId): void
+    {
+        $schoolClass = SchoolClass::with(
+            'academicLevel.academicField'
+        )->findOrFail($classId);
+
+        $schoolId = $schoolClass
+            ->academicLevel
+            ?->academicField
+            ?->school_id;
+
+        abort_unless(
+            $schoolId,
+            422,
+            'مدرسه کلاس قابل تشخیص نیست.'
+        );
+
+        $this->authorizeSchoolAccess((int) $schoolId);
+    }
+
+    private function authorizeRoomAccess(
+        SkyroomRoom $skyroomRoom
+    ): void {
+        $skyroomRoom->loadMissing(
+            'class.academicLevel.academicField'
+        );
+
+        $schoolId = $skyroomRoom
+            ->class
+            ?->academicLevel
+            ?->academicField
+            ?->school_id;
+
+        abort_unless(
+            $schoolId,
+            422,
+            'مدرسه اتاق قابل تشخیص نیست.'
+        );
+
+        $this->authorizeSchoolAccess((int) $schoolId);
+    }
+
+    private function authorizeSchoolAccess(int $schoolId): void
+    {
+        /** @var User|null $user */
+        $user = request()->user();
+
+        abort_unless(
+            $user,
+            401,
+            'کاربر احراز هویت نشده است.'
+        );
+
+        // ادمین به تمام مدارس دسترسی دارد
+        if ($user->hasRole(UserRoleType::Admin->value)) {
+            return;
+        }
+
+        $isAuthorizedSchoolStaff =
+            $user->hasAnyRole([
+                UserRoleType::Manager->value,
+                UserRoleType::Staff->value,
+            ])
+            && $user->schools()
+                ->whereKey($schoolId)
+                ->wherePivot('is_active', true)
+                ->where(function ($query) {
+                    $query
+                        ->whereNull('joined_at')
+                        ->orWhere('joined_at', '<=', now());
+                })
+                ->where(function ($query) {
+                    $query
+                        ->whereNull('left_at')
+                        ->orWhere('left_at', '>', now());
+                })
+                ->exists();
+
+        abort_unless(
+            $isAuthorizedSchoolStaff,
+            403,
+            'شما اجازه مدیریت اتاق‌های این مدرسه را ندارید.'
         );
     }
 

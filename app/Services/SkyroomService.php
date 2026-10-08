@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Exception;
+use InvalidArgumentException;
 
 class SkyroomService
 {
@@ -18,19 +19,30 @@ class SkyroomService
     public const STATUS_DISABLED  = 0; // غیرفعال
     public const STATUS_ENABLED   = 1; // فعال
 
-    protected string $apiKey;
+    protected ?string $apiKey = null;
     protected string $baseUrl = 'https://www.skyroom.online/skyroom/api/';
 
-    public function __construct()
+    public function __construct(?string $apiKey = null)
     {
-        $this->apiKey = config('services.skyroom.key');
+        $this->apiKey = $apiKey ?: config('services.skyroom.key');
     }
 
+    /**
+     * تنظیم یا تغییر API Key به صورت زنجیره‌ای (Fluent)
+     */
     public function usingApiKey(string $apiKey): self
     {
-        $this->apiKey = $apiKey;
+        $this->apiKey = trim($apiKey);
 
         return $this;
+    }
+
+    /**
+     * دریافت کلید فعال فعلی
+     */
+    public function getApiKey(): ?string
+    {
+        return $this->apiKey;
     }
 
     /**
@@ -38,12 +50,19 @@ class SkyroomService
      *
      * @param string $action
      * @param array $params
+     * @param string|null $apiKey کلید اختصاصی برای این درخواست (در صورت عدم ارسال از کلید ست‌شده استفاده می‌شود)
      * @return mixed
      * @throws Exception
      */
-    public function call(string $action, array $params = [])
+    public function call(string $action, array $params = [], ?string $apiKey = null)
     {
-        $url = $this->baseUrl . $this->apiKey;
+        $effectiveApiKey = $apiKey ? trim($apiKey) : $this->apiKey;
+
+        if (empty($effectiveApiKey)) {
+            throw new InvalidArgumentException("کلید API اسکای‌روم مشخص نشده است. لطفاً کلید معتبر اکانت مدرسه را ارسال کنید.");
+        }
+
+        $url = $this->baseUrl . $effectiveApiKey;
 
         try {
             $response = Http::timeout(30)
@@ -70,9 +89,10 @@ class SkyroomService
             return $data['result'] ?? null;
         } catch (Exception $e) {
             Log::error('Skyroom API Call Failed', [
-                'action' => $action,
-                'params' => $params,
-                'error'  => $e->getMessage(),
+                'action'  => $action,
+                'params'  => $params,
+                'api_key' => substr($effectiveApiKey, 0, 10) . '***', // لاگ امن بدون لو رفتن کلید کامل
+                'error'   => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -80,25 +100,23 @@ class SkyroomService
 
     /**
      * ۱. دریافت لیست تمام کلاس‌ها (اتاق‌ها)
-     *
-     * @return array
-     * @throws Exception
      */
-    public function getRooms(): array
+    public function getRooms(?string $apiKey = null): array
     {
-        return $this->call('getRooms') ?? [];
+        return $this->call('getRooms', [], $apiKey) ?? [];
     }
 
     /**
      * ۲. دریافت آدرس ورود مستقیم به اتاق (بدون نیاز به لاگین و ساخت کاربر)
      *
      * @param int|string $roomId شناسه اتاق
-     * @param string|int $userId شناسه یکتای کاربر در سامانه شما (برای جلوگیری از ورود همزمان چند نفر با یک لینک)
+     * @param string|int $userId شناسه یکتای کاربر در سامانه
      * @param string $nickname نام نمایشی کاربر داخل کلاس
-     * @param int $access سطح دسترسی (پیش‌فرض: کاربر عادی)
-     * @param int $ttl مدت زمان اعتبار لینک به ثانیه (پیش‌فرض: ۳۶۰۰ ثانیه معادل ۱ ساعت)
-     * @param int $concurrent سقف ورود همزمان با این لینک (پیش‌فرض: ۱ نفر)
-     * @param string $language زبان محیط کاربری ('fa' یا 'en')
+     * @param string|null $apiKey کلید API اختصاصی اکانت مربوطه
+     * @param int $access سطح دسترسی (پیش‌فرض: عادی)
+     * @param int $ttl مدت زمان اعتبار لینک به ثانیه
+     * @param int $concurrent سقف ورود همزمان با این لینک
+     * @param string $language زبان محیط کاربری
      * @return string
      * @throws Exception
      */
@@ -106,6 +124,7 @@ class SkyroomService
         $roomId,
         $userId,
         string $nickname,
+        ?string $apiKey = null,
         int $access = self::ACCESS_NORMAL,
         int $ttl = 3600,
         int $concurrent = 1,
@@ -119,47 +138,86 @@ class SkyroomService
             'ttl'        => $ttl,
             'concurrent' => $concurrent,
             'language'   => $language,
-        ]);
+        ], $apiKey);
+    }
+
+    /**
+     * تولید لینک مستقیم برای دانش‌آموز با دسترسی عادی
+     */
+    public function createStudentLoginUrl(
+        $roomId,
+        $studentId,
+        string $nickname,
+        ?string $apiKey = null,
+        int $ttl = 3600,
+        int $concurrent = 1,
+        string $language = 'fa'
+    ): string {
+        return $this->createLoginUrl(
+            $roomId,
+            $studentId,
+            $nickname,
+            $apiKey,
+            self::ACCESS_NORMAL,
+            $ttl,
+            $concurrent,
+            $language
+        );
     }
 
     /**
      * ۳. دریافت مشخصات و وضعیت یک اتاق
-     * (با استفاده از شناسه عددی یا نام لاتین اتاق)
-     *
-     * @param int|string $roomIdentifier شناسه عددی اتاق یا نام لاتین (name)
-     * @return array
-     * @throws Exception
      */
-    public function getRoom($roomIdentifier): array
+    public function getRoom($roomIdentifier, ?string $apiKey = null): array
     {
         $params = is_numeric($roomIdentifier)
             ? ['room_id' => (int) $roomIdentifier]
             : ['name' => (string) $roomIdentifier];
 
-        return $this->call('getRoom', $params) ?? [];
+        return $this->call('getRoom', $params, $apiKey) ?? [];
     }
 
     /**
-     * بررسی فعال بودن یک اتاق (وضعیت اتاق)
-     *
-     * @param int|string $roomIdentifier
-     * @return bool
-     * @throws Exception
+     * بررسی فعال بودن یک اتاق
      */
-    public function isRoomActive($roomIdentifier): bool
+    public function isRoomActive($roomIdentifier, ?string $apiKey = null): bool
     {
-        $room = $this->getRoom($roomIdentifier);
+        $room = $this->getRoom($roomIdentifier, $apiKey);
         return isset($room['status']) && (int) $room['status'] === self::STATUS_ENABLED;
     }
 
     /**
      * ۴. دریافت لیست و وضعیت سرویس‌های فعال/غیرفعال اسکای‌روم
-     *
-     * @return array
-     * @throws Exception
      */
-    public function getServices(): array
+    public function getServices(?string $apiKey = null): array
     {
-        return $this->call('getServices') ?? [];
+        return $this->call('getServices', [], $apiKey) ?? [];
     }
+//
+//    /**
+//     * حذف دسترسی و اخراج کاربران از یک اتاق
+//     *
+//     * @param int|string $roomId شناسه اتاق
+//     * @param array|int|string $users آرایه‌ای از شناسه‌های کاربری یا یک شناسه تنها
+//     * @param string|null $apiKey کلید اختصاصی اکانت مربوطه
+//     * @return int تعداد کاربرانی که با موفقیت حذف شدند
+//     * @throws Exception
+//     */
+//    public function removeRoomUsers($roomId, $users, ?string $apiKey = null): int
+//    {
+//        $userIds = is_array($users) ? array_values($users) : [$users];
+//
+//        // تبدیل مقادیر به عددی یا رشته‌ای تمیز
+//        $normalizedUsers = array_map(function ($userId) {
+//            return is_numeric($userId) ? (int) $userId : $userId;
+//        }, $userIds);
+//
+//        $result = $this->call('removeRoomUsers', [
+//            'room_id' => (int) $roomId,
+//            'users'   => $normalizedUsers,
+//        ], $apiKey);
+//
+//        dd($result);
+//        return (int) ($result ?? 0);
+//    }
 }

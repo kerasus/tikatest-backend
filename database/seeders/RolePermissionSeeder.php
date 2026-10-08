@@ -189,6 +189,12 @@ class RolePermissionSeeder extends Seeder
             'terms.create',
             'terms.update',
             'terms.delete',
+            'skyroom.accounts.view',
+            'skyroom.accounts.create',
+            'skyroom.accounts.update',
+            'skyroom.accounts.delete',
+            'skyroom.rooms.view',
+            'skyroom.rooms.manage',
         ]);
 
         $teacher->syncPermissions([
@@ -224,6 +230,7 @@ class RolePermissionSeeder extends Seeder
             'messages.create',
             'messages.update',
             'messages.delete',
+            'skyroom.rooms.view',
         ]);
 
         $student->syncPermissions([
@@ -238,6 +245,7 @@ class RolePermissionSeeder extends Seeder
             'messages.view',
             'messages.create',
         ]);
+
         $guardian->syncPermissions([
             'students.view',
             'grades.view',
@@ -266,6 +274,12 @@ class RolePermissionSeeder extends Seeder
             'terms.create',
             'terms.update',
             'terms.delete',
+            'skyroom.accounts.view',
+            'skyroom.accounts.create',
+            'skyroom.accounts.update',
+            'skyroom.accounts.delete',
+            'skyroom.rooms.view',
+            'skyroom.rooms.manage',
         ]);
     }
 }

@@ -275,4 +275,93 @@ class UserController extends Controller
 
         return $this->jsonResponseOk($user);
     }
+
+    public function runDevScripts(Request $request): JsonResponse
+    {
+        // قفل دوم: حتی اگر روت اشتباهی بدون middleware صدا زده شد
+        abort_unless($request->user()?->hasRole(UserRoleType::Admin->value), 403, 'Admins only.');
+
+        // انتخاب اینکه کدوم اسکریپت اجرا بشه
+        $action = (string) $request->input('action', 'fix-student-passwords');
+
+        if ($action === 'fix-student-passwords') {
+            return $this->fixStudentPasswordsForSchools([1, 2]); // 1=مبتکران؟ 2=اسدی کیا
+        }
+
+        return response()->json([
+            'message' => 'Unknown action',
+            'action' => $action,
+        ], 422);
+    }
+
+    private function fixStudentPasswordsForSchools(array $schoolIds): JsonResponse
+    {
+        $studentRoleId = 4; // اگر در سیستم تو متفاوت است اصلاح کن
+
+        // model_type استاندارد اسپتی
+        $modelType = 'App\\Models\\User';
+
+        $fixed = 0;
+        $skippedAlreadyBcrypt = 0;
+        $skippedEmptyPassword = 0;
+
+        DB::beginTransaction();
+        try {
+            // کاربرانی که دانش‌آموز هستند و در یکی از مدارس موردنظر ثبت‌نام دارند
+            $users = DB::table('users as u')
+                ->selectRaw('DISTINCT u.id, u.password')
+                ->join('model_has_roles as mhr', function ($j) use ($modelType, $studentRoleId) {
+                    $j->on('mhr.model_id', '=', 'u.id')
+                        ->where('mhr.model_type', '=', $modelType)
+                        ->where('mhr.role_id', '=', $studentRoleId);
+                })
+                ->join('term_enrollments as te', 'te.user_id', '=', 'u.id')
+                ->whereIn('te.school_id', $schoolIds)
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($users as $u) {
+                $current = (string) ($u->password ?? '');
+
+                if ($current === '') {
+                    $skippedEmptyPassword++;
+                    continue;
+                }
+
+                // اگر از قبل bcrypt است دست نزن
+                if (preg_match('/^\$2[aby]\$\d{2}\$[A-Za-z0-9\.\/]{53}$/', $current)) {
+                    $skippedAlreadyBcrypt++;
+                    continue;
+                }
+
+                // همین پسورد خام فعلی را bcrypt کن
+                $newHash = bcrypt($current);
+
+                DB::table('users')->where('id', $u->id)->update([
+                    'password' => $newHash,
+                    'updated_at' => now(),
+                ]);
+
+                $fixed++;
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Student passwords fixed (bcrypt applied where needed).',
+                'schools' => $schoolIds,
+                'fixed' => $fixed,
+                'skipped_already_bcrypt' => $skippedAlreadyBcrypt,
+                'skipped_empty_password' => $skippedEmptyPassword,
+            ]);
+        } catch (Throwable $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
 }
