@@ -83,6 +83,7 @@ Route::middleware('auth:sanctum')->group(function () {
             'classes' => 'schoolClass',
             'lessons' => 'classLesson',
         ]);
+    Route::get('/classes/{classId}/files', [SchoolClassController::class, 'classFiles']);
     Route::apiResource('classes', SchoolClassController::class);
     Route::apiResource('students', StudentController::class);
     Route::apiResource('student-guardians', StudentGuardianController::class);
@@ -195,3 +196,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::apiResource('skyroom-room-schedules', SkyroomRoomScheduleController::class);
 });
+
+Route::prefix('external/v1')
+    ->middleware('school.external.key')
+    ->group(function () {
+        // بدون نیاز به ارسال school_id در URL! خودِ میدلور بر اساس توکن مدرسه رو می‌شناسه!
+        Route::get('/classes', [SchoolClassController::class, 'externalIndex']);
+    });
+

@@ -9,11 +9,11 @@ class SchoolFeature extends Model
 {
     public const SKYROOM = 'skyroom';
 
-    public const FIP_PANEL = 'fip_panel';
+    public const FTP_PANEL = 'ftp_panel';
 
     public const KEYS = [
         self::SKYROOM,
-        self::FIP_PANEL,
+        self::FTP_PANEL,
     ];
 
     protected $fillable = [

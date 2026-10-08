@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Services\SchoolFtpFileService;
 use App\Traits\Filter;
 use App\Traits\CommonCRUD;
 use App\Models\SchoolClass;
@@ -103,5 +104,58 @@ class SchoolClassController extends Controller
         }
 
         return $this->commonDestroy($class);
+    }
+
+    public function classFiles(Request $request, int $classId): JsonResponse
+    {
+        $validated = $request->validate([
+            'school_id' => ['required', 'integer', 'exists:schools,id'],
+        ]);
+
+        $result = app(SchoolFtpFileService::class)
+            ->getClassFiles($validated['school_id'], $classId);
+
+        return response()->json($result, $result['success'] ? 200 : ($result['files'] === [] && isset($result['message']) ? 503 : 200));
+    }
+
+
+    public function externalIndex(Request $request): JsonResponse
+    {
+        $config = [
+            'filterKeys' => ['name'],
+            'filterKeysExact' => ['academic_level_id'],
+            'filterRelationKeys' => [
+                [
+                    'requestKey' => 'level_name',
+                    'relationName' => 'academicLevel',
+                    'relationColumn' => 'name',
+                    'exact' => false,
+                ],
+                [
+                    'requestKey' => 'school_id',
+                    'relationName' => 'academicLevel.academicField',
+                    'relationColumn' => 'school_id',
+                    'exact' => true,
+                ],
+            ],
+            'filterKeysIn' => [
+                'id',
+                'academic_level_id',
+            ],
+            'eagerLoads' => [
+                'academicLevel.academicField.school'
+            ],
+            'returnModelQuery' => true,
+        ];
+
+        $result = $this->commonIndex($request, SchoolClass::class, $config);
+
+        if (is_array($result) && isset($result['modelQuery']) && $request->filled('school_id')) {
+            $result['modelQuery']->whereHas('academicLevel.academicField', function ($query) use ($request) {
+                $query->where('school_id', $request->get('school_id'));
+            });
+        }
+
+        return $result['responseWithAttachedCollection']($result['modelQuery']);
     }
 }

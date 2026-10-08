@@ -36,7 +36,7 @@ class AuthController extends Controller
                 'roles',
                 'permissions',
                 'schools',
-                'termEnrollments.school',
+                'termEnrollments.school.features',
                 'termEnrollments.schoolClass.academicLevel.academicField'
             ),
         ]);
