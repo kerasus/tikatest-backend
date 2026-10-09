@@ -2,18 +2,20 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\UserRoleType;
-use App\Http\Controllers\Controller;
-use App\Models\SchoolUser;
-use App\Models\User;
-use App\Traits\CommonCRUD;
-use App\Traits\Filter;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\Rule;
 use Throwable;
+use App\Models\User;
+use App\Traits\Filter;
+use App\Traits\CommonCRUD;
+use App\Models\SchoolUser;
+use Illuminate\Support\Str;
+use App\Enums\UserRoleType;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
@@ -284,9 +286,16 @@ class UserController extends Controller
         // انتخاب اینکه کدوم اسکریپت اجرا بشه
         $action = (string) $request->input('action', 'fix-student-passwords');
 
-        if ($action === 'fix-student-passwords') {
-            return $this->fixStudentPasswordsForSchools([1, 2]); // 1=مبتکران؟ 2=اسدی کیا
+//        if ($action === 'fix-student-passwords') {
+//            return $this->fixStudentPasswordsForSchools([1, 2]); // 1=مبتکران؟ 2=اسدی کیا
+//        }
+
+        // اکشن جدید برای انتقال فایل‌های آزمون
+        if ($action === 'migrate-exam-files') {
+            $limit = (int) $request->input('limit', 0); // می‌توانی اول با limit=5 تست کنی
+            return $this->migrateExternalExamFiles($limit);
         }
+
 
         return response()->json([
             'message' => 'Unknown action',
@@ -363,5 +372,175 @@ class UserController extends Controller
         }
     }
 
+    /**
+     * دانلود فایل‌های خارجی content و solution در online_exam_details
+     * و ذخیره‌سازی آن‌ها دقیقاً با الگوی استاندارد ExamService
+     */
+    private function migrateExternalExamFiles(int $limit = 0): JsonResponse
+    {
+        @ini_set('max_execution_time', '600');
+        @set_time_limit(600);
+
+        $disk = Storage::disk('public');
+        $targetDirectory = 'exam-files';
+
+        if (! $disk->exists($targetDirectory)) {
+            $disk->makeDirectory($targetDirectory);
+        }
+
+        $query = DB::table('online_exam_details')
+            ->select('id', 'content', 'solution')
+            ->where(function ($q) {
+                $q->where('content', 'like', '%http://%')
+                    ->orWhere('content', 'like', '%https://%')
+                    ->orWhere('solution', 'like', '%http://%')
+                    ->orWhere('solution', 'like', '%https://%');
+            });
+
+        if ($limit > 0) {
+            $query->limit($limit);
+        }
+
+        $records = $query->get();
+
+        $updatedCount = 0;
+        $downloadedFilesCount = 0;
+        $failedUrls = [];
+
+        foreach ($records as $record) {
+            $needsUpdate = false;
+            $updates = [];
+
+            // ۱. پردازش Content
+            $contentData = $this->decodeJsonField($record->content);
+            if ($contentData && isset($contentData['path']) && $this->isExternalUrl($contentData['path'])) {
+                $newPath = $this->downloadAndStoreExamFile(
+                    $contentData['path'],
+                    'content',
+                    $disk,
+                    $targetDirectory,
+                    $failedUrls
+                );
+
+                if ($newPath) {
+                    $contentData['path'] = $newPath;
+                    // اگر type نداشت، بر اساس پسوند ست کن
+                    if (empty($contentData['type'])) {
+                        $contentData['type'] = Str::endsWith(strtolower($newPath), '.pdf') ? 'pdf' : 'image';
+                    }
+
+                    $updates['content'] = json_encode($contentData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    $needsUpdate = true;
+                    $downloadedFilesCount++;
+                }
+            }
+
+            // ۲. پردازش Solution
+            $solutionData = $this->decodeJsonField($record->solution);
+            if ($solutionData && isset($solutionData['path']) && $this->isExternalUrl($solutionData['path'])) {
+                $newPath = $this->downloadAndStoreExamFile(
+                    $solutionData['path'],
+                    'solution',
+                    $disk,
+                    $targetDirectory,
+                    $failedUrls
+                );
+
+                if ($newPath) {
+                    $solutionData['path'] = $newPath;
+                    if (empty($solutionData['type'])) {
+                        $solutionData['type'] = Str::endsWith(strtolower($newPath), '.pdf') ? 'pdf' : 'image';
+                    }
+
+                    $updates['solution'] = json_encode($solutionData, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                    $needsUpdate = true;
+                    $downloadedFilesCount++;
+                }
+            }
+
+            if ($needsUpdate) {
+                $updates['updated_at'] = now();
+                DB::table('online_exam_details')
+                    ->where('id', $record->id)
+                    ->update($updates);
+
+                $updatedCount++;
+            }
+        }
+
+        return response()->json([
+            'message' => 'فایل‌های خارجی با الگوی استاندارد ExamService با موفقیت منتقل شدند.',
+            'total_matched_records' => $records->count(),
+            'updated_records' => $updatedCount,
+            'downloaded_files' => $downloadedFilesCount,
+            'failed_count' => count($failedUrls),
+            'failed_urls' => $failedUrls,
+        ]);
+    }
+
+    /**
+     * دانلود و نام‌گذاری دقیقاً مشابه متد storeExamFile در ExamService
+     * فرمت خروجی: exam-files/exam_{prefix}_{uniqid}.{extension}
+     */
+    private function downloadAndStoreExamFile(string $url, string $prefix, $disk, string $directory, array &$failedUrls): ?string
+    {
+        try {
+            $parsedUrlPath = parse_url($url, PHP_URL_PATH);
+            $extension = strtolower(pathinfo($parsedUrlPath, PATHINFO_EXTENSION));
+
+            if (empty($extension)) {
+                $extension = 'pdf'; // پیش‌فرض رایج آزمون‌ها
+            }
+
+            // دانلود فایل
+            $response = Http::withoutVerifying()
+                ->timeout(60)
+                ->get($url);
+
+            if (! $response->successful()) {
+                $failedUrls[] = [
+                    'url' => $url,
+                    'status' => $response->status(),
+                    'reason' => 'دانلود ناموفق بود.',
+                ];
+                return null;
+            }
+
+            // نام‌گذاری کاملاً مطابق storeExamFile در ExamService:
+            // exam_{content|solution}_{uniqid}.{ext}
+            $filename = sprintf('exam_%s_%s.%s', $prefix, uniqid(), $extension);
+            $relativePath = "{$directory}/{$filename}";
+
+            $disk->put($relativePath, $response->body());
+
+            return $relativePath;
+        } catch (\Throwable $e) {
+            $failedUrls[] = [
+                'url' => $url,
+                'reason' => $e->getMessage(),
+            ];
+            return null;
+        }
+    }
+
+    private function isExternalUrl(?string $path): bool
+    {
+        if (! $path) {
+            return false;
+        }
+        return Str::startsWith($path, ['http://', 'https://']);
+    }
+
+    private function decodeJsonField($value): ?array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            return is_array($decoded) ? $decoded : null;
+        }
+        return null;
+    }
 
 }

@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CalendarEventTargetController;
 use App\Http\Controllers\Api\CalendarUserController;
 use App\Http\Controllers\Api\ClassLessonController;
+use App\Http\Controllers\Api\DashboardReportController;
 use App\Http\Controllers\Api\DisciplinaryCaseController;
 use App\Http\Controllers\Api\DisciplinaryRecordController;
 use App\Http\Controllers\Api\ExamCategoryController;
@@ -53,9 +54,15 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
+    Route::prefix('dashboard')->group(function () {
+        Route::get('admin', [DashboardReportController::class, 'adminDashboard']);
+        Route::get('school', [DashboardReportController::class, 'schoolDashboard']);
+        Route::get('student', [DashboardReportController::class, 'studentDashboard']);
+    });
+
     // ⚠️ موقت: فقط برای ادمین - اجرای اسکریپت‌های یک‌بار مصرف
-//    Route::post('/admin/dev/run', [UserController::class, 'runDevScripts'])
-//        ->middleware('role:admin');
+        Route::post('/admin/dev/run', [UserController::class, 'runDevScripts'])
+            ->middleware('role:admin');
 
     Route::get('/users/me', [UserController::class, 'me']);
     Route::post('users/{user}/assign-role', [UserController::class, 'assignRole']);
@@ -113,7 +120,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('online-exam-session-responses', OnlineExamSessionResponseController::class);
     Route::apiResource('online-exam-answer-keys', OnlineExamAnswerKeyController::class);
     Route::apiResource('online-exam-booklets', OnlineExamBookletController::class);
-//    Route::get('online-exam-details/{id}/results-with-rank', [OnlineExamDetailController::class, 'resultsWithRank']);
+    //    Route::get('online-exam-details/{id}/results-with-rank', [OnlineExamDetailController::class, 'resultsWithRank']);
 
     Route::prefix('online-exam-sessions')->group(function () {
         Route::get('{sessionId}/result', [OnlineExamSessionController::class, 'getResultBySessionId'])
@@ -161,7 +168,6 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::prefix('student-portal')->group(function () {
-        Route::get('dashboard', [StudentController::class, 'dashboard']);
         Route::get('grades', [StudentController::class, 'myGrades']);
         Route::get('report-card', [StudentController::class, 'myReportCard']);
         Route::get('absences', [StudentController::class, 'myAbsences']);
@@ -180,7 +186,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('homework-submissions', [HomeworkSubmissionController::class, 'index']);
         Route::put('homework-submissions/{homeworkSubmission}/feedback', [HomeworkSubmissionController::class, 'sendFeedback']);
         Route::get('online-exam-sessions', [OnlineExamSessionController::class, 'mySessions']);
-//        Route::get('online-exams/{examId}/result', [OnlineExamSessionController::class, 'getResultByExamId']);
+        //        Route::get('online-exams/{examId}/result', [OnlineExamSessionController::class, 'getResultByExamId']);
         Route::get('online-exams', [ExamController::class, 'studentOnlineExams']);
         Route::get('online-exams/{id}', [ExamController::class, 'studentShow']);
     });
@@ -203,4 +209,3 @@ Route::prefix('external/v1')
         // بدون نیاز به ارسال school_id در URL! خودِ میدلور بر اساس توکن مدرسه رو می‌شناسه!
         Route::get('/classes', [SchoolClassController::class, 'externalIndex']);
     });
-

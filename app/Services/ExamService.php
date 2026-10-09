@@ -110,9 +110,19 @@ class ExamService
             'created_by' => $request->user()->id,
         ];
 
-        // نگه‌داشتن مسیرهای قدیمی برای پاک‌سازی در انتهای متد
-        $oldContentPath = $existingDetail?->content['path'] ?? null;
-        $oldSolutionPath = $existingDetail?->solution['path'] ?? null;
+        // استخراج ایمن مسیرهای قدیمی (حتی اگر cast نشده باشند و به صورت string/json باشند)
+        $oldContent = $existingDetail?->content;
+        if (is_string($oldContent)) {
+            $oldContent = json_decode($oldContent, true);
+        }
+        $oldContentPath = is_array($oldContent) ? ($oldContent['path'] ?? null) : null;
+
+        $oldSolution = $existingDetail?->solution;
+        if (is_string($oldSolution)) {
+            $oldSolution = json_decode($oldSolution, true);
+        }
+        $oldSolutionPath = is_array($oldSolution) ? ($oldSolution['path'] ?? null) : null;
+
         $mustDeleteOldContentFile = false;
         $mustDeleteOldSolutionFile = false;
 
@@ -128,7 +138,7 @@ class ExamService
 
             $updateData['content'] = ! empty($content) ? $content : null;
 
-            // شرط حذف: یا فایل جدید آپلود شده، یا کلاً content خالی/حذف شده در حالی که فایل قبلی وجود داشت
+            // شرط حذف: آپلود فایل جدید، یا خالی شدن کادر در صورتی که قبلاً فایلی بوده
             if ($oldContentPath && ($request->hasFile('content_file') || empty($content['path']))) {
                 $mustDeleteOldContentFile = true;
             }
@@ -146,7 +156,7 @@ class ExamService
 
             $updateData['solution'] = ! empty($solution) ? $solution : null;
 
-            // شرط حذف: یا فایل جدید آپلود شده، یا کلاً solution خالی/حذف شده در حالی که فایل قبلی وجود داشت
+            // شرط حذف: آپلود فایل جدید، یا خالی شدن کادر در صورتی که قبلاً فایلی بوده
             if ($oldSolutionPath && ($request->hasFile('solution_file') || empty($solution['path']))) {
                 $mustDeleteOldSolutionFile = true;
             }
@@ -175,13 +185,13 @@ class ExamService
             $exam->academicLevels()->sync($validated['academic_level_ids']);
         }
 
-        // 🌟 مرحله نهایی: پاک کردن فایل‌های قدیمی از Storage بعد از اتمام همه عملیات‌های DB
+        // 🌟 مرحله نهایی: پاک‌سازی تمیز فایل‌های قبلی با نرمال‌سازی آدرس
         if ($mustDeleteOldContentFile && $oldContentPath) {
-            Storage::disk('public')->delete($oldContentPath);
+            $this->deletePublicFile($oldContentPath);
         }
 
         if ($mustDeleteOldSolutionFile && $oldSolutionPath) {
-            Storage::disk('public')->delete($oldSolutionPath);
+            $this->deletePublicFile($oldSolutionPath);
         }
 
         return $exam;
@@ -500,7 +510,6 @@ class ExamService
         return $file->storeAs('exam-files', $filename, 'public');
     }
 
-
     public function listStudentRelatedExams(
         int $studentUserId,
         ?string $from = null,
@@ -631,4 +640,71 @@ class ExamService
 
         return $query;
     }
+
+    /**
+     * پاک‌سازی فایل از دیسک پابلیک با تطبیق دقیق ساختار هاست و دیسک
+     */
+    private function deletePublicFile(?string $path): bool
+    {
+        if (blank($path)) {
+            return false;
+        }
+
+        \Illuminate\Support\Facades\Log::info('ExamService: Deleting file initiated', ['raw_path' => $path]);
+
+        // ۱. استخراج path از URL کامل (در صورتی که با http شروع شده باشد)
+        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            $path = parse_url($path, PHP_URL_PATH) ?? $path;
+        }
+
+        // ۲. حذف هرگونه پیشوند api یا storage از ابتدای مسیر
+        // تبدیل مواردی مثل /api/storage/exam-files/xyz یا storage/exam-files/xyz به exam-files/xyz
+        $normalizedPath = preg_replace('#^/?(api/)?(storage/)?#', '', (string) $path);
+        $normalizedPath = ltrim($normalizedPath, '/');
+
+        \Illuminate\Support\Facades\Log::info('ExamService: Normalized path', ['normalized' => $normalizedPath]);
+
+        $deleted = false;
+
+        // سناریو ۱: حذف مستقیم از دیسک public لاراول
+        if (Storage::disk('public')->exists($normalizedPath)) {
+            $deleted = Storage::disk('public')->delete($normalizedPath);
+        }
+
+        // سناریو ۲: حذف مستقیم از ریشه فیزیکی تعریف‌شده در دیسک public (FILESYSTEM_PUBLIC_ROOT)
+        $publicDiskRoot = config('filesystems.disks.public.root');
+        if (! $deleted && $publicDiskRoot) {
+            $directFilePath = rtrim($publicDiskRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $normalizedPath;
+            if (file_exists($directFilePath)) {
+                $deleted = @unlink($directFilePath);
+            }
+        }
+
+        // سناریو ۳: پشتیبان برای مسیر فیزیکی هاست اشتراکی (/home/h429372/public_html/api/storage)
+        if (! $deleted) {
+            $candidates = [
+                '/home/h429372/public_html/api/storage/' . $normalizedPath,
+                public_path('storage/' . $normalizedPath),
+                public_path($normalizedPath),
+                storage_path('app/public/' . $normalizedPath),
+            ];
+
+            foreach ($candidates as $candidate) {
+                if (file_exists($candidate) && is_file($candidate)) {
+                    $deleted = @unlink($candidate);
+                    if ($deleted) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        \Illuminate\Support\Facades\Log::info('ExamService: File delete result', [
+            'file' => $normalizedPath,
+            'status' => $deleted ? 'DELETED' : 'FAILED_OR_NOT_FOUND',
+        ]);
+
+        return $deleted;
+    }
+
 }
