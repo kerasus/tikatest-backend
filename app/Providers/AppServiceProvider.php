@@ -2,8 +2,15 @@
 
 namespace App\Providers;
 
+use App\Checks\OpcacheCheck;
+use Spatie\Health\Facades\Health;
 use Illuminate\Support\Collection;
 use Illuminate\Support\ServiceProvider;
+use Spatie\Health\Checks\Checks\DatabaseCheck;
+use Spatie\Health\Checks\Checks\DebugModeCheck;
+use Spatie\Health\Checks\Checks\OptimizedAppCheck;
+use Spatie\Health\Checks\Checks\UsedDiskSpaceCheck;
+
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,5 +45,23 @@ class AppServiceProvider extends ServiceProvider
 
             return sqrt($variance);
         });
+
+        Health::checks([
+            // ۱. چک فضای دیسک (هشدار اگر بالای ۸۰٪ پر شد)
+            UsedDiskSpaceCheck::new()
+                ->warnWhenUsedSpaceIsAbovePercentage(80)
+                ->failWhenUsedSpaceIsAbovePercentage(90),
+
+            // ۲. اتصال سریع به دیتابیس
+            DatabaseCheck::new(),
+
+            // ۳. چک خاموش بودن Debug Mode در پروداکشن (امنیت)
+            DebugModeCheck::new(),
+
+            // ۴. چک کش بودن Config و Routeها برای سرعت
+            OptimizedAppCheck::new(),
+
+            OpcacheCheck::new()->name('Opcache')->label('PHP OPcache'),
+        ]);
     }
 }

@@ -56,6 +56,7 @@ Route::prefix('auth')->group(function () {
 Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('dashboard')->group(function () {
         Route::get('admin', [DashboardReportController::class, 'adminDashboard']);
+        Route::get('admin/health', [DashboardReportController::class, 'checkHealth']);
         Route::get('school', [DashboardReportController::class, 'schoolDashboard']);
         Route::get('student', [DashboardReportController::class, 'studentDashboard']);
     });
@@ -90,7 +91,8 @@ Route::middleware('auth:sanctum')->group(function () {
             'classes' => 'schoolClass',
             'lessons' => 'classLesson',
         ]);
-    Route::get('/classes/{classId}/files', [SchoolClassController::class, 'classFiles']);
+    Route::post('classes/files-tree', [SchoolClassController::class, 'classesFilesTree']);
+    Route::get('classes/{classId}/files', [SchoolClassController::class, 'classFiles']);
     Route::apiResource('classes', SchoolClassController::class);
     Route::apiResource('students', StudentController::class);
     Route::apiResource('student-guardians', StudentGuardianController::class);

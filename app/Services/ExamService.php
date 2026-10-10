@@ -11,8 +11,10 @@ use App\Models\OnlineExamDetail;
 use Illuminate\Http\UploadedFile;
 use App\Models\OnlineExamBooklet;
 use App\Models\InPersonExamResult;
+use App\Services\PdfVectorService;
 use App\Models\InPersonExamDetail;
 use App\Models\OnlineExamAnswerKey;
+use App\Services\FileStorageService;
 use App\Models\ExamCategoryTermLimit;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Database\Eloquent\Builder;
@@ -20,6 +22,10 @@ use Illuminate\Validation\ValidationException;
 
 class ExamService
 {
+    public function __construct(
+        protected FileStorageService $fileStorageService
+    ) {}
+
     public function createOnlineExam(array $validated, Request $request): Exam
     {
         $termId = $validated['term_id'] ?? null;
@@ -185,13 +191,13 @@ class ExamService
             $exam->academicLevels()->sync($validated['academic_level_ids']);
         }
 
-        // 🌟 مرحله نهایی: پاک‌سازی تمیز فایل‌های قبلی با نرمال‌سازی آدرس
+        // پاک‌سازی تمیز فایل‌های قبلی با FileStorageService
         if ($mustDeleteOldContentFile && $oldContentPath) {
-            $this->deletePublicFile($oldContentPath);
+            $this->fileStorageService->deletePublicFile($oldContentPath);
         }
 
         if ($mustDeleteOldSolutionFile && $oldSolutionPath) {
-            $this->deletePublicFile($oldSolutionPath);
+            $this->fileStorageService->deletePublicFile($oldSolutionPath);
         }
 
         return $exam;
@@ -375,12 +381,12 @@ class ExamService
             $updateData
         );
 
-        if ($mustDeleteOldContentFile) {
-            Storage::disk('public')->delete($oldContentPath);
+        if ($mustDeleteOldContentFile && $oldContentPath) {
+            $this->fileStorageService->deletePublicFile($oldContentPath);
         }
 
-        if ($mustDeleteOldSolutionFile) {
-            Storage::disk('public')->delete($oldSolutionPath);
+        if ($mustDeleteOldSolutionFile && $oldSolutionPath) {
+            $this->fileStorageService->deletePublicFile($oldSolutionPath);
         }
     }
 
@@ -475,7 +481,6 @@ class ExamService
             throw ValidationException::withMessages([
                 'lesson_id' => 'انتخاب همزمان «درس آزمون» و «درس دفترچه‌ها» مجاز نیست.',
                 'booklets.*.lesson_id' => 'در صورت انتخاب درس برای کل آزمون، درس دفترچه‌ها مجاز نیست.',
-//                'booklets' => 'وقتی برای کل آزمون درس انتخاب می‌کنید، برای دفترچه‌ها نباید درس تعیین شود.',
             ]);
         }
     }
@@ -485,7 +490,7 @@ class ExamService
         $content = $request->input($field);
         $content = is_string($content) ? json_decode($content, true) : $content;
 
-        $fileField = $field.'_file';
+        $fileField = $field . '_file';
         if ($request->hasFile($fileField)) {
             $file = $request->file($fileField);
             $content = $content ?? [];
@@ -632,7 +637,7 @@ class ExamService
 
         // ۶. سورت بر اساس نزدیک‌ترین زمان شروع
         $query->orderBy(
-            \App\Models\OnlineExamDetail::select('starts_at')
+            OnlineExamDetail::select('starts_at')
                 ->whereColumn('online_exam_details.exam_id', 'exams.id')
                 ->limit(1),
             'asc'
@@ -640,71 +645,4 @@ class ExamService
 
         return $query;
     }
-
-    /**
-     * پاک‌سازی فایل از دیسک پابلیک با تطبیق دقیق ساختار هاست و دیسک
-     */
-    private function deletePublicFile(?string $path): bool
-    {
-        if (blank($path)) {
-            return false;
-        }
-
-        \Illuminate\Support\Facades\Log::info('ExamService: Deleting file initiated', ['raw_path' => $path]);
-
-        // ۱. استخراج path از URL کامل (در صورتی که با http شروع شده باشد)
-        if (str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
-            $path = parse_url($path, PHP_URL_PATH) ?? $path;
-        }
-
-        // ۲. حذف هرگونه پیشوند api یا storage از ابتدای مسیر
-        // تبدیل مواردی مثل /api/storage/exam-files/xyz یا storage/exam-files/xyz به exam-files/xyz
-        $normalizedPath = preg_replace('#^/?(api/)?(storage/)?#', '', (string) $path);
-        $normalizedPath = ltrim($normalizedPath, '/');
-
-        \Illuminate\Support\Facades\Log::info('ExamService: Normalized path', ['normalized' => $normalizedPath]);
-
-        $deleted = false;
-
-        // سناریو ۱: حذف مستقیم از دیسک public لاراول
-        if (Storage::disk('public')->exists($normalizedPath)) {
-            $deleted = Storage::disk('public')->delete($normalizedPath);
-        }
-
-        // سناریو ۲: حذف مستقیم از ریشه فیزیکی تعریف‌شده در دیسک public (FILESYSTEM_PUBLIC_ROOT)
-        $publicDiskRoot = config('filesystems.disks.public.root');
-        if (! $deleted && $publicDiskRoot) {
-            $directFilePath = rtrim($publicDiskRoot, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . $normalizedPath;
-            if (file_exists($directFilePath)) {
-                $deleted = @unlink($directFilePath);
-            }
-        }
-
-        // سناریو ۳: پشتیبان برای مسیر فیزیکی هاست اشتراکی (/home/h429372/public_html/api/storage)
-        if (! $deleted) {
-            $candidates = [
-                '/home/h429372/public_html/api/storage/' . $normalizedPath,
-                public_path('storage/' . $normalizedPath),
-                public_path($normalizedPath),
-                storage_path('app/public/' . $normalizedPath),
-            ];
-
-            foreach ($candidates as $candidate) {
-                if (file_exists($candidate) && is_file($candidate)) {
-                    $deleted = @unlink($candidate);
-                    if ($deleted) {
-                        break;
-                    }
-                }
-            }
-        }
-
-        \Illuminate\Support\Facades\Log::info('ExamService: File delete result', [
-            'file' => $normalizedPath,
-            'status' => $deleted ? 'DELETED' : 'FAILED_OR_NOT_FOUND',
-        ]);
-
-        return $deleted;
-    }
-
 }

@@ -23,6 +23,9 @@ use App\Models\InPersonExamResult;
 use Illuminate\Support\Facades\DB;
 use App\Models\SkyroomRoomSchedule;
 use App\Http\Controllers\Controller;
+use Illuminate\Support\Facades\Artisan;
+use Spatie\Health\ResultStores\ResultStore;
+use Spatie\Health\Commands\RunHealthChecksCommand;
 
 class DashboardReportController extends Controller
 {
@@ -49,7 +52,10 @@ class DashboardReportController extends Controller
 
         $this->middleware("role:{$schoolDashboardRoles}")->only('schoolDashboard');
         $this->middleware("role:{$studentDashboardRoles}")->only('studentDashboard');
-        $this->middleware('role:'.UserRoleType::Admin->value)->only('adminDashboard');
+        $this->middleware('role:'.UserRoleType::Admin->value)->only([
+            'adminDashboard',
+            'checkHealth',
+        ]);
     }
 
     public function adminDashboard(): JsonResponse
@@ -66,146 +72,8 @@ class DashboardReportController extends Controller
             'online_exams_count' => Exam::query()
                 ->where('delivery_mode', 'online')
                 ->count(),
-            'homeworks_count' => Homework::query()->count(),
-            'health_check' => $this->checkSystemHealth(),
+            'homeworks_count' => Homework::query()->count()
         ]);
-    }
-
-
-    /**
-     * سیستم مانیتورینگ سلامت سرور و زیرساخت
-     */
-    private function checkSystemHealth(): array
-    {
-        $issues = [];
-        $metrics = [];
-
-        // -------------------------------------------------------------
-        // ۱. بررسی وضعیت OPcache
-        // -------------------------------------------------------------
-        $isOpcacheEnabled = function_exists('opcache_get_status') && (bool) ini_get('opcache.enable');
-        $opcacheDetails = [
-            'enabled' => $isOpcacheEnabled,
-            'memory_used_mb' => null,
-            'hit_rate' => null,
-            'cached_scripts' => 0,
-        ];
-
-        if ($isOpcacheEnabled) {
-            $status = @opcache_get_status(false);
-            if (is_array($status)) {
-                $opcacheDetails['memory_used_mb'] = round(($status['memory_usage']['used_memory'] ?? 0) / 1024 / 1024, 2);
-                $opcacheDetails['hit_rate'] = round($status['opcache_statistics']['opcache_hit_rate'] ?? 0, 2);
-                $opcacheDetails['cached_scripts'] = $status['opcache_statistics']['num_cached_scripts'] ?? 0;
-
-                if ($opcacheDetails['hit_rate'] < 70) {
-                    $issues[] = 'نرخ موفقیت OPcache (Hit Rate) پایین است (' . $opcacheDetails['hit_rate'] . '%). کش در حال پر شدن یا ریست مداوم است.';
-                }
-            } else {
-                $issues[] = 'اکستنشن OPcache نصب است اما دسترسی به وضعیت آن به دلیل تنظیمات امنیتی محدود شده است.';
-            }
-        } else {
-            $issues[] = 'OPcache غیرفعال است! این مورد باعث افزایش شدید زمان TTFB و کندی شدید درخواست‌ها می‌شود.';
-        }
-        $metrics['opcache'] = $opcacheDetails;
-
-        // -------------------------------------------------------------
-        // ۲. تست Loopback، هندشیک Initial Connection و SSL
-        // -------------------------------------------------------------
-        $sslDetails = [
-            'status' => 'unknown',
-            'tcp_connect_ms' => null,
-            'ssl_handshake_ms' => null,
-            'total_time_ms' => null,
-            'http_version' => null,
-        ];
-
-        try {
-            $testUrl = url('/info.php'); // یا route('api.health') یا هر آدرس سبک لوکال
-            $ch = curl_init();
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $testUrl,
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_NOBODY => true, // فقط HEAD درخواست شود تا محتوا دانلود نشود
-                CURLOPT_TIMEOUT => 3,
-                CURLOPT_CONNECTTIMEOUT => 3,
-                CURLOPT_SSL_VERIFYPEER => true,
-                CURLOPT_SSL_VERIFYHOST => 2,
-            ]);
-
-            $executed = curl_exec($ch);
-            $curlInfo = curl_getinfo($ch);
-            $curlError = curl_error($ch);
-            curl_close($ch);
-
-            if ($executed !== false) {
-                $tcpConnectMs = round(($curlInfo['connect_time'] ?? 0) * 1000, 2);
-                $sslHandshakeMs = round((($curlInfo['appconnect_time'] ?? 0) - ($curlInfo['connect_time'] ?? 0)) * 1000, 2);
-                $totalTimeMs = round(($curlInfo['total_time'] ?? 0) * 1000, 2);
-
-                $sslDetails = [
-                    'status' => 'healthy',
-                    'tcp_connect_ms' => $tcpConnectMs,
-                    'ssl_handshake_ms' => max(0, $sslHandshakeMs),
-                    'total_time_ms' => $totalTimeMs,
-                    'http_version' => match ($curlInfo['http_version'] ?? 0) {
-                        CURL_HTTP_VERSION_2_0 => 'HTTP/2',
-                        CURL_HTTP_VERSION_1_1 => 'HTTP/1.1',
-                        CURL_HTTP_VERSION_3 => 'HTTP/3',
-                        default => 'HTTP/Unknown',
-                    },
-                ];
-
-                if ($tcpConnectMs > 800) {
-                    $issues[] = "زمان برقراری اتصال اولیه شبکه (TCP) بالاست ({$tcpConnectMs}ms). احتمال مشکل در DNS یا فایروال.";
-                }
-
-                if ($sslHandshakeMs > 1000) {
-                    $issues[] = "زمان هندشیک SSL بالاست ({$sslHandshakeMs}ms). تنظیمات TLS سرور یا گواهی‌نامه نیازمند بررسی است.";
-                }
-            } else {
-                $sslDetails['status'] = 'failed';
-                $sslDetails['error'] = $curlError;
-                $issues[] = 'خطا در ارتباط کلاینت-سرور به آدرس دامنه: ' . $curlError;
-            }
-        } catch (\Throwable $e) {
-            $sslDetails['status'] = 'error';
-            $sslDetails['error'] = $e->getMessage();
-            $issues[] = 'امکان تست اتصال داخلی SSL وجود ندارد: ' . $e->getMessage();
-        }
-        $metrics['ssl_connection'] = $sslDetails;
-
-        // -------------------------------------------------------------
-        // ۳. بررسی سلامت دیتابیس (Latency)
-        // -------------------------------------------------------------
-        try {
-            $dbStart = microtime(true);
-            DB::select('SELECT 1');
-            $dbLatencyMs = round((microtime(true) - $dbStart) * 1000, 2);
-
-            $metrics['database'] = [
-                'status' => 'healthy',
-                'latency_ms' => $dbLatencyMs,
-            ];
-
-            if ($dbLatencyMs > 150) {
-                $issues[] = "پاسخ‌دهی کوئری دیتابیس کندتر از حالت معمول است ({$dbLatencyMs}ms).";
-            }
-        } catch (\Throwable $e) {
-            $metrics['database'] = [
-                'status' => 'error',
-                'message' => $e->getMessage(),
-            ];
-            $issues[] = 'ارتباط با پایگاه داده قطع یا با خطا مواجه است: ' . $e->getMessage();
-        }
-
-        return [
-            'status' => empty($issues) ? 'healthy' : 'degraded',
-            'has_issues' => ! empty($issues),
-            'issues' => $issues,
-            'metrics' => $metrics,
-            'checked_at' => now()->toIso8601String(),
-        ];
     }
 
     public function schoolDashboard(Request $request): JsonResponse
@@ -514,5 +382,17 @@ class DashboardReportController extends Controller
             'total_study_minutes_this_month' => $totalStudyMinutes,
             'total_study_hours_this_month' => round($totalStudyMinutes / 60, 2),
         ]);
+    }
+
+    public function checkHealth(ResultStore $resultStore)
+    {
+
+        // اجرای چک‌ها در لحظه (خیلی سریع)
+        artisan::call(RunHealthChecksCommand::class);
+
+        // دریافت آخرین نتایج به صورت Array/JSON
+        $checkResults = $resultStore->latestResults();
+
+        return response()->json($checkResults);
     }
 }

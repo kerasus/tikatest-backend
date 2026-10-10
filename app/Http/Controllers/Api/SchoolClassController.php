@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\UserRoleType;
 use App\Services\SchoolFtpFileService;
 use App\Traits\Filter;
 use App\Traits\CommonCRUD;
@@ -18,10 +19,26 @@ class SchoolClassController extends Controller
     public function __construct()
     {
         $this->middleware('auth:sanctum')->except(['externalIndex']);
-        $this->middleware('admin_or_permission:classes.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:classes.view')->only([
+            'index',
+            'show',
+        ]);
         $this->middleware('admin_or_permission:classes.create')->only(['store']);
         $this->middleware('admin_or_permission:classes.update')->only(['update']);
         $this->middleware('admin_or_permission:classes.delete')->only(['destroy']);
+
+
+        $this->middleware(function ($request, $next) {
+            $user = $request->user();
+
+            if (! $user || ! $user->hasRole(UserRoleType::Student->value)) {
+                return response()->json([
+                    'message' => 'دسترسی فقط برای نقش دانش‌آموز مجاز است.'
+                ], Response::HTTP_FORBIDDEN);
+            }
+
+            return $next($request);
+        })->only(['classFiles', 'classesFilesTree']);
     }
 
     public function index(Request $request): JsonResponse
@@ -106,18 +123,6 @@ class SchoolClassController extends Controller
         return $this->commonDestroy($class);
     }
 
-    public function classFiles(Request $request, int $classId): JsonResponse
-    {
-        $validated = $request->validate([
-            'school_id' => ['required', 'integer', 'exists:schools,id'],
-        ]);
-
-        $result = app(SchoolFtpFileService::class)
-            ->getClassFiles($validated['school_id'], $classId);
-
-        return response()->json($result, $result['success'] ? 200 : ($result['files'] === [] && isset($result['message']) ? 503 : 200));
-    }
-
     public function externalIndex(Request $request): JsonResponse
     {
         // ۱. استخراج مدرسه احراز هویت شده از میدلور (امنیت صددرصدی بدون اتکا به school_id کلاینت)
@@ -163,4 +168,38 @@ class SchoolClassController extends Controller
 
         return $result['responseWithAttachedCollection']($result['modelQuery']);
     }
+
+    public function classFiles(Request $request, int $classId): JsonResponse
+    {
+        $validated = $request->validate([
+            'school_id' => ['required', 'integer', 'exists:schools,id'],
+        ]);
+
+        $result = app(SchoolFtpFileService::class)
+            ->getClassFiles($validated['school_id'], $classId);
+
+        return response()->json($result, $result['success'] ? Response::HTTP_OK : ($result['files'] === [] && isset($result['message']) ? Response::HTTP_SERVICE_UNAVAILABLE : Response::HTTP_OK));
+    }
+
+    /**
+     * دریافت ساختار درختی فایل‌ها برای مجموعه‌ای از کلاس‌ها
+     */
+    public function classesFilesTree(Request $request, SchoolFtpFileService $schoolFtpFileService): JsonResponse
+    {
+        $validated = $request->validate([
+            'school_id'   => ['required', 'integer', 'exists:schools,id'],
+            'class_ids'   => ['required', 'array', 'min:1'],
+            'class_ids.*' => ['integer', 'distinct', 'exists:school_classes,id'],
+        ]);
+
+        $result = $schoolFtpFileService->getClassesFilesTree(
+            $validated['school_id'],
+            $validated['class_ids']
+        );
+
+        $status = $result['success'] ? Response::HTTP_OK : Response::HTTP_SERVICE_UNAVAILABLE;
+
+        return response()->json($result, $status);
+    }
+
 }
