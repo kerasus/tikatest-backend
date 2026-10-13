@@ -2,7 +2,11 @@
 
 namespace App\Providers;
 
+use App\Checks\DatabaseInfoCheck;
+use App\Checks\DatabaseLatencyCheck;
+use App\Checks\DiskSpaceCheck;
 use App\Checks\OpcacheCheck;
+use App\Checks\SslCertificateCheck;
 use Spatie\Health\Facades\Health;
 use Illuminate\Support\Collection;
 use Illuminate\Support\ServiceProvider;
@@ -27,6 +31,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $sslDomain = env('DOMAIN', parse_url(config('app.url'), PHP_URL_HOST) ?? 'sanjad.ir');
+
         Collection::macro('std', function ($mode = 1) {
             $collection = $this;
             $count = $collection->count();
@@ -47,13 +53,6 @@ class AppServiceProvider extends ServiceProvider
         });
 
         Health::checks([
-            // ۱. چک فضای دیسک (هشدار اگر بالای ۸۰٪ پر شد)
-            UsedDiskSpaceCheck::new()
-                ->warnWhenUsedSpaceIsAbovePercentage(80)
-                ->failWhenUsedSpaceIsAbovePercentage(90),
-
-            // ۲. اتصال سریع به دیتابیس
-            DatabaseCheck::new(),
 
             // ۳. چک خاموش بودن Debug Mode در پروداکشن (امنیت)
             DebugModeCheck::new(),
@@ -62,6 +61,14 @@ class AppServiceProvider extends ServiceProvider
             OptimizedAppCheck::new(),
 
             OpcacheCheck::new()->name('Opcache')->label('PHP OPcache'),
+
+            DiskSpaceCheck::new(),
+
+            DatabaseInfoCheck::new(),
+
+            DatabaseLatencyCheck::new(),
+
+            SslCertificateCheck::new(),
         ]);
     }
 }
