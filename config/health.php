@@ -159,7 +159,9 @@ return [
      */
     'secret_token' => env('HEALTH_SECRET_TOKEN'),
 
-/**
+    'ssl_domain' => env('DOMAIN'),
+
+    /**
  * By default, conditionally skipped health checks are treated as failures.
  * You can override this behavior by uncommenting the configuration below.
  *

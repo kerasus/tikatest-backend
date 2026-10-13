@@ -156,11 +156,12 @@ class StudentController extends Controller
                 ],
             ],
             'eagerLoads' => [
-                'termEnrollments.schoolClass.academicLevel.academicField.school',
+//                'termEnrollments.schoolClass.academicLevel.academicField.school',
+//                'termEnrollments',
                 'studentProfile',
-                'guardianRecords.user',
-                'roles',
-                'permissions',
+//                'guardianRecords.user',
+//                'roles',
+//                'permissions',
             ],
         ];
 

@@ -189,7 +189,7 @@ class SchoolClassController extends Controller
         $validated = $request->validate([
             'school_id'   => ['required', 'integer', 'exists:schools,id'],
             'class_ids'   => ['required', 'array', 'min:1'],
-            'class_ids.*' => ['integer', 'distinct', 'exists:school_classes,id'],
+            'class_ids.*' => ['integer', 'distinct', 'exists:classes,id'],
         ]);
 
         $result = $schoolFtpFileService->getClassesFilesTree(
