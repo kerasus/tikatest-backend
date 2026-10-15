@@ -297,12 +297,234 @@ class UserController extends Controller
             return $this->migrateExternalExamFiles($limit);
         }
 
+        // اکشن بازتولید و تصحیح نتایج جلسات و شمارش سوالات
+        if ($action === 'recalculate-exam-results') {
+            $examId = $request->input('exam_id') ? (int) $request->input('exam_id') : null;
+            return $this->recalculateExamSessionResults($examId);
+        }
 
         return response()->json([
             'message' => 'Unknown action',
             'action' => $action,
         ], 422);
     }
+
+    /**
+     * بازشماری و تصحیح تمام پاسخ‌ها، نتایج، تعداد درست/غلط/بی‌پاسخ و درصدها
+     */
+    protected function recalculateExamSessionResults(?int $examId = null): JsonResponse
+    {
+        $sessionsQuery = \DB::table('online_exam_sessions');
+        if ($examId) {
+            $sessionsQuery->where('exam_id', $examId);
+        }
+
+        $sessions = $sessionsQuery->get();
+
+        $processedSessions = 0;
+        $updatedResponsesCount = 0;
+
+        foreach ($sessions as $session) {
+            // ۱. دریافت کلیدهای آزمون
+            $answerKeys = \DB::table('online_exam_answer_keys')
+                ->where('exam_id', $session->exam_id)
+                ->where('is_active', 1)
+                ->get()
+                ->keyBy('question_number');
+
+            if ($answerKeys->isEmpty()) {
+                continue;
+            }
+
+            // ۲. دریافت پاسخ‌های ثبت‌شده دانش‌آموز برای این سشن
+            $responses = \DB::table('online_exam_session_responses')
+                ->where('online_exam_session_id', $session->id)
+                ->get()
+                ->keyBy('question_number');
+
+            // ۳. دفترچه‌ها (در صورت وجود)
+            $booklets = \DB::table('online_exam_booklets')
+                ->where('online_exam_id', function ($q) use ($session) {
+                    $q->select('id')
+                        ->from('online_exam_details')
+                        ->where('exam_id', $session->exam_id)
+                        ->limit(1);
+                })
+                ->get();
+
+            // متغیرهای شمارش در سطح آزمون (کل)
+            $examCorrect = 0;
+            $examWrong = 0;
+            $examUnanswered = 0;
+            $examRawScore = 0.0;
+            $examMaxScore = 0.0;
+
+            // به روزرسانی آنلاین پاسخ‌های خام (is_correct و marks_obtained)
+            foreach ($answerKeys as $qNum => $key) {
+                $resp = $responses->get($qNum);
+                $submitted = $resp ? trim((string)$resp->submitted_option) : '';
+                $correctOpt = trim((string)$key->correct_option);
+                $weight = (float)$key->weight;
+                $choices = (int)$key->number_of_choices;
+                $hasNegative = (bool)$key->has_negative_mark;
+
+                $examMaxScore += $weight;
+
+                $isCorrect = false;
+                $marks = 0.0;
+
+                // سوال بی‌پاسخ (خالی، null یا عددی خارج از گزینه‌ها)
+                if ($submitted === '' || (int)$submitted === 0 || (int)$submitted > $choices) {
+                    $examUnanswered++;
+                    $isCorrect = null; // یا false
+                    $marks = 0.0;
+                } elseif ($submitted === $correctOpt) {
+                    $examCorrect++;
+                    $isCorrect = true;
+                    $marks = $weight;
+                    $examRawScore += $weight;
+                } else {
+                    $examWrong++;
+                    $isCorrect = false;
+                    // محاسبه نمره منفی در صورت فعال بودن
+                    if ($hasNegative && $choices > 1) {
+                        $penalty = $weight / ($choices - 1);
+                        $marks = -$penalty;
+                        $examRawScore -= $penalty;
+                    } else {
+                        $marks = 0.0;
+                    }
+                }
+
+                // بروزرسانی ردیف پاسخ اگر وجود دارد
+                if ($resp) {
+                    \DB::table('online_exam_session_responses')
+                        ->where('id', $resp->id)
+                        ->update([
+                            'is_correct' => $isCorrect === true ? 1 : 0,
+                            'marks_obtained' => $marks,
+                            'updated_at' => now(),
+                        ]);
+                    $updatedResponsesCount++;
+                }
+            }
+
+            $examTotalQuestions = $answerKeys->count();
+            $examAnswered = $examCorrect + $examWrong;
+
+            // درصد نهایی (جلوگیری از تقسیم بر صفر)
+            $calculatedPercent = $examMaxScore > 0
+                ? round(max(0, ($examRawScore / $examMaxScore) * 100), 2)
+                : 0.0;
+
+            // اگر سشن از قبل درصد دستی داشت (از مپینگ قدیمی) یا بر اساس پاسخ‌ها آپدیت شود:
+            $finalPercent = $session->percent !== null ? (float)$session->percent : $calculatedPercent;
+
+            // ۴. بروزرسانی یا ثبت ردیف نتیجه سطح آزمون (scope = 'exam')
+            \DB::table('online_exam_session_results')->updateOrInsert(
+                [
+                    'online_exam_session_id' => $session->id,
+                    'scope' => 'exam',
+                ],
+                [
+                    'exam_id' => $session->exam_id,
+                    'student_id' => $session->student_id,
+                    'online_exam_booklet_id' => null,
+                    'lesson_id' => null,
+                    'lesson_title' => null,
+                    'raw_score' => max(0, $examRawScore),
+                    'max_score' => $examMaxScore,
+                    'percent' => $finalPercent,
+                    'question_count' => $examTotalQuestions,
+                    'answered_count' => $examAnswered,
+                    'correct_count' => $examCorrect,
+                    'wrong_count' => $examWrong,
+                    'unanswered_count' => $examUnanswered,
+                    'updated_at' => now(),
+                ]
+            );
+
+            // ۵. بروزرسانی سطح دفترچه‌ها (scope = 'booklet')
+            foreach ($booklets as $b) {
+                $bCorrect = 0;
+                $bWrong = 0;
+                $bUnanswered = 0;
+                $bRawScore = 0.0;
+                $bMaxScore = 0.0;
+                $bTotal = 0;
+
+                for ($qn = $b->from_question; $qn <= $b->to_question; $qn++) {
+                    if (!$answerKeys->has($qn)) {
+                        continue;
+                    }
+                    $bTotal++;
+                    $key = $answerKeys->get($qn);
+                    $resp = $responses->get($qn);
+                    $submitted = $resp ? trim((string)$resp->submitted_option) : '';
+                    $correctOpt = trim((string)$key->correct_option);
+                    $weight = (float)$key->weight;
+                    $choices = (int)$key->number_of_choices;
+                    $hasNegative = (bool)$key->has_negative_mark;
+
+                    $bMaxScore += $weight;
+
+                    if ($submitted === '' || (int)$submitted === 0 || (int)$submitted > $choices) {
+                        $bUnanswered++;
+                    } elseif ($submitted === $correctOpt) {
+                        $bCorrect++;
+                        $bRawScore += $weight;
+                    } else {
+                        $bWrong++;
+                        if ($hasNegative && $choices > 1) {
+                            $bRawScore -= ($weight / ($choices - 1));
+                        }
+                    }
+                }
+
+                $bPercent = $bMaxScore > 0 ? round(max(0, ($bRawScore / $bMaxScore) * 100), 2) : 0.0;
+
+                \DB::table('online_exam_session_results')->updateOrInsert(
+                    [
+                        'online_exam_session_id' => $session->id,
+                        'online_exam_booklet_id' => $b->id,
+                        'scope' => 'booklet',
+                    ],
+                    [
+                        'exam_id' => $session->exam_id,
+                        'student_id' => $session->student_id,
+                        'lesson_id' => $b->lesson_id,
+                        'lesson_title' => $b->title,
+                        'raw_score' => max(0, $bRawScore),
+                        'max_score' => $bMaxScore,
+                        'percent' => $bPercent,
+                        'question_count' => $bTotal,
+                        'answered_count' => ($bCorrect + $bWrong),
+                        'correct_count' => $bCorrect,
+                        'wrong_count' => $bWrong,
+                        'unanswered_count' => $bUnanswered,
+                        'updated_at' => now(),
+                    ]
+                );
+            }
+
+            // ۶. آپدیت سشن با درصد تجمیعی
+            \DB::table('online_exam_sessions')
+                ->where('id', $session->id)
+                ->update([
+                    'percent' => $finalPercent,
+                    'updated_at' => now(),
+                ]);
+
+            $processedSessions++;
+        }
+
+        return response()->json([
+            'message' => 'نتایج و پاسخ‌های تمام جلسات آزمون با موفقیت بازشماری و همگام شدند.',
+            'sessions_processed' => $processedSessions,
+            'responses_updated' => $updatedResponsesCount,
+        ]);
+    }
+
 
     public function runOptimize()
     {
@@ -390,6 +612,7 @@ class UserController extends Controller
     /**
      * دانلود فایل‌های خارجی content و solution در online_exam_details
      * و ذخیره‌سازی آن‌ها دقیقاً با الگوی استاندارد ExamService
+     * داخل مسیر exam-files/{school-slug}
      */
     private function migrateExternalExamFiles(int $limit = 0): JsonResponse
     {
@@ -397,19 +620,29 @@ class UserController extends Controller
         @set_time_limit(600);
 
         $disk = Storage::disk('public');
-        $targetDirectory = 'exam-files';
+        $baseDirectory = 'exam-files';
 
-        if (! $disk->exists($targetDirectory)) {
-            $disk->makeDirectory($targetDirectory);
+        if (! $disk->exists($baseDirectory)) {
+            $disk->makeDirectory($baseDirectory);
         }
 
-        $query = DB::table('online_exam_details')
-            ->select('id', 'content', 'solution')
+        $query = DB::table('online_exam_details as oed')
+            ->join('exams as e', 'e.id', '=', 'oed.exam_id')
+            ->leftJoin('academic_terms as at', 'at.id', '=', 'e.term_id')
+            ->leftJoin('schools as s', 's.id', '=', 'at.school_id')
+            ->select([
+                'oed.id',
+                'oed.exam_id',
+                'oed.content',
+                'oed.solution',
+                'e.term_id',
+                's.slug as school_slug',
+            ])
             ->where(function ($q) {
-                $q->where('content', 'like', '%http://%')
-                    ->orWhere('content', 'like', '%https://%')
-                    ->orWhere('solution', 'like', '%http://%')
-                    ->orWhere('solution', 'like', '%https://%');
+                $q->where('oed.content', 'like', '%http://%')
+                    ->orWhere('oed.content', 'like', '%https://%')
+                    ->orWhere('oed.solution', 'like', '%http://%')
+                    ->orWhere('oed.solution', 'like', '%https://%');
             });
 
         if ($limit > 0) {
@@ -426,7 +659,14 @@ class UserController extends Controller
             $needsUpdate = false;
             $updates = [];
 
-            // ۱. پردازش Content
+            $schoolSlug = $this->resolveSchoolSlugForMigration($record->school_slug);
+            $targetDirectory = $baseDirectory . '/' . $schoolSlug;
+
+            if (! $disk->exists($targetDirectory)) {
+                $disk->makeDirectory($targetDirectory);
+            }
+
+            // 1) پردازش content
             $contentData = $this->decodeJsonField($record->content);
             if ($contentData && isset($contentData['path']) && $this->isExternalUrl($contentData['path'])) {
                 $newPath = $this->downloadAndStoreExamFile(
@@ -439,7 +679,7 @@ class UserController extends Controller
 
                 if ($newPath) {
                     $contentData['path'] = $newPath;
-                    // اگر type نداشت، بر اساس پسوند ست کن
+
                     if (empty($contentData['type'])) {
                         $contentData['type'] = Str::endsWith(strtolower($newPath), '.pdf') ? 'pdf' : 'image';
                     }
@@ -450,7 +690,7 @@ class UserController extends Controller
                 }
             }
 
-            // ۲. پردازش Solution
+            // 2) پردازش solution
             $solutionData = $this->decodeJsonField($record->solution);
             if ($solutionData && isset($solutionData['path']) && $this->isExternalUrl($solutionData['path'])) {
                 $newPath = $this->downloadAndStoreExamFile(
@@ -463,6 +703,7 @@ class UserController extends Controller
 
                 if ($newPath) {
                     $solutionData['path'] = $newPath;
+
                     if (empty($solutionData['type'])) {
                         $solutionData['type'] = Str::endsWith(strtolower($newPath), '.pdf') ? 'pdf' : 'image';
                     }
@@ -475,6 +716,7 @@ class UserController extends Controller
 
             if ($needsUpdate) {
                 $updates['updated_at'] = now();
+
                 DB::table('online_exam_details')
                     ->where('id', $record->id)
                     ->update($updates);
@@ -484,7 +726,7 @@ class UserController extends Controller
         }
 
         return response()->json([
-            'message' => 'فایل‌های خارجی با الگوی استاندارد ExamService با موفقیت منتقل شدند.',
+            'message' => 'فایل‌های خارجی با الگوی جدید ExamService و بر اساس slug مدرسه با موفقیت منتقل شدند.',
             'total_matched_records' => $records->count(),
             'updated_records' => $updatedCount,
             'downloaded_files' => $downloadedFilesCount,
@@ -493,9 +735,16 @@ class UserController extends Controller
         ]);
     }
 
+    private function resolveSchoolSlugForMigration(?string $schoolSlug): string
+    {
+        return ! empty($schoolSlug)
+            ? Str::slug($schoolSlug)
+            : 'default-school';
+    }
+
     /**
      * دانلود و نام‌گذاری دقیقاً مشابه متد storeExamFile در ExamService
-     * فرمت خروجی: exam-files/exam_{prefix}_{uniqid}.{extension}
+     * فرمت خروجی: exam-files/{school-slug}/exam_{prefix}_{uniqid}.{extension}
      */
     private function downloadAndStoreExamFile(string $url, string $prefix, $disk, string $directory, array &$failedUrls): ?string
     {
@@ -504,10 +753,9 @@ class UserController extends Controller
             $extension = strtolower(pathinfo($parsedUrlPath, PATHINFO_EXTENSION));
 
             if (empty($extension)) {
-                $extension = 'pdf'; // پیش‌فرض رایج آزمون‌ها
+                $extension = 'pdf';
             }
 
-            // دانلود فایل
             $response = Http::withoutVerifying()
                 ->timeout(60)
                 ->get($url);
@@ -521,8 +769,6 @@ class UserController extends Controller
                 return null;
             }
 
-            // نام‌گذاری کاملاً مطابق storeExamFile در ExamService:
-            // exam_{content|solution}_{uniqid}.{ext}
             $filename = sprintf('exam_%s_%s.%s', $prefix, uniqid(), $extension);
             $relativePath = "{$directory}/{$filename}";
 
