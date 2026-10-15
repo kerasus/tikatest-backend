@@ -6,41 +6,60 @@ use Spatie\Health\Checks\Result;
 
 class OpcacheCheck extends Check
 {
+    public ?string $name = 'Opcache';
+    public ?string $label = 'PHP OPcache';
+
     public function run(): Result
     {
-        $result = Result::make();
-
         if (!function_exists('opcache_get_status')) {
-            return $result->failed('تابع OPcache فعال نیست یا پشتیبانی نمی‌شود.');
+            return Result::make()
+                ->warning('اکستنشن OPcache نصب یا فعال نیست.');
         }
 
-        $status = opcache_get_status(false);
+        $status = @opcache_get_status(false);
 
-        if ($status === false || empty($status['opcache_enabled'])) {
-            return $result->warning('OPcache غیرفعال (Disabled) است.');
+        if ($status === false || !isset($status['opcache_enabled']) || !$status['opcache_enabled']) {
+            return Result::make()
+                ->failed('OPcache در سطح PHP غیرفعال (Disabled) است.');
         }
 
-        $memory = $status['memory_usage'] ?? [];
-        $stats = $status['opcache_statistics'] ?? [];
+        $opcacheStats = $status['opcache_statistics'] ?? [];
+        $memoryUsage = $status['memory_usage'] ?? [];
 
-        $usedMb = isset($memory['used_memory']) ? round($memory['used_memory'] / 1024 / 1024, 2) : 0;
-        $hitRate = isset($stats['opcache_hit_rate']) ? round($stats['opcache_hit_rate'], 1) : 0;
-        $cachedScripts = $stats['num_cached_scripts'] ?? 0;
+        $hitRate = round($opcacheStats['opcache_hit_rate'] ?? 0, 1);
+        $hits = $opcacheStats['hits'] ?? 0;
+        $misses = $opcacheStats['misses'] ?? 0;
+        $totalRequests = $hits + $misses;
 
-        // اگر Hit Rate زیر ۷۰٪ بود هشدار بده
-        if ($hitRate < 70) {
-            $result->warning("نرخ کشینگ پایینه: {$hitRate}%");
-        } else {
-            $result->ok();
-        }
+        $cachedScripts = $opcacheStats['num_cached_scripts'] ?? 0;
+        $usedMemoryMb = round(($memoryUsage['used_memory'] ?? 0) / 1024 / 1024, 2);
+        $wastedPercentage = round($memoryUsage['current_wasted_percentage'] ?? 0, 1);
 
-        return $result
-            ->shortSummary("Hit Rate: {$hitRate}% | حافظه: {$usedMb}MB")
+        $result = Result::make()
+            ->shortSummary("Hit Rate: {$hitRate}% | حافظه: {$usedMemoryMb}MB")
             ->meta([
                 'enabled' => true,
                 'hit_rate' => $hitRate,
-                'memory_used_mb' => $usedMb,
                 'cached_scripts' => $cachedScripts,
+                'memory_used_mb' => $usedMemoryMb,
             ]);
+
+        // ۱. بررسی حافظه هدررفته (Wasted Memory) - نشانه ریست شدن دائمی کش
+        if ($wastedPercentage > 15) {
+            return $result->warning("حافظه هدررفته OPcache بالا است: {$wastedPercentage}%");
+        }
+
+        // ۲. اگر ورکر تازه راه‌اندازی شده و تعداد ریکوئست‌ها کم است (زیر ۱۰۰ درخواست)،
+        // نباید به خاطر هیت‌ریت پایین هشدار صادر شود، چون کش هنوز در فاز Warm-up است.
+        if ($totalRequests < 100) {
+            return $result->ok();
+        }
+
+        // ۳. اگر ترافیک به اندازه کافی بود و هیت‌ریت به طرز مشکوکی زیر ۳۰٪ ماند:
+        if ($hitRate < 30) {
+            return $result->warning("نرخ کشینگ در این ورکر پایینه: {$hitRate}%");
+        }
+
+        return $result->ok();
     }
 }
