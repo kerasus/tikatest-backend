@@ -3,17 +3,18 @@
 namespace App\Services;
 
 use App\Models\Exam;
-use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use App\Models\AcademicTerm;
+use Illuminate\Http\Request;
 use App\Models\TermEnrollment;
 use Illuminate\Support\Carbon;
 use App\Models\OnlineExamDetail;
 use Illuminate\Http\UploadedFile;
 use App\Models\OnlineExamBooklet;
 use App\Models\InPersonExamResult;
-use App\Services\PdfVectorService;
 use App\Models\InPersonExamDetail;
 use App\Models\OnlineExamAnswerKey;
+use Illuminate\Support\Facades\Auth;
 use App\Services\FileStorageService;
 use App\Models\ExamCategoryTermLimit;
 use Illuminate\Support\Facades\Storage;
@@ -494,7 +495,8 @@ class ExamService
         if ($request->hasFile($fileField)) {
             $file = $request->file($fileField);
             $content = $content ?? [];
-            $content['path'] = $this->storeExamFile($file, $field);
+            $content['path'] = $this->storeExamFile($request, $file, $field);
+
             if (! isset($content['type'])) {
                 $content['type'] = $file->getClientMimeType() === 'application/pdf' ? 'pdf' : 'image';
             }
@@ -503,8 +505,10 @@ class ExamService
         return $content;
     }
 
-    private function storeExamFile(UploadedFile $file, string $prefix = ''): string
+    private function storeExamFile(Request $request, UploadedFile $file, string $prefix = ''): string
     {
+        $schoolSlug = $this->resolveSchoolSlug($request);
+
         $filename = sprintf(
             'exam_%s_%s.%s',
             $prefix,
@@ -512,7 +516,43 @@ class ExamService
             $file->getClientOriginalExtension()
         );
 
-        return $file->storeAs('exam-files', $filename, 'public');
+        $directory = 'exam-files/' . $schoolSlug;
+
+        return $file->storeAs($directory, $filename, 'public');
+    }
+
+    private function resolveSchoolSlug(Request $request): string
+    {
+        $user = $request->user();
+
+        if (! empty($user?->school_id)) {
+            $school = \App\Models\School::query()
+                ->select(['id', 'slug'])
+                ->find($user->school_id);
+
+            if (! empty($school?->slug)) {
+                return Str::slug($school->slug);
+            }
+        }
+
+        $termId = $request->input('term_id');
+        if (! empty($termId)) {
+            $term = \App\Models\AcademicTerm::query()
+                ->select(['id', 'school_id'])
+                ->find($termId);
+
+            if (! empty($term?->school_id)) {
+                $school = \App\Models\School::query()
+                    ->select(['id', 'slug'])
+                    ->find($term->school_id);
+
+                if (! empty($school?->slug)) {
+                    return Str::slug($school->slug);
+                }
+            }
+        }
+
+        return 'default-school';
     }
 
     public function listStudentRelatedExams(
