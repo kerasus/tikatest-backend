@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\InPersonExamDetailController;
 use App\Http\Controllers\Api\InPersonExamResultController;
 use App\Http\Controllers\Api\LearningActivityController;
 use App\Http\Controllers\Api\LessonController;
+use App\Http\Controllers\Api\LogController;
 use App\Http\Controllers\Api\MessageController;
 use App\Http\Controllers\Api\OnlineExamAnswerKeyController;
 use App\Http\Controllers\Api\OnlineExamBookletController;
@@ -60,6 +61,10 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('role:admin');
     Route::post('/admin/dev/run/optimize', [UserController::class, 'runOptimize'])
         ->middleware('role:admin');
+
+    Route::get('/files', [LogController::class, 'files']);
+    Route::delete('/files', [LogController::class, 'clear']);
+    Route::get('/', [LogController::class, 'index']);
 
     Route::prefix('dashboard')->group(function () {
         Route::get('admin', [DashboardReportController::class, 'adminDashboard']);
@@ -191,8 +196,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('homework-submissions', [HomeworkSubmissionController::class, 'index']);
         Route::put('homework-submissions/{homeworkSubmission}/feedback', [HomeworkSubmissionController::class, 'sendFeedback']);
         Route::get('online-exam-sessions', [OnlineExamSessionController::class, 'mySessions']);
-        //        Route::get('online-exams/{examId}/result', [OnlineExamSessionController::class, 'getResultByExamId']);
-        Route::get('online-exams', [ExamController::class, 'studentOnlineExams']);
+        Route::get('online-exams', [ExamController::class, 'myOnlineExams']);
         Route::get('online-exams/{id}', [ExamController::class, 'studentShow']);
     });
 

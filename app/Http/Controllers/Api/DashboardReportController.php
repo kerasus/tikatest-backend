@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use App\Models\CalendarEvent;
 use App\Models\SchoolFeature;
 use App\Services\ExamService;
+use App\Services\HomeworkService;
 use App\Models\TermEnrollment;
 use App\Services\SkyroomService;
 use App\Models\OnlineExamSession;
@@ -124,6 +125,7 @@ class DashboardReportController extends Controller
     public function studentDashboard(
         Request $request,
         ExamService $examService,
+        HomeworkService $homeworkService,
         SkyroomService $skyroomService
     ): JsonResponse {
         $student = $request->user();
@@ -258,27 +260,13 @@ class DashboardReportController extends Controller
             to: null,
             onlyOnline: true,
             onlyPendingOrInProgress: true
-        )
-            ->get()
-            ->take(5)
-            ->values();
+        )->limit(5)->get();
 
-        $pendingHomeworks = Homework::query()
-            ->where(function ($homeworkQuery) use ($studentId) {
-                $homeworkQuery->forStudent($studentId)
-                    ->orWhere(function ($globalHomeworkQuery) {
-                        $globalHomeworkQuery->doesntHave('classes')
-                            ->doesntHave('academicLevels');
-                    });
-            })
-            ->whereDoesntHave('submissions', function ($submissionQuery) use ($studentId) {
-                $submissionQuery->where('student_id', $studentId)
-                    ->whereNotNull('submitted_at');
-            })
-            ->where(function ($dueDateQuery) {
-                $dueDateQuery->whereNull('due_date')
-                    ->orWhereDate('due_date', '>=', today());
-            })
+        $pendingHomeworks = $homeworkService->studentHomeworksQuery($student, [
+            'status' => 'pending',
+            'from' => today()->toDateString(),
+            'include_undated' => true,
+        ])
             ->with(['lesson', 'classes', 'academicLevels'])
             ->orderByRaw('due_date IS NULL, due_date ASC')
             ->limit(5)

@@ -570,7 +570,6 @@ class StudentController extends Controller
         return $this->jsonResponseOk($results);
     }
 
-
     public function studyHoursGeneralReport(Request $request): JsonResponse
     {
         $query = StudySession::with(['student', 'lesson']);
