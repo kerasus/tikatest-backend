@@ -62,9 +62,12 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/admin/dev/run/optimize', [UserController::class, 'runOptimize'])
         ->middleware('role:admin');
 
-    Route::get('/files', [LogController::class, 'files']);
-    Route::delete('/files', [LogController::class, 'clear']);
-    Route::get('/', [LogController::class, 'index']);
+    // ✅ بعد: ساختاریافته، استاندارد و ایمن
+    Route::prefix('logs')->group(function () {
+        Route::get('/', [LogController::class, 'index']);           // /api/logs
+        Route::get('/files', [LogController::class, 'files']);     // /api/logs/files
+        Route::delete('/files', [LogController::class, 'clear']);  // /api/logs/files
+    });
 
     Route::prefix('dashboard')->group(function () {
         Route::get('admin', [DashboardReportController::class, 'adminDashboard']);
