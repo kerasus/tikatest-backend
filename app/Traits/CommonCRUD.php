@@ -20,10 +20,6 @@ trait CommonCRUD
         $paginate = $configArray['paginate'] ?? true;
         $perPage = ($request->has('length')) ? $request->get('length') : 10;
 
-        \Log::info('commonIndex', [
-            '$configArray' => $configArray,
-        ]);
-
         $this->buildFilterQuery($request, $modelQuery, $modelClass, $configArray);
 
         // load appends
@@ -302,9 +298,6 @@ trait CommonCRUD
      */
     public function commonDestroy($model)
     {
-        \Log::info('commonDestroy', [
-            '$model' => $model
-        ]);
         try {
             $deleted = $model->delete();
 
