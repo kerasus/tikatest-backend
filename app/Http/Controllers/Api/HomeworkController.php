@@ -4,18 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\UserRoleType;
 use App\Http\Controllers\Controller;
-use App\Models\AcademicTerm;
 use App\Models\Homework;
-use App\Models\HomeworkAttachment;
 use App\Models\HomeworkSubmission;
-use App\Models\TermEnrollment;
+use App\Services\HomeworkService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -23,7 +18,7 @@ class HomeworkController extends Controller
 {
     use CommonCRUD, Filter;
 
-    public function __construct()
+    public function __construct(private readonly HomeworkService $homeworkService)
     {
         $this->middleware('auth:sanctum');
         $this->middleware('admin_or_permission:homework.view')->only(['index', 'show', 'listSubmissions']);
@@ -107,23 +102,7 @@ class HomeworkController extends Controller
             'attachments.*.file' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,pdf',
         ]);
 
-        return DB::transaction(function () use ($request) {
-            $homework = Homework::create($request->only([
-                'title',
-                'lesson_id',
-                'term_id',
-                'description',
-                'due_date',
-            ]) + ['created_by' => auth()->id()]);
-
-            $this->syncAttachments($homework, $request);
-            $this->syncHomeworkRelations($homework, $request);
-
-            return $this->jsonResponseOk(
-                Homework::with(['attachments', 'academicLevels', 'classes', 'lesson', 'term'])
-                    ->findOrFail($homework->id)
-            );
-        });
+        return $this->jsonResponseOk($this->homeworkService->create($request));
     }
 
     public function show(Request $request, $id): JsonResponse
@@ -169,27 +148,13 @@ class HomeworkController extends Controller
             'attachments.*.file' => 'nullable|file|mimes:jpg,jpeg,png,gif,webp,pdf',
         ]);
 
-        return DB::transaction(function () use ($request, $homework) {
-            $homework->update($request->only([
-                'title',
-                'lesson_id',
-                'term_id',
-                'description',
-                'due_date',
-            ]));
-
-            $this->syncAttachments($homework, $request);
-            $this->syncHomeworkRelations($homework, $request);
-
-            return $this->jsonResponseOk(
-                Homework::with(['attachments', 'academicLevels', 'classes', 'lesson', 'term'])
-                    ->findOrFail($homework->id)
-            );
-        });
+        return $this->jsonResponseOk($this->homeworkService->update($request, $homework));
     }
 
     public function destroy(Homework $homework): JsonResponse
     {
+        $this->homeworkService->deleteAttachments($homework);
+
         return $this->commonDestroy($homework);
     }
 
@@ -197,21 +162,24 @@ class HomeworkController extends Controller
     {
         $user = $request->user();
 
-        // 1. استخراج لیست آیدی مدارسی که کاربر در آن‌ها ثبت‌نام دارد
-        $allowedSchoolIds = $user ? $user->termEnrollments()
-            ->whereNotNull('school_id')
-            ->pluck('school_id')
-            ->unique()
-            ->toArray() : [];
-
-        // 2. ولیدیشن دقیق ریکوئست
         $validator = Validator::make($request->all(), [
             'school_id' => [
                 'required',
                 'integer',
                 'exists:schools,id',
-                Rule::in($allowedSchoolIds), // چک می‌کند که school_id حتماً متعلق به این دانش‌آموز باشد
+                Rule::in($this->homeworkService->studentSchoolIds($user)),
             ],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'due_date_since_date' => ['nullable', 'date'],
+            'due_date_till_date' => ['nullable', 'date', 'after_or_equal:due_date_since_date'],
+            'title' => ['nullable', 'string'],
+            'lesson_id' => ['nullable', 'integer', 'exists:lessons,id'],
+            'term_id' => ['nullable', 'integer', 'exists:academic_terms,id'],
+            'status' => ['nullable', Rule::in(['pending', 'submitted', 'overdue'])],
+            'id_in' => ['nullable', 'array'],
+            'id_in.*' => ['integer'],
+            'length' => ['nullable', 'integer', 'min:1'],
         ], [
             'school_id.required' => 'شناسه مدرسه الزامی است.',
             'school_id.exists'   => 'مدرسه انتخاب شده نامعتبر است.',
@@ -224,58 +192,10 @@ class HomeworkController extends Controller
                 'errors'  => $validator->errors(),
             ], 422);
         }
-        $schoolId = $request->integer('school_id');
+        $homeworks = $this->homeworkService->studentHomeworksQuery($user, $validator->validated())
+            ->paginate($request->integer('length', 10));
 
-        $termEnrollments = $user->termEnrollments()
-            ->where('school_id', $schoolId)
-            ->whereNotNull('class_id')
-            ->with('schoolClass:id,academic_level_id')
-            ->get(['id', 'class_id']);
-
-        $classIds = $termEnrollments
-            ->pluck('class_id')
-            ->filter()
-            ->unique()
-            ->values()
-            ->toArray();
-
-        $academicLevelIds = $termEnrollments
-            ->pluck('schoolClass.academic_level_id')
-            ->filter()
-            ->unique()
-            ->values()
-            ->toArray();
-
-        $request->merge([
-            'inSchool' => $schoolId,
-            'forStudentTargets' => [
-                'class_ids' => $classIds,
-                'academic_level_ids' => $academicLevelIds,
-            ],
-        ]);
-
-        $studentId = $user->id;
-
-        $config = [
-            'filterKeys' => ['title'],
-            'filterDate' => ['due_date', 'created_at'],
-            'filterKeysExact' => ['lesson_id', 'term_id'],
-            'filterKeysIn' => [
-                'id',
-            ],
-            'scopes' => [
-                'inSchool',
-                'forStudentTargets',
-            ],
-            'eagerLoads' => [
-                'lesson',
-                'submission' => function ($query) use ($studentId) {
-                    $query->where('student_id', $studentId);
-                },
-            ],
-        ];
-
-        return $this->commonIndex($request, Homework::class, $config);
+        return $this->jsonResponseOk($homeworks);
     }
 
     public function mySubmissions(Request $request): JsonResponse
@@ -297,40 +217,7 @@ class HomeworkController extends Controller
 
     public function viewHomework(Request $request, int $homeworkId): JsonResponse
     {
-        $studentId = auth()->id();
-
-        $homework = Homework::with(['lesson', 'attachments'])->findOrFail($homeworkId);
-
-        if ($homework->class_id) {
-            $isEnrolled = TermEnrollment::where('user_id', $studentId)
-                ->where('class_id', $homework->class_id)
-                ->exists();
-
-            if (! $isEnrolled) {
-                abort(403, 'You are not enrolled in this class');
-            }
-        }
-
-        $submission = HomeworkSubmission::where('homework_id', $homeworkId)
-            ->where('student_id', $studentId)
-            ->first();
-
-        if (! $submission) {
-            $submission = HomeworkSubmission::create([
-                'homework_id' => $homeworkId,
-                'student_id' => $studentId,
-                'student_seen_at' => now(),
-            ]);
-        } elseif (! $submission->student_seen_at) {
-            $submission->update([
-                'student_seen_at' => now(),
-            ]);
-        }
-
-        return $this->jsonResponseOk([
-            'homework' => $homework,
-            'submission' => $submission,
-        ]);
+        return $this->jsonResponseOk($this->homeworkService->viewForStudent($homeworkId, $request->user()->id));
     }
 
     public function submitHomework(Request $request, int $homeworkId): JsonResponse
@@ -340,65 +227,9 @@ class HomeworkController extends Controller
             'content' => 'nullable',
         ]);
 
-        $studentId = auth()->id();
-
-        $homework = Homework::findOrFail($homeworkId);
-
-        if ($homework->class_id) {
-            $isEnrolled = TermEnrollment::where('user_id', $studentId)
-                ->where('class_id', $homework->class_id)
-                ->exists();
-
-            if (! $isEnrolled) {
-                abort(403, 'You are not enrolled in this class');
-            }
-        }
-
-        if ($homework->due_date && $homework->due_date->lt(now()->startOfDay())) {
+        $submission = $this->homeworkService->submit($request, $homeworkId);
+        if ($submission === null) {
             return $this->jsonResponseError('مهلت ارسال تکلیف گذشته است.', 403);
-        }
-
-        $submittedAt = now();
-
-        $existingSubmission = HomeworkSubmission::where('homework_id', $homeworkId)
-            ->where('student_id', $studentId)
-            ->first();
-        $oldFilePath = null;
-        if ($existingSubmission && is_array($existingSubmission->content)) {
-            $oldFilePath = $existingSubmission->content['path'] ?? null;
-        }
-
-        $contentInput = $request->input('content');
-        $normalizedContent = is_array($contentInput) ? $contentInput : (is_string($contentInput) ? json_decode($contentInput, true) : []);
-        $normalizedContent = $normalizedContent ?: [];
-
-        if ($request->hasFile('submission_file')) {
-            $file = $request->file('submission_file');
-            $path = $this->storeHomeworkSubmissionFile($file);
-            $mimeType = $file->getClientMimeType();
-            $type = $mimeType === 'application/pdf' ? 'pdf' : 'image';
-
-            $normalizedContent = [
-                'type' => $type,
-                'path' => $path,
-            ];
-        }
-
-        $submission = HomeworkSubmission::updateOrCreate(
-            [
-                'homework_id' => $homeworkId,
-                'student_id' => $studentId,
-            ],
-            [
-                'content' => $normalizedContent ?: null,
-                'submitted_at' => $submittedAt,
-                'student_seen_at' => $submittedAt,
-                'operator_seen_at' => null,
-            ]
-        );
-
-        if ($oldFilePath && Storage::disk('public')->exists($oldFilePath)) {
-            Storage::disk('public')->delete($oldFilePath);
         }
 
         return $this->jsonResponseOk($submission);
@@ -414,120 +245,16 @@ class HomeworkController extends Controller
 
         $homework = Homework::findOrFail($homeworkId);
 
-        return DB::transaction(function () use ($request, $homework) {
-            $attachment = HomeworkAttachment::create([
-                'homework_id' => $homework->id,
-                'content' => $this->processAttachmentContent($request),
-                'sort_order' => $request->input('sort_order', 0),
-            ]);
-
-            return $this->jsonResponseOk($attachment);
-        });
+        return $this->jsonResponseOk($this->homeworkService->createAttachment($request, $homework));
     }
 
     public function destroyAttachment(int $homeworkId, int $attachmentId): JsonResponse
     {
-        $attachment = HomeworkAttachment::where('homework_id', $homeworkId)
-            ->where('id', $attachmentId)
-            ->firstOrFail();
+        $this->homeworkService->deleteAttachment($homeworkId, $attachmentId);
 
-        $attachment->delete();
-
-        return $this->jsonResponseOk(['message' => 'ضبط پیوست با موفقیت حذف شد.']);
+        return $this->jsonResponseOk([
+            'message' => 'پیوست با موفقیت حذف شد.',
+        ]);
     }
 
-    protected function syncAttachments(Homework $homework, Request $request): void
-    {
-        $existing = $homework->attachments()->get();
-        $oldFilePaths = [];
-
-        // 1️⃣ استخراج مسیر فایل‌های قدیمی قبل از حذف از دیتابیس
-        foreach ($existing as $att) {
-            if (is_array($att->content) && isset($att->content['path'])) {
-                $oldFilePaths[] = $att->content['path'];
-            }
-            // حذف رکورد از دیتابیس
-            $att->delete();
-        }
-
-        $attachments = $request->input('attachments', []);
-        if (! empty($attachments)) {
-            foreach ($attachments as $index => $attachmentData) {
-                $fileKey = "attachments.{$index}.file";
-                $content = $attachmentData;
-
-                if ($request->hasFile($fileKey)) {
-                    $file = $request->file($fileKey);
-                    $path = $this->storeHomeworkAttachmentFile($file);
-                    $content = $content ?? [];
-                    $content['path'] = $path;
-                    $content['type'] = in_array($file->getClientMimeType(), ['application/pdf']) ? 'pdf' : 'image';
-                }
-
-                $homework->attachments()->create([
-                    'content' => $content,
-                    'sort_order' => $attachmentData['sort_order'] ?? $index,
-                ]);
-            }
-        }
-
-        $content = $request->input('content');
-        if ($content) {
-            $homework->attachments()->create([
-                'content' => $content,
-                'sort_order' => 0,
-            ]);
-        }
-
-        foreach ($oldFilePaths as $path) {
-            if ($path && Storage::disk('public')->exists($path)) {
-                Storage::disk('public')->delete($path);
-            }
-        }
-    }
-
-    protected function syncHomeworkRelations(Homework $homework, Request $request): void
-    {
-        if ($request->has('academic_level_ids')) {
-            $homework->academicLevels()->sync($request->input('academic_level_ids', []));
-        }
-
-        if ($request->has('class_ids')) {
-            $homework->classes()->sync($request->input('class_ids', []));
-        }
-    }
-
-    protected function processAttachmentContent(Request $request): ?array
-    {
-        $content = $request->input('content');
-        $content = is_array($content) ? $content : (is_string($content) ? json_decode($content, true) : null);
-
-        $file = $request->file('attachment_file');
-        if ($file) {
-            $path = $this->storeHomeworkAttachmentFile($file);
-            $content = $content ?? [];
-            $content['path'] = $path;
-            if (! isset($content['type'])) {
-                $content['type'] = in_array($file->getClientMimeType(), ['application/pdf']) ? 'pdf' : 'image';
-            }
-        }
-
-        return $content;
-    }
-
-    protected function storeHomeworkAttachmentFile(UploadedFile $file, string $prefix = 'homework'): string
-    {
-        $extension = $file->getClientOriginalExtension();
-        $filename = sprintf('%s_%s.%s', $prefix, uniqid(), $extension);
-
-        return $file->storeAs('homework-attachments', $filename, 'public');
-    }
-
-    protected function storeHomeworkSubmissionFile(UploadedFile $file): string
-    {
-        $extension = $file->getClientOriginalExtension();
-        $filename = sprintf('homework_submission_%s.%s', uniqid(), $extension);
-
-        return $file->storeAs('homework-submissions', $filename, 'public');
-    }
 }
