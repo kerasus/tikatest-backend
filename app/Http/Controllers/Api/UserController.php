@@ -287,9 +287,15 @@ class UserController extends Controller
         // انتخاب اینکه کدوم اسکریپت اجرا بشه
         $action = (string) $request->input('action', 'fix-student-passwords');
 
-//        if ($action === 'fix-student-passwords') {
-//            return $this->fixStudentPasswordsForSchools([1, 2]); // 1=مبتکران؟ 2=اسدی کیا
-//        }
+        if ($action === 'fix-student-passwords') {
+            $schoolIds = $request->input('school_ids', [1, 2]);
+            if (!is_array($schoolIds)) {
+                $schoolIds = explode(',', (string) $schoolIds);
+            }
+            $schoolIds = array_filter(array_map('intval', (array) $schoolIds));
+
+            return $this->fixStudentPasswordsForSchools($schoolIds ?: [1, 2]);
+        }
 
         // اکشن جدید برای انتقال فایل‌های آزمون
         if ($action === 'migrate-exam-files') {
@@ -542,29 +548,32 @@ class UserController extends Controller
 
     private function fixStudentPasswordsForSchools(array $schoolIds): JsonResponse
     {
-        $studentRoleId = 4; // اگر در سیستم تو متفاوت است اصلاح کن
-
-        // model_type استاندارد اسپتی
+        $studentRoleId = 4; // رول استیودنت در سیستم تیکاتست
         $modelType = 'App\\Models\\User';
 
         $fixed = 0;
         $skippedAlreadyBcrypt = 0;
         $skippedEmptyPassword = 0;
 
-        DB::beginTransaction();
         try {
-            // کاربرانی که دانش‌آموز هستند و در یکی از مدارس موردنظر ثبت‌نام دارند
+            // حذف DISTINCT برای جلوگیری از خطای 1221 در MySQL
+            // استفاده از whereIn تمیزتره و هیچ ردیف تکراری ایجاد نمی‌کنه
             $users = DB::table('users as u')
-                ->selectRaw('DISTINCT u.id, u.password')
+                ->select('u.id', 'u.password')
                 ->join('model_has_roles as mhr', function ($j) use ($modelType, $studentRoleId) {
                     $j->on('mhr.model_id', '=', 'u.id')
                         ->where('mhr.model_type', '=', $modelType)
                         ->where('mhr.role_id', '=', $studentRoleId);
                 })
-                ->join('term_enrollments as te', 'te.user_id', '=', 'u.id')
-                ->whereIn('te.school_id', $schoolIds)
-                ->lockForUpdate()
+                ->whereIn('u.id', function ($query) use ($schoolIds) {
+                    $query->select('user_id')
+                        ->from('term_enrollments')
+                        ->whereIn('school_id', $schoolIds);
+                })
                 ->get();
+
+            // ترنزکشن را داخل پردازش می‌بریم یا برای کل آپدیت‌ها نگه می‌داریم بدون lockForUpdate
+            DB::beginTransaction();
 
             foreach ($users as $u) {
                 $current = (string) ($u->password ?? '');
@@ -574,19 +583,19 @@ class UserController extends Controller
                     continue;
                 }
 
-                // اگر از قبل bcrypt است دست نزن
+                // اگر پسورد قبلاً هش Bcrypt لاراولی بود رد شو
                 if (preg_match('/^\$2[aby]\$\d{2}\$[A-Za-z0-9\.\/]{53}$/', $current)) {
                     $skippedAlreadyBcrypt++;
                     continue;
                 }
 
-                // همین پسورد خام فعلی را bcrypt کن
-                $newHash = bcrypt($current);
-
-                DB::table('users')->where('id', $u->id)->update([
-                    'password' => $newHash,
-                    'updated_at' => now(),
-                ]);
+                // هش کردن پسورد خام فعلی
+                DB::table('users')
+                    ->where('id', $u->id)
+                    ->update([
+                        'password' => bcrypt($current),
+                        'updated_at' => now(),
+                    ]);
 
                 $fixed++;
             }
@@ -594,16 +603,20 @@ class UserController extends Controller
             DB::commit();
 
             return response()->json([
+                'status' => true,
                 'message' => 'Student passwords fixed (bcrypt applied where needed).',
                 'schools' => $schoolIds,
+                'total_checked' => $users->count(),
                 'fixed' => $fixed,
                 'skipped_already_bcrypt' => $skippedAlreadyBcrypt,
                 'skipped_empty_password' => $skippedEmptyPassword,
             ]);
-        } catch (Throwable $e) {
+
+        } catch (\Throwable $e) {
             DB::rollBack();
             return response()->json([
-                'message' => 'Failed',
+                'status' => false,
+                'message' => 'Failed to fix passwords',
                 'error' => $e->getMessage(),
             ], 500);
         }
