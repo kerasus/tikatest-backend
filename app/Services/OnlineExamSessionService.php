@@ -491,7 +491,7 @@ class OnlineExamSessionService
         $exam->loadMissing([
             'onlineExamDetail.answerKeys' => fn ($q) => $q->where('is_active', true),
             'lesson',
-            'grade',
+            'grades',
         ]);
 
         return [
@@ -553,6 +553,130 @@ class OnlineExamSessionService
     ): bool {
         return $session !== null
             && in_array($session->status, ['submitted', 'graded'], true);
+    }
+
+    /**
+     * دریافت آمار عملکرد تفکیکی دانش‌آموزان به ازای تک‌تک سوالات و گزینه‌ها
+     * جهت رسم در نمودارها و تحلیل آیتم‌های آزمون (Item Analysis)
+     */
+    public function getExamQuestionsAnalytics(Exam $exam): array
+    {
+        // اطمینان از لود بودن جزئیات آزمون و کلیدهای سوالات
+        $exam->loadMissing([
+            'onlineExamDetail.answerKeys' => fn ($q) => $q->where('is_active', true)->orderBy('question_number'),
+        ]);
+
+        $onlineDetail = $exam->onlineExamDetail;
+        if (! $onlineDetail) {
+            throw new HttpException(404, 'تنظیمات آزمون آنلاین برای این آزمون یافت نشد.');
+        }
+
+        $answerKeys = $onlineDetail->answerKeys ?? collect();
+
+        // 1. لیست شناسه سشن‌های تکمیل‌شده/تصحیح‌شده یا منقضی شده
+        $submittedSessions = OnlineExamSession::query()
+            ->where('exam_id', $exam->id)
+            ->whereIn('status', ['submitted', 'graded', 'expired'])
+            ->get(['id', 'student_id']);
+
+        $totalParticipants = $submittedSessions->count();
+        $sessionIds = $submittedSessions->pluck('id')->all();
+
+        // اگر هیچ دانش‌آموزی در آزمون شرکت نکرده باشد
+        if ($totalParticipants === 0 || empty($sessionIds)) {
+            return [
+                'total_participants' => 0,
+                'total_questions' => $answerKeys->count(),
+                'questions' => $answerKeys->map(function ($key) {
+                    $choicesCount = (int) ($key->number_of_choices ?: 4);
+                    $optionsBreakdown = [];
+                    for ($c = 1; $c <= $choicesCount; $c++) {
+                        $optionsBreakdown[(string) $c] = 0;
+                    }
+
+                    return [
+                        'question_number' => $key->question_number,
+                        'correct_option' => (string) $key->correct_option,
+                        'number_of_choices' => $choicesCount,
+                        'total_participants' => 0,
+                        'correct_count' => 0,
+                        'wrong_count' => 0,
+                        'unanswered_count' => 0,
+                        'correct_percentage' => 0,
+                        'options_breakdown' => $optionsBreakdown,
+                    ];
+                })->values()->all(),
+            ];
+        }
+
+        // 2. تجمیع سریع پاسخ‌های ثبت‌شده از دیتابیس به تفکیک سوال و گزینه
+        $responsesGrouped = OnlineExamSessionResponse::query()
+            ->whereIn('online_exam_session_id', $sessionIds)
+            ->whereNotNull('submitted_option')
+            ->where('submitted_option', '!=', '')
+            ->select([
+                'question_number',
+                'submitted_option',
+                DB::raw('COUNT(*) as count'),
+            ])
+            ->groupBy('question_number', 'submitted_option')
+            ->get()
+            ->groupBy('question_number');
+
+        // 3. محاسبه و ساختاردهی آمار هر سوال
+        $questionsStats = $answerKeys->map(function ($key) use ($responsesGrouped, $totalParticipants) {
+            $qNum = (int) $key->question_number;
+            $correctOption = (string) $key->correct_option;
+            $choicesCount = (int) ($key->number_of_choices ?: 4);
+
+            // گزینه‌ها را به صورت پیش‌فرض صفر می‌کنیم (مثلا ۱ تا ۴)
+            $optionsBreakdown = [];
+            for ($c = 1; $c <= $choicesCount; $c++) {
+                $optionsBreakdown[(string) $c] = 0;
+            }
+
+            $questionResponses = $responsesGrouped->get($qNum, collect());
+
+            $totalAnswered = 0;
+            $correctCount = 0;
+
+            foreach ($questionResponses as $resp) {
+                $option = (string) $resp->submitted_option;
+                $count = (int) $resp->count;
+
+                // در صورت وجود گزینه‌ای خارج از رِنج یا استاندارد، ست می‌کنیم
+                $optionsBreakdown[$option] = $count;
+                $totalAnswered += $count;
+
+                if ($option === $correctOption) {
+                    $correctCount += $count;
+                }
+            }
+
+            $wrongCount = max(0, $totalAnswered - $correctCount);
+            $unansweredCount = max(0, $totalParticipants - $totalAnswered);
+            $correctPercentage = $totalParticipants > 0
+                ? round(($correctCount / $totalParticipants) * 100, 1)
+                : 0;
+
+            return [
+                'question_number' => $qNum,
+                'correct_option' => $correctOption,
+                'number_of_choices' => $choicesCount,
+                'total_participants' => $totalParticipants,
+                'correct_count' => $correctCount,
+                'wrong_count' => $wrongCount,
+                'unanswered_count' => $unansweredCount,
+                'correct_percentage' => $correctPercentage,
+                'options_breakdown' => $optionsBreakdown, // مثال: {"1": 12, "2": 5, "3": 34, "4": 1}
+            ];
+        })->values()->all();
+
+        return [
+            'total_participants' => $totalParticipants,
+            'total_questions' => $answerKeys->count(),
+            'questions' => $questionsStats,
+        ];
     }
 
 }

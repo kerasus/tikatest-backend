@@ -264,4 +264,43 @@ class OnlineExamSessionController extends Controller
             'student:id,first_name,last_name',
         ];
     }
+
+    /**
+     * دریافت آمار و تحلیل عملکرد سوالات آزمون آنلاین جهت نمایش در نمودارها
+     */
+    public function getExamQuestionsAnalytics(Request $request, int $examId): JsonResponse
+    {
+        $user = $request->user();
+
+        $allowedRoles = [
+            UserRoleType::Admin->value,
+            UserRoleType::Manager->value,
+            UserRoleType::Teacher->value,
+            UserRoleType::Staff->value,
+        ];
+
+        if (! $user || ! $user->hasAnyRole($allowedRoles)) {
+            return $this->jsonResponseError('شما دسترسی به آمار این آزمون را ندارید.', 403);
+        }
+
+        $exam = Exam::query()
+            ->whereKey($examId)
+            ->where('delivery_mode', 'online')
+            ->first();
+
+        if (! $exam) {
+            return $this->jsonResponseError('آزمون آنلاین مورد نظر یافت نشد.', 404);
+        }
+
+        try {
+            $analyticsData = $this->sessionService->getExamQuestionsAnalytics($exam);
+
+            return $this->jsonResponseOk($analyticsData);
+        } catch (HttpException $e) {
+            return $this->jsonResponseError($e->getMessage(), $e->getStatusCode());
+        } catch (\Throwable $e) {
+            return $this->jsonResponseServerError(['errors' => ['analytics' => $e->getMessage()]]);
+        }
+    }
+
 }
