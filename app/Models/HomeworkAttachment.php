@@ -64,33 +64,28 @@ class HomeworkAttachment extends Model
     }
 
     /**
-     * هلپر عمومی برای تبدیل فیلدهای ساختاریافته یا متنی فایل به URL کامل
+     * هلپر عمومی برای تبدیل فیلدهای ساختاریافته فایل
      */
-    private function normalizeFilePayload(mixed $value): mixed
+    private function normalizeFilePayload($value): mixed
     {
         if (is_string($value)) {
-            $decoded = json_decode($value, true);
-            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-                $value = $decoded;
-            }
+            $value = json_decode($value, true);
         }
 
-        // حالت اول: اگر مقدار ذخیره‌شده آبجکت آرایه‌ای است مثل: {"path": "homework/..."}
-        if (is_array($value)) {
-            if (!empty($value['path']) && is_string($value['path'])) {
-                if (!Str::startsWith($value['path'], ['http://', 'https://'])) {
-                    $value['path'] = Storage::disk('public')->url($value['path']);
-                }
-            }
+        if (! is_array($value) || empty($value['path'])) {
             return $value;
         }
 
-        // حالت دوم: اگر فیلد صرفاً یک مسیر متنی خام باشد مثل: "homework/attachments/file.pdf"
-        if (is_string($value) && $value !== '') {
-            if (!Str::startsWith($value, ['http://', 'https://'])) {
-                return Storage::disk('public')->url($value);
-            }
+        $path = $value['path'];
+
+        // اگر از قبل URL کامل است دست نزن
+        if (Str::startsWith($path, ['http://', 'https://'])) {
+            return $value;
         }
+
+        // تبدیل مسیر محلی استوریج به URL کامل
+        // اگر APP_URL روی matiaan.ir/api تنظیم شده، خروجی دقیقاً https://matiaan.ir/api/storage/... خواهد شد
+        $value['path'] = Storage::disk('public')->url($path);
 
         return $value;
     }
