@@ -144,6 +144,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('auto-expire', [OnlineExamSessionController::class, 'autoExpire']);
         Route::post('{examId}/start', [OnlineExamSessionController::class, 'startSession']);
         Route::get('{examId}/sessions', [OnlineExamSessionController::class, 'getExamSessions']);
+        Route::get('{examId}/sessions/grouped-by-class', [OnlineExamSessionController::class, 'getExamSessionsGroupedByClass'])
+            ->whereNumber('examId');
         Route::get('{examId}/my-result', [OnlineExamSessionController::class, 'getMyResultByExamId']);
         Route::post('{sessionId}/answer', [OnlineExamSessionController::class, 'submitAnswer']);
         Route::post('{sessionId}/submit', [OnlineExamSessionController::class, 'submitSession']);

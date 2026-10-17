@@ -312,6 +312,7 @@ class StudentController extends Controller
 
         $student->load([
             'termEnrollments.schoolClass.academicLevel.academicField.school',
+            'termEnrollments.term',
             'studentProfile.guardians.user',
             'roles',
             'permissions',

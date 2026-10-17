@@ -25,9 +25,7 @@ class ExamController extends Controller
 {
     use CommonCRUD, Filter;
 
-    public function __construct(
-        protected OnlineExamSessionService $onlineExamSessionService
-    )
+    public function __construct()
     {
         $this->middleware('auth:sanctum');
         $this->middleware(function ($request, $next) {
@@ -91,9 +89,11 @@ class ExamController extends Controller
     }
 
     // tick
-    public function myOnlineExams(Request $request, ExamService $examService): JsonResponse
+    public function myOnlineExams(Request $request, ExamService $examService, OnlineExamSessionService $onlineExamSessionService): JsonResponse
     {
         $studentId = $request->user()->id;
+
+        $onlineExamSessionService->repairExpiredSessionsForStudent($studentId);
 
         // پارامترهای اختیاری از فرانت‌اند
         $from = $request->query('from');

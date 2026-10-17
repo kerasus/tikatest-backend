@@ -2,12 +2,18 @@
 
 namespace App\Services;
 
+use Throwable;
 use App\Models\User;
 use App\Models\Exam;
 use App\Enums\UserRoleType;
 use Carbon\CarbonInterface;
+use App\Models\SchoolClass;
+use App\Models\TermEnrollment;
 use App\Models\OnlineExamSession;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Eloquent\Builder;
 use App\Models\OnlineExamSessionResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -679,4 +685,292 @@ class OnlineExamSessionService
         ];
     }
 
+    /**
+     * ترمیم سشن‌های منقضی‌شده یا ناتمام یک دانش‌آموز.
+     *
+     * سشن‌های زیر بررسی می‌شوند:
+     * - in_progress: فقط در صورتی که زمانشان تمام شده باشد.
+     * - expired: در صورتی که هنوز نمره‌دهی نشده باشند.
+     */
+    public function repairExpiredSessionsForStudent(int $studentId): array
+    {
+        $query = OnlineExamSession::query()
+            ->where('student_id', $studentId)
+            ->whereIn('status', ['in_progress', 'expired']);
+
+        // اگر هیچ سشن بازی نداره، سریع برگرد و دیتابیس رو درگیر نکن
+        if (! $query->exists()) {
+            return [
+                'checked' => 0,
+                'repaired' => 0,
+                'skipped' => 0,
+                'failed' => 0,
+                'repaired_session_ids' => [],
+                'failed_session_ids' => [],
+            ];
+        }
+
+        return $this->repairExpiredSessions($query);
+    }
+
+    /**
+     * ترمیم سشن‌های منقضی‌شده یا ناتمام یک آزمون.
+     */
+    public function repairExpiredSessionsForExam(int $examId): array
+    {
+        $query = OnlineExamSession::query()
+            ->where('exam_id', $examId)
+            ->whereIn('status', ['in_progress', 'expired']);
+
+        // خروج سریع: اگر هیچ سشن بازی برای این آزمون وجود ندارد
+        if (! $query->exists()) {
+            return [
+                'checked' => 0,
+                'repaired' => 0,
+                'skipped' => 0,
+                'failed' => 0,
+                'repaired_session_ids' => [],
+                'failed_session_ids' => [],
+            ];
+        }
+
+        return $this->repairExpiredSessions($query);
+    }
+
+    /**
+     * هستهٔ مشترک ترمیم سشن‌ها.
+     */
+    private function repairExpiredSessions(Builder $query): array
+    {
+        $result = [
+            'checked' => 0,
+            'repaired' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+            'repaired_session_ids' => [],
+            'failed_session_ids' => [],
+        ];
+
+        $query
+            ->with(['exam.onlineExamDetail'])
+            ->chunkById(100, function ($sessions) use (&$result) {
+                foreach ($sessions as $session) {
+                    $result['checked']++;
+
+                    try {
+                        $wasRepaired = DB::transaction(function () use ($session) {
+                            /** @var OnlineExamSession|null $lockedSession */
+                            $lockedSession = OnlineExamSession::query()
+                                ->whereKey($session->id)
+                                ->lockForUpdate()
+                                ->first();
+
+                            if (! $lockedSession) {
+                                return false;
+                            }
+
+                            // اگر هم‌زمان درخواست دیگری آن را پردازش کرده باشد
+                            if (! in_array($lockedSession->status, ['in_progress', 'expired'], true)) {
+                                return false;
+                            }
+
+                            $lockedSession->loadMissing('exam.onlineExamDetail');
+
+                            /*
+                             * برای in_progress باید زمان واقعاً تمام شده باشد.
+                             * اما expired قبلاً منقضی شده و مستقیماً قابل نمره‌دهی است.
+                             */
+                            if ($lockedSession->status === 'in_progress') {
+                                $remainingTime = $this->calculateRemainingTime(
+                                    $lockedSession,
+                                    now()
+                                );
+
+                                // نبودن محدودیت زمانی به‌تنهایی دلیل ترمیم نیست.
+                                if ($remainingTime === null || $remainingTime > 0) {
+                                    return false;
+                                }
+                            }
+
+                            $this->submitAndGradeSession(
+                                $lockedSession,
+                                (int) $lockedSession->student_id
+                            );
+
+                            return true;
+                        });
+
+                        if ($wasRepaired) {
+                            $result['repaired']++;
+                            $result['repaired_session_ids'][] = $session->id;
+                        } else {
+                            $result['skipped']++;
+                        }
+                    } catch (Throwable $exception) {
+                        $result['failed']++;
+                        $result['failed_session_ids'][] = $session->id;
+
+                        Log::error(
+                            'Failed to repair expired online exam session.',
+                            [
+                                'session_id' => $session->id,
+                                'student_id' => $session->student_id,
+                                'exam_id' => $session->exam_id,
+                                'status' => $session->status,
+                                'exception' => $exception->getMessage(),
+                            ]
+                        );
+                    }
+                }
+            });
+
+        return $result;
+    }
+
+    /**
+     * دریافت لیست دانش‌آموزان واجد شرایط آزمون به تفکیک کلاس
+     * به همراه وضعیت شرکت در آزمون (OnlineExamSession) برای هر دانش‌آموز
+     */
+    public function getExamSessionsGroupedByClass(Exam $exam): array
+    {
+        // 1) کلاس‌های صریح آزمون (exam_classes)
+        $explicitClasses = SchoolClass::query()
+            ->whereIn('id', DB::table('exam_classes')->where('exam_id', $exam->id)->pluck('class_id'))
+            ->with('academicLevel')
+            ->get();
+
+        $explicitClassIds = $explicitClasses->pluck('id')->all();
+        $explicitByLevelId = $explicitClasses->groupBy('academic_level_id'); // [level_id => Collection<SchoolClass>]
+
+        // 2) پایه‌های آزمون (academic levels)
+        $levelIds = $exam->academicLevels()
+            ->pluck('academic_levels.id')
+            ->all();
+
+        // اگر هیچ پایه‌ای وصل نبود و هیچ کلاس صریحی هم نبود، می‌تونی fallback بزنی:
+        // - یا همه کلاس‌های مدرسه/ترم
+        // - یا فقط کلاس‌هایی که enrollment دارند
+        // فعلاً طبق سناریوی شما: پایه‌ها/کلاس‌ها مبناست.
+        $levelsWithClasses = collect();
+        if (!empty($levelIds)) {
+            $levelsWithClasses = \App\Models\AcademicLevel::query()
+                ->whereIn('id', $levelIds)
+                ->with(['classes.academicLevel'])
+                ->get();
+        }
+
+        // 3) ساخت لیست نهایی کلاس‌های مشمول آزمون طبق قاعده ترکیبی
+        // - اگر برای یک پایه کلاس صریح داریم => فقط همان‌ها
+        // - وگرنه => همه کلاس‌های آن پایه
+        $eligibleClasses = collect();
+
+        foreach ($levelsWithClasses as $level) {
+            $levelId = $level->id;
+
+            if ($explicitByLevelId->has($levelId) && $explicitByLevelId->get($levelId)->isNotEmpty()) {
+                $eligibleClasses = $eligibleClasses->merge($explicitByLevelId->get($levelId));
+            } else {
+                $eligibleClasses = $eligibleClasses->merge($level->classes);
+            }
+        }
+
+        // اگر پایه‌ای ست نبود ولی کلاس صریح بود => همان‌ها
+        if (empty($levelIds) && !empty($explicitClassIds)) {
+            $eligibleClasses = $explicitClasses;
+        }
+
+        // یکتا
+        $eligibleClasses = $eligibleClasses->unique('id')->values();
+
+        // 4) سشن‌ها: آخرین attempt هر دانش‌آموز
+        // نکته: اگر attempt_number داری، بهتره با subquery/aggregate آخرین attempt رو بگیری؛
+        // ولی برای شروع همین unique هم خوبه.
+        $sessionsByStudent = OnlineExamSession::query()
+            ->where('exam_id', $exam->id)
+            ->orderByDesc('attempt_number')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('student_id')
+            ->keyBy('student_id');
+
+        // 5) ساخت خروجی: پایه -> کلاس -> دانش‌آموزان
+        $classesGroupedByLevel = $eligibleClasses->groupBy('academic_level_id');
+
+        $levelsPayload = [];
+
+        foreach ($classesGroupedByLevel as $levelId => $classesInLevel) {
+            $levelName = $classesInLevel->first()?->academicLevel?->name ?? 'نامشخص';
+
+            $classesPayload = [];
+
+            foreach ($classesInLevel as $schoolClass) {
+                // enrollments (بهتر: اگر لازم داری فقط ترم فعال یا ترم آزمون را بگیری، اینجا دقیقش کن)
+                $enrollmentsQuery = TermEnrollment::query()
+                    ->where('class_id', $schoolClass->id)
+                    ->active()
+                    ->with('user');
+
+                // این شرط باعث خالی شدن خروجی شما شده بود؛ پس فقط وقتی بزن که مطمئنی
+                // term_id آزمون همان term_id enrollment هاست.
+                if ($exam->term_id) {
+                    $enrollmentsQuery->where('term_id', $exam->term_id);
+                    // اگر ترم‌ها پیچیده‌اند، شاید بهتر باشد:
+                    // ->whereTermIsActive()
+                    // یا اصلاً این فیلتر را برداری و فقط active بماند.
+                }
+
+                $enrollments = $enrollmentsQuery->get();
+
+                $studentsPayload = [];
+                foreach ($enrollments as $enrollment) {
+                    $student = $enrollment->user;
+                    if (! $student) continue;
+
+                    $session = $sessionsByStudent->get($student->id);
+
+                    $studentsPayload[] = [
+                        'student' => [
+                            'id' => $student->id,
+                            'name' => $student->name ?? trim(($student->first_name ?? '') . ' ' . ($student->last_name ?? '')),
+                            'national_code' => $student->national_code ?? null,
+                            'mobile' => $student->mobile ?? null,
+                        ],
+                        'enrollment_id' => $enrollment->id,
+                        'has_participated' => $session !== null,
+                        'session' => $session ? [
+                            'id' => $session->id,
+                            'status' => $session->status,
+                            'attempt_number' => $session->attempt_number,
+                            'started_at' => $session->started_at,
+                            'submitted_at' => $session->submitted_at,
+                            'time_used_seconds' => $session->time_used_seconds,
+                            'percent' => $session->percent,
+                            't_score' => $session->t_score,
+                            'is_locked' => $session->is_locked,
+                        ] : null,
+                    ];
+                }
+
+                $classesPayload[] = [
+                    'class_id' => $schoolClass->id,
+                    'class_name' => $schoolClass->name,
+                    'total_students' => count($studentsPayload),
+                    'participated_count' => collect($studentsPayload)->where('has_participated', true)->count(),
+                    'students' => $studentsPayload,
+                ];
+            }
+
+            $levelsPayload[] = [
+                'academic_level_id' => (int) $levelId,
+                'academic_level_name' => $levelName,
+                'classes' => $classesPayload,
+            ];
+        }
+
+        return [
+            'exam_id' => $exam->id,
+            'exam_title' => $exam->name ?? null,
+            'levels' => $levelsPayload,
+        ];
+    }
 }

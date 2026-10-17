@@ -24,7 +24,7 @@ class OnlineExamSessionController extends Controller
         protected OnlineExamSessionService $sessionService
     ) {
         $this->middleware('auth:sanctum');
-        $this->middleware('admin_or_permission:exams.view')->only(['index', 'getExamSessions']);
+        $this->middleware('admin_or_permission:exams.view')->only(['index', 'getExamSessions', 'getExamSessionsGroupedByClass']);
         $this->middleware('admin_or_permission:exams.create')->only(['store']);
         $this->middleware('admin_or_permission:exams.update')->only(['update']);
         $this->middleware('admin_or_permission:exams.delete')->only(['destroy']);
@@ -32,6 +32,10 @@ class OnlineExamSessionController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        if ($request->query('exam_id')) {
+            $this->sessionService->repairExpiredSessionsForExam($request->query('exam_id'));
+        }
+
         $config = [
             'filterKeys' => ['status'],
             'filterKeysExact' => ['exam_id', 'student_id', 'is_locked'],
@@ -230,6 +234,17 @@ class OnlineExamSessionController extends Controller
             ->get();
 
         return $this->jsonResponseOk($sessions);
+    }
+
+    public function getExamSessionsGroupedByClass(int $examId): JsonResponse
+    {
+        $exam = Exam::query()->where('delivery_mode', 'online')->find($examId);
+
+        if (! $exam) {
+            return $this->jsonResponseError('آزمون آنلاین مورد نظر یافت نشد.', 404);
+        }
+
+        return $this->jsonResponseOk($this->sessionService->getExamSessionsGroupedByClass($exam));
     }
 
     public function destroy($id): JsonResponse
