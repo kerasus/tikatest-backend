@@ -129,6 +129,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('in-person-exam-details', InPersonExamDetailController::class);
     Route::apiResource('in-person-exam-results', InPersonExamResultController::class);
     Route::apiResource('online-exam-details', OnlineExamDetailController::class);
+    Route::get('online-exams/{exam}/questions-analytics', [OnlineExamSessionController::class, 'getExamQuestionsAnalytics'])
+        ->middleware(['auth:sanctum']);
     Route::apiResource('online-exam-sessions', OnlineExamSessionController::class);
     Route::apiResource('online-exam-session-responses', OnlineExamSessionResponseController::class);
     Route::apiResource('online-exam-answer-keys', OnlineExamAnswerKeyController::class);
