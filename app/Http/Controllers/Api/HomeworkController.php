@@ -215,8 +215,9 @@ class HomeworkController extends Controller
         return $this->jsonResponseOk($submissions);
     }
 
-    public function viewHomework(Request $request, int $homeworkId): JsonResponse
+    public function viewHomework(Request $request, int|string $homeworkId): JsonResponse
     {
+        $homeworkId = (int) $homeworkId;
         return $this->jsonResponseOk($this->homeworkService->viewForStudent($homeworkId, $request->user()->id));
     }
 

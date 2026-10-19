@@ -104,12 +104,6 @@ class FileStorageService
             }
         }
 
-        Log::info('FileStorageService: delete operation', [
-            'raw_input' => $pathOrUrl,
-            'normalized' => $cleanPath,
-            'success'   => $deleted,
-        ]);
-
         return $deleted;
     }
 }

@@ -156,7 +156,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('disciplinary/absenteeism', [DisciplinaryRecordController::class, 'registerAbsenteeism']);
     Route::get('disciplinary/absences', [DisciplinaryRecordController::class, 'viewAbsences']);
     Route::get('homework/mine', [HomeworkController::class, 'myHomeworks']);
-    Route::get('homework/{homeworkId}/view', [HomeworkController::class, 'viewHomework']);
+    Route::get('homework/{homeworkId}/view', [HomeworkController::class, 'viewHomework'])->whereNumber('homeworkId');
+
     Route::apiResource('homework', HomeworkController::class);
     Route::post('homework/{homeworkId}/submit', [HomeworkController::class, 'submitHomework']);
     Route::post('homework/{homeworkId}/attachments', [HomeworkController::class, 'storeAttachments']);
