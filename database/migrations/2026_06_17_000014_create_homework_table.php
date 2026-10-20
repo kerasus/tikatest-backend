@@ -14,7 +14,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->foreignId('lesson_id')->constrained('lessons');
             $table->foreignId('term_id')->constrained('academic_terms');
-            $table->date('due_date')->nullable();
+            $table->dateTime('due_date')->nullable();
             $table->foreignId('created_by')->constrained('users');
             $table->softDeletes();
             $table->timestamps();

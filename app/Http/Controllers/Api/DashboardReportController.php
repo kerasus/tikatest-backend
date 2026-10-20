@@ -264,7 +264,7 @@ class DashboardReportController extends Controller
 
         $pendingHomeworks = $homeworkService->studentHomeworksQuery($student, [
             'status' => 'pending',
-            'from' => today()->toDateString(),
+            'from' => now()->toDateTimeString(),
             'include_undated' => true,
         ])
             ->with(['lesson', 'classes', 'academicLevels'])

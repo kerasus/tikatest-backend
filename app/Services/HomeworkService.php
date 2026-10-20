@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use App\Models\AcademicTerm;
 use App\Models\TermEnrollment;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\UploadedFile;
 use App\Models\HomeworkAttachment;
 use App\Models\HomeworkSubmission;
@@ -21,9 +22,9 @@ class HomeworkService
     public function create(Request $request): Homework
     {
         return DB::transaction(function () use ($request) {
-            $homework = Homework::create($request->only([
+            $homework = Homework::create($this->normalizeDueDate($request->only([
                 'title', 'lesson_id', 'term_id', 'description', 'due_date',
-            ]) + ['created_by' => $request->user()->id]);
+            ])) + ['created_by' => $request->user()->id]);
 
             $this->syncAttachments($homework, $request);
             $this->syncHomeworkRelations($homework, $request);
@@ -35,9 +36,9 @@ class HomeworkService
     public function update(Request $request, Homework $homework): Homework
     {
         return DB::transaction(function () use ($request, $homework) {
-            $homework->update($request->only([
+            $homework->update($this->normalizeDueDate($request->only([
                 'title', 'lesson_id', 'term_id', 'description', 'due_date',
-            ]));
+            ])));
 
             if ($request->has('attachments') || $request->has('content') || $request->hasFile('attachments')) {
                 $this->syncAttachments($homework, $request);
@@ -104,17 +105,7 @@ class HomeworkService
         $from = $filters['from'] ?? $filters['due_date_since_date'] ?? null;
         $to = $filters['to'] ?? $filters['due_date_till_date'] ?? null;
 
-        if ($from) {
-            $query->where(function (Builder $dueDateQuery) use ($from, $filters) {
-                $dueDateQuery->whereDate('due_date', '>=', $from);
-                if (! empty($filters['include_undated'])) {
-                    $dueDateQuery->orWhereNull('due_date');
-                }
-            });
-        }
-        if ($to) {
-            $query->whereDate('due_date', '<=', $to);
-        }
+        $this->filterDueDate($query, $from, $to, ! empty($filters['include_undated']));
 
         $status = $filters['status'] ?? null;
         if ($status === 'submitted') {
@@ -124,11 +115,47 @@ class HomeworkService
             $query->whereDoesntHave('submissions', fn (Builder $query) => $query
                 ->where('student_id', $student->id)->whereNotNull('submitted_at'));
             if ($status === 'overdue') {
-                $query->whereDate('due_date', '<', today());
+                $query->where('due_date', '<', now());
             }
         }
 
         return $query;
+    }
+
+    public function filterDueDate(Builder $query, ?string $from, ?string $to, bool $includeUndated = false): void
+    {
+        if ($from) {
+            $fromDate = Carbon::parse($from);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
+                $fromDate->startOfDay();
+            }
+
+            $query->where(function (Builder $dueDateQuery) use ($fromDate, $includeUndated) {
+                $dueDateQuery->where('due_date', '>=', $fromDate);
+                if ($includeUndated) {
+                    $dueDateQuery->orWhereNull('due_date');
+                }
+            });
+        }
+
+        if ($to) {
+            $toDate = Carbon::parse($to);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+                $toDate->endOfDay();
+            }
+
+            $query->where('due_date', '<=', $toDate);
+        }
+    }
+
+    private function normalizeDueDate(array $attributes): array
+    {
+        if (isset($attributes['due_date']) && is_string($attributes['due_date'])
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', $attributes['due_date'])) {
+            $attributes['due_date'] = Carbon::parse($attributes['due_date'])->endOfDay();
+        }
+
+        return $attributes;
     }
 
     public function viewForStudent(int $homeworkId, int $studentId): array
@@ -159,11 +186,11 @@ class HomeworkService
         $homework = Homework::findOrFail($homeworkId);
         $this->assertEnrolled($homework, $studentId);
 
-        if ($homework->due_date && $homework->due_date->lt(now()->startOfDay())) {
+        $submittedAt = now();
+        if ($homework->due_date && $homework->due_date->lt($submittedAt)) {
             return null;
         }
 
-        $submittedAt = now();
         $existingSubmission = HomeworkSubmission::where('homework_id', $homeworkId)
             ->where('student_id', $studentId)
             ->first();
