@@ -260,7 +260,11 @@ class DashboardReportController extends Controller
             to: null,
             onlyOnline: true,
             onlyPendingOrInProgress: true
-        )->limit(5)->get();
+        )->limit(5)->get()
+            ->each(fn (Exam $exam) => $exam->setAttribute(
+                'timing_status',
+                $examService->resolveTimingStatus($exam->onlineExamDetail)
+            ));
 
         $pendingHomeworks = $homeworkService->studentHomeworksQuery($student, [
             'status' => 'pending',

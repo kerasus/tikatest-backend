@@ -193,7 +193,14 @@ class HomeworkController extends Controller
             ], 422);
         }
         $homeworks = $this->homeworkService->studentHomeworksQuery($user, $validator->validated())
-            ->paginate($request->integer('length', 10));
+            ->paginate($request->integer('length', 10))
+            ->through(function (Homework $hw) {
+                $hw->setAttribute(
+                    'student_status',
+                    $this->homeworkService->resolveStudentStatus($hw, $hw->submission)
+                );
+                return $hw;
+            });
 
         return $this->jsonResponseOk($homeworks);
     }

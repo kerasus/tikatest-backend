@@ -435,4 +435,47 @@ class HomeworkService
 
         return ltrim($path, '/');
     }
+
+    /**
+     * محاسبه وضعیت تکلیف دانش‌آموز بر اساس مهلت سرور و وضعیت ارسال
+     */
+    public function resolveStudentStatus(Homework $homework, ?HomeworkSubmission $submission): array
+    {
+        $hasSubmitted = ! empty($submission?->submitted_at);
+        $hasFeedback = ! empty($submission?->feedback);
+
+        // مهلت تکلیف بر اساس تایم سرور
+        $isPastDue = false;
+        if ($homework->due_date) {
+            $dueDate = $homework->due_date instanceof Carbon
+                ? $homework->due_date
+                : Carbon::parse($homework->due_date);
+
+            $isPastDue = now()->greaterThan($dueDate);
+        }
+
+        // حالت ۱: ارسال شده و بازخورد معلم ثبت شده
+        if ($hasSubmitted && $hasFeedback) {
+            $state = 'reviewed';
+        }
+        // حالت ۲: ارسال شده ولی هنوز بررسی نشده
+        elseif ($hasSubmitted) {
+            $state = 'submitted';
+        }
+        // حالت ۳: ارسال نشده و مهلت سرور به پایان رسیده
+        elseif ($isPastDue) {
+            $state = 'overdue';
+        }
+        // حالت ۴: ارسال نشده و هنوز مهلت دارد
+        else {
+            $state = 'pending';
+        }
+
+        return [
+            'state' => $state,
+            'is_submitted' => $hasSubmitted,
+            'is_reviewed' => $hasFeedback,
+            'is_past_due' => $isPastDue,
+        ];
+    }
 }
