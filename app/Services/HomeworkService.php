@@ -478,4 +478,167 @@ class HomeworkService
             'is_past_due' => $isPastDue,
         ];
     }
+
+    /**
+     * دریافت لیست دانش‌آموزان واجد شرایط یک تکلیف به تفکیک پایه و کلاس
+     * به همراه وضعیت مشاهده/ارسال/بررسی (HomeworkSubmission) برای هر دانش‌آموز
+     *
+     * state: reviewed | submitted | seen | not_seen
+     * flags: has_seen, has_submitted, is_reviewed
+     *
+     * نکته: طبق خواسته شما term_id برای enrollments فیلتر می‌شود.
+     */
+    public function getHomeworkSubmissionsGroupedByClass(Homework $homework): array
+    {
+        // 1) کلاس‌های صریح تکلیف (homework_classes)
+        $explicitClasses = \App\Models\SchoolClass::query()
+            ->whereIn('id', DB::table('homework_classes')->where('homework_id', $homework->id)->pluck('class_id'))
+            ->with('academicLevel')
+            ->get();
+
+        $explicitClassIds = $explicitClasses->pluck('id')->all();
+        $explicitByLevelId = $explicitClasses->groupBy('academic_level_id'); // [level_id => Collection<SchoolClass>]
+
+        // 2) پایه‌های تکلیف (homework_academic_levels)
+        $levelIds = $homework->academicLevels()
+            ->pluck('academic_levels.id')
+            ->all();
+
+        $levelsWithClasses = collect();
+        if (! empty($levelIds)) {
+            $levelsWithClasses = \App\Models\AcademicLevel::query()
+                ->whereIn('id', $levelIds)
+                ->with(['classes.academicLevel'])
+                ->get();
+        }
+
+        // 3) ساخت لیست نهایی کلاس‌های مشمول تکلیف طبق قاعده ترکیبی:
+        // - اگر برای یک پایه کلاس صریح داریم => فقط همان‌ها
+        // - وگرنه => همه کلاس‌های آن پایه
+        $eligibleClasses = collect();
+
+        foreach ($levelsWithClasses as $level) {
+            $levelId = $level->id;
+
+            if ($explicitByLevelId->has($levelId) && $explicitByLevelId->get($levelId)->isNotEmpty()) {
+                $eligibleClasses = $eligibleClasses->merge($explicitByLevelId->get($levelId));
+            } else {
+                $eligibleClasses = $eligibleClasses->merge($level->classes);
+            }
+        }
+
+        // اگر پایه‌ای ست نبود ولی کلاس صریح بود => همان‌ها
+        if (empty($levelIds) && ! empty($explicitClassIds)) {
+            $eligibleClasses = $explicitClasses;
+        }
+
+        // یکتا
+        $eligibleClasses = $eligibleClasses->unique('id')->values();
+
+        // 4) سابمیشن‌ها: برای هر دانش‌آموز یک رکورد (در مدل شما یکتاست)
+        $submissionsByStudent = HomeworkSubmission::query()
+            ->where('homework_id', $homework->id)
+            ->get()
+            ->keyBy('student_id');
+
+        // 5) ساخت خروجی: پایه -> کلاس -> دانش‌آموزان
+        $classesGroupedByLevel = $eligibleClasses->groupBy('academic_level_id');
+
+        $levelsPayload = [];
+
+        foreach ($classesGroupedByLevel as $levelId => $classesInLevel) {
+            $levelName = $classesInLevel->first()?->academicLevel?->name ?? 'نامشخص';
+
+            $classesPayload = [];
+
+            foreach ($classesInLevel as $schoolClass) {
+                $enrollmentsQuery = TermEnrollment::query()
+                    ->where('class_id', $schoolClass->id)
+                    ->active()
+                    ->with('user');
+
+                // طبق خواسته شما: فیلتر ترم اجباری
+                if ($homework->term_id) {
+                    $enrollmentsQuery->where('term_id', $homework->term_id);
+                }
+
+                $enrollments = $enrollmentsQuery->get();
+
+                $studentsPayload = [];
+
+                foreach ($enrollments as $enrollment) {
+                    $student = $enrollment->user;
+                    if (! $student) {
+                        continue;
+                    }
+
+                    $submission = $submissionsByStudent->get($student->id);
+
+                    $hasSeen = $submission !== null && ! empty($submission->student_seen_at);
+                    $hasSubmitted = $submission !== null && ! empty($submission->submitted_at);
+                    $isReviewed = $submission !== null && ! empty($submission->feedback);
+
+                    $state = match (true) {
+                        $isReviewed => 'reviewed',
+                        $hasSubmitted => 'submitted',
+                        $hasSeen => 'seen',
+                        default => 'not_seen',
+                    };
+
+                    $studentsPayload[] = [
+                        'student' => [
+                            'id' => $student->id,
+                            'name' => $student->name ?? trim(($student->first_name ?? '') . ' ' . ($student->last_name ?? '')),
+                            'national_code' => $student->national_code ?? null,
+                            'mobile' => $student->mobile ?? null,
+                        ],
+                        'enrollment_id' => $enrollment->id,
+
+                        'has_seen' => $hasSeen,
+                        'has_submitted' => $hasSubmitted,
+                        'is_reviewed' => $isReviewed,
+                        'state' => $state,
+
+                        'submission' => $submission ? [
+                            'id' => $submission->id,
+                            'homework_id' => $submission->homework_id,
+                            'student_id' => $submission->student_id,
+                            'student_seen_at' => $submission->student_seen_at,
+                            'submitted_at' => $submission->submitted_at,
+                            'operator_seen_at' => $submission->operator_seen_at,
+                            'feedback' => $submission->feedback,
+                            'content' => $submission->content, // accessor شما normalize می‌کنه
+                            'created_at' => $submission->created_at,
+                            'updated_at' => $submission->updated_at,
+                        ] : null,
+                    ];
+                }
+
+                $classesPayload[] = [
+                    'class_id' => $schoolClass->id,
+                    'class_name' => $schoolClass->name,
+                    'total_students' => count($studentsPayload),
+                    'reviewed_count' => collect($studentsPayload)->where('state', 'reviewed')->count(),
+                    'submitted_count' => collect($studentsPayload)->where('state', 'submitted')->count(),
+                    'seen_count' => collect($studentsPayload)->where('state', 'seen')->count(),
+                    'not_seen_count' => collect($studentsPayload)->where('state', 'not_seen')->count(),
+                    'students' => $studentsPayload,
+                ];
+            }
+
+            $levelsPayload[] = [
+                'academic_level_id' => (int) $levelId,
+                'academic_level_name' => $levelName,
+                'classes' => $classesPayload,
+            ];
+        }
+
+        return [
+            'homework_id' => $homework->id,
+            'homework_title' => $homework->title ?? null,
+            'term_id' => $homework->term_id,
+            'levels' => $levelsPayload,
+        ];
+    }
+
 }

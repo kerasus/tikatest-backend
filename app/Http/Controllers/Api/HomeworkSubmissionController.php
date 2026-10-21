@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Enums\UserRoleType;
 use App\Http\Controllers\Controller;
 use App\Models\HomeworkSubmission;
+use App\Models\Homework;
+use App\Services\HomeworkService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
@@ -14,10 +16,10 @@ class HomeworkSubmissionController extends Controller
 {
     use CommonCRUD, Filter;
 
-    public function __construct()
+    public function __construct(private readonly HomeworkService $homeworkService)
     {
         $this->middleware('auth:sanctum');
-        $this->middleware('admin_or_permission:homework_submissions.view')->only(['index', 'show']);
+        $this->middleware('admin_or_permission:homework_submissions.view')->only(['index', 'show', 'groupedByClass']);
         $this->middleware('admin_or_permission:homework_submissions.create')->only(['store']);
         $this->middleware('admin_or_permission:homework_submissions.update')->only(['update']);
         $this->middleware('admin_or_permission:homework_submissions.delete')->only(['destroy']);
@@ -44,6 +46,11 @@ class HomeworkSubmissionController extends Controller
         ];
 
         return $this->commonIndex($request, HomeworkSubmission::class, $config);
+    }
+
+    public function groupedByClass(Homework $homework): JsonResponse
+    {
+        return $this->jsonResponseOk($this->homeworkService->getHomeworkSubmissionsGroupedByClass($homework));
     }
 
     public function store(Request $request): JsonResponse

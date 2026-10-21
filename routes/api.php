@@ -162,6 +162,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('homework/{homeworkId}/submit', [HomeworkController::class, 'submitHomework']);
     Route::post('homework/{homeworkId}/attachments', [HomeworkController::class, 'storeAttachments']);
     Route::delete('homework/{homeworkId}/attachments/{attachmentId}', [HomeworkController::class, 'destroyAttachment']);
+    Route::get('homework-submissions/homework/{homework}/grouped-by-class', [HomeworkSubmissionController::class, 'groupedByClass']);
     Route::apiResource('homework-submissions', HomeworkSubmissionController::class);
     Route::put('homework-submissions/{homeworkSubmission}/seen', [HomeworkSubmissionController::class, 'markAsSeen']);
     Route::put('homework-submissions/{homeworkSubmission}/feedback', [HomeworkSubmissionController::class, 'sendFeedback']);
