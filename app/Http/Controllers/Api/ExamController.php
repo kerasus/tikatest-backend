@@ -112,7 +112,12 @@ class ExamController extends Controller
             onlyOnline: true,
             onlyPendingOrInProgress: $onlyPendingOrInProgress
         )
-            ->paginate($perPage);
+            ->paginate($perPage)
+            // افزودن وضعیت زمانی مبتنی بر ساعت سرور به هر آزمون
+            ->through(fn (Exam $exam) => $exam->setAttribute(
+                'timing_status',
+                $examService->resolveTimingStatus($exam->onlineExamDetail)
+            ));
 
         return $this->jsonResponseOk($exams);
     }

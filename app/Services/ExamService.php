@@ -772,4 +772,62 @@ class ExamService
 
         return $exam;
     }
+
+    /**
+     * محاسبه وضعیت زمانی آزمون با مرجعیت ساعت سرور
+     */
+    public function resolveTimingStatus(?OnlineExamDetail $detail): array
+    {
+        if (! $detail) {
+            return [
+                'state' => 'no_detail',
+                'is_open' => false,
+                'is_expired' => false,
+            ];
+        }
+
+        $now = now();
+        $startsAt = $detail->starts_at ? Carbon::parse($detail->starts_at) : null;
+        $endsAt = $detail->ends_at ? Carbon::parse($detail->ends_at) : null;
+        $visibleAt = $detail->visible_at ? Carbon::parse($detail->visible_at) : null;
+
+        // آزمون در آینده است و هنوز شروع نشده
+        if ($startsAt && $now->lessThan($startsAt)) {
+            return [
+                'state' => 'upcoming',
+                'is_open' => false,
+                'is_expired' => false,
+                'starts_in_seconds' => $now->diffInSeconds($startsAt, false),
+            ];
+        }
+
+        // مهلت آزمون به اتمام رسیده
+        if ($endsAt && $now->greaterThan($endsAt)) {
+            return [
+                'state' => 'expired',
+                'is_open' => false,
+                'is_expired' => true,
+                'expired_seconds_ago' => $now->diffInSeconds($endsAt, true),
+            ];
+        }
+
+        // در حال برگزاری (پنجره آزمون باز است)
+        if ($startsAt && $now->greaterThanOrEqualTo($startsAt) && (! $endsAt || $now->lessThanOrEqualTo($endsAt))) {
+            return [
+                'state' => 'running',
+                'is_open' => true,
+                'is_expired' => false,
+                'ends_in_seconds' => $endsAt ? $now->diffInSeconds($endsAt, false) : null,
+            ];
+        }
+
+        // آزمون بدون تاریخ محدودکننده (آزاد)
+        return [
+            'state' => 'open',
+            'is_open' => true,
+            'is_expired' => false,
+            'ends_in_seconds' => null,
+        ];
+    }
+
 }
