@@ -8,6 +8,7 @@ use App\Models\Exam;
 use App\Enums\UserRoleType;
 use Carbon\CarbonInterface;
 use App\Models\SchoolClass;
+use App\Models\AcademicLevel;
 use App\Models\TermEnrollment;
 use App\Models\OnlineExamSession;
 use Illuminate\Support\Collection;
@@ -387,6 +388,123 @@ class OnlineExamSessionService
             'session' => $session,
             'remaining_time' => $this->calculateRemainingTime($session),
             'answer_keys' => $this->formatAnswerKeys($session, includeSolutions: $includeSolutions),
+            'rankings' => $this->getSessionRankings($session),
+        ];
+    }
+
+    /**
+     * رتبه دانش‌آموز در کلاس‌ها و پایه‌ها برای همین آزمون.
+     *
+     * مبنا: آخرین تلاش تصحیح‌شده هر دانش‌آموز.
+     * رتبه مساوی: 1, 1, 3
+     *
+     * تعداد شرکت‌کنندگان، فقط شامل دانش‌آموزان دارای نمره است.
+     */
+    public function getSessionRankings(OnlineExamSession $session): array
+    {
+        $metric = 'percent';
+        $attemptPolicy = 'latest_graded';
+
+        // 1) گرفتن آزمون و دانش‌آموز از روی سشن
+        $exam = $session->exam;
+        $studentId = (int) ($session->student_id ?? $session->user_id);
+
+        if (! $exam || ! $studentId) {
+            return [
+                'metric'         => $metric,
+                'attempt_policy' => $attemptPolicy,
+                'classes'        => [],
+                'levels'         => [],
+            ];
+        }
+
+        // 2) دریافت ساختار دسته‌بندی‌شده آزمون
+        $groupedData = $this->getExamSessionsGroupedByClass($exam);
+        $levels = $groupedData['levels'] ?? [];
+
+        $classesRankings = [];
+        $levelsRankings = [];
+
+        foreach ($levels as $levelData) {
+            $levelId = $levelData['academic_level_id'];
+            $levelName = $levelData['academic_level_name'];
+            $classes = $levelData['classes'] ?? [];
+
+            $studentEnrolledInThisLevel = false;
+            $levelParticipants = [];
+
+            foreach ($classes as $classData) {
+                $classId = $classData['class_id'];
+                $className = $classData['class_name'];
+                $studentsInClass = $classData['students'] ?? [];
+
+                // آیا این دانش‌آموز در این کلاس ثبت‌نام کرده؟
+                $isStudentInClass = collect($studentsInClass)
+                    ->contains(fn ($item) => (int)($item['student']['id'] ?? 0) === $studentId);
+
+                // استخراج تمام شرکت‌کنندگانی که درصد معتبر دارند
+                $classParticipants = collect($studentsInClass)
+                    ->filter(fn ($item) => !empty($item['has_participated']) && isset($item['session']['percent']) && $item['session']['percent'] !== null)
+                    ->map(fn ($item) => [
+                        'student_id' => (int)$item['student']['id'],
+                        'percent'    => (float)$item['session']['percent'],
+                    ])
+                    ->values();
+
+                // ثبت شرکت‌کنندگان در سطح پایه
+                foreach ($classParticipants as $p) {
+                    $levelParticipants[$p['student_id']] = $p;
+                }
+
+                // اگر دانش‌آموز عضو این کلاس بود، رتبه‌اش محاسبه می‌شود
+                if ($isStudentInClass) {
+                    $studentEnrolledInThisLevel = true;
+
+                    $sortedClassParticipants = $classParticipants->sortByDesc('percent')->values();
+                    $totalClassParticipants = $sortedClassParticipants->count();
+
+                    $studentRankInClass = null;
+                    $rankIndex = $sortedClassParticipants->search(fn ($p) => $p['student_id'] === $studentId);
+                    if ($rankIndex !== false) {
+                        $studentRankInClass = $rankIndex + 1;
+                    }
+
+                    $classesRankings[] = [
+                        'class_id'           => $classId,
+                        'class_name'         => $className,
+                        'academic_level_id'  => $levelId,
+                        'academic_level_name'=> $levelName,
+                        'rank'               => $studentRankInClass,
+                        'total_participants' => $totalClassParticipants,
+                    ];
+                }
+            }
+
+            // اگر در این پایه ثبت‌نام داشت، رتبه پایه
+            if ($studentEnrolledInThisLevel) {
+                $sortedLevelParticipants = collect(array_values($levelParticipants))->sortByDesc('percent')->values();
+                $totalLevelParticipants = $sortedLevelParticipants->count();
+
+                $studentRankInLevel = null;
+                $levelRankIndex = $sortedLevelParticipants->search(fn ($p) => $p['student_id'] === $studentId);
+                if ($levelRankIndex !== false) {
+                    $studentRankInLevel = $levelRankIndex + 1;
+                }
+
+                $levelsRankings[] = [
+                    'academic_level_id'   => $levelId,
+                    'academic_level_name' => $levelName,
+                    'rank'                => $studentRankInLevel,
+                    'total_participants'  => $totalLevelParticipants,
+                ];
+            }
+        }
+
+        return [
+            'metric'         => $metric,
+            'attempt_policy' => $attemptPolicy,
+            'classes'        => $classesRankings,
+            'levels'         => $levelsRankings,
         ];
     }
 
@@ -847,10 +965,6 @@ class OnlineExamSessionService
             ->pluck('academic_levels.id')
             ->all();
 
-        // اگر هیچ پایه‌ای وصل نبود و هیچ کلاس صریحی هم نبود، می‌تونی fallback بزنی:
-        // - یا همه کلاس‌های مدرسه/ترم
-        // - یا فقط کلاس‌هایی که enrollment دارند
-        // فعلاً طبق سناریوی شما: پایه‌ها/کلاس‌ها مبناست.
         $levelsWithClasses = collect();
         if (!empty($levelIds)) {
             $levelsWithClasses = \App\Models\AcademicLevel::query()
@@ -860,8 +974,6 @@ class OnlineExamSessionService
         }
 
         // 3) ساخت لیست نهایی کلاس‌های مشمول آزمون طبق قاعده ترکیبی
-        // - اگر برای یک پایه کلاس صریح داریم => فقط همان‌ها
-        // - وگرنه => همه کلاس‌های آن پایه
         $eligibleClasses = collect();
 
         foreach ($levelsWithClasses as $level) {
@@ -874,17 +986,13 @@ class OnlineExamSessionService
             }
         }
 
-        // اگر پایه‌ای ست نبود ولی کلاس صریح بود => همان‌ها
         if (empty($levelIds) && !empty($explicitClassIds)) {
             $eligibleClasses = $explicitClasses;
         }
 
-        // یکتا
         $eligibleClasses = $eligibleClasses->unique('id')->values();
 
         // 4) سشن‌ها: آخرین attempt هر دانش‌آموز
-        // نکته: اگر attempt_number داری، بهتره با subquery/aggregate آخرین attempt رو بگیری؛
-        // ولی برای شروع همین unique هم خوبه.
         $sessionsByStudent = OnlineExamSession::query()
             ->where('exam_id', $exam->id)
             ->orderByDesc('attempt_number')
@@ -904,19 +1012,13 @@ class OnlineExamSessionService
             $classesPayload = [];
 
             foreach ($classesInLevel as $schoolClass) {
-                // enrollments (بهتر: اگر لازم داری فقط ترم فعال یا ترم آزمون را بگیری، اینجا دقیقش کن)
                 $enrollmentsQuery = TermEnrollment::query()
                     ->where('class_id', $schoolClass->id)
                     ->active()
                     ->with('user');
 
-                // این شرط باعث خالی شدن خروجی شما شده بود؛ پس فقط وقتی بزن که مطمئنی
-                // term_id آزمون همان term_id enrollment هاست.
                 if ($exam->term_id) {
                     $enrollmentsQuery->where('term_id', $exam->term_id);
-                    // اگر ترم‌ها پیچیده‌اند، شاید بهتر باشد:
-                    // ->whereTermIsActive()
-                    // یا اصلاً این فیلتر را برداری و فقط active بماند.
                 }
 
                 $enrollments = $enrollmentsQuery->get();
@@ -944,19 +1046,47 @@ class OnlineExamSessionService
                             'started_at' => $session->started_at,
                             'submitted_at' => $session->submitted_at,
                             'time_used_seconds' => $session->time_used_seconds,
-                            'percent' => $session->percent,
+                            'percent' => $session->percent !== null ? (float) $session->percent : null,
                             't_score' => $session->t_score,
                             'is_locked' => $session->is_locked,
                         ] : null,
                     ];
                 }
 
+                // ⭐ 6) مرتب‌سازی نزولی دانش‌آموزان بر اساس درصد (دانش‌آموزان بدون درصد در انتهای لیست قرار می‌گیرند)
+                $sortedStudents = collect($studentsPayload)->sort(function ($a, $b) {
+                    $pA = $a['session']['percent'] ?? null;
+                    $pB = $b['session']['percent'] ?? null;
+
+                    // هر دو درصد دارند => مقایسه عددی نزولی
+                    if ($pA !== null && $pB !== null) {
+                        if ($pA == $pB) {
+                            // در صورت برابری، بر اساس کمترین زمان مصرف‌شده (یا نام دانش‌آموز)
+                            return ($a['session']['time_used_seconds'] ?? 0) <=> ($b['session']['time_used_seconds'] ?? 0);
+                        }
+                        return $pB <=> $pA; // نزولی (بزرگتر بالاتر)
+                    }
+
+                    // اگر A درصد دارد و B ندارد => A بالاتر است (-1)
+                    if ($pA !== null && $pB === null) {
+                        return -1;
+                    }
+
+                    // اگر B درصد دارد و A ندارد => B بالاتر است (1)
+                    if ($pA === null && $pB !== null) {
+                        return 1;
+                    }
+
+                    // اگر هیچ‌کدام درصد ندارند => مرتب‌سازی بر اساس نام
+                    return strcmp($a['student']['name'] ?? '', $b['student']['name'] ?? '');
+                })->values()->all();
+
                 $classesPayload[] = [
                     'class_id' => $schoolClass->id,
                     'class_name' => $schoolClass->name,
-                    'total_students' => count($studentsPayload),
-                    'participated_count' => collect($studentsPayload)->where('has_participated', true)->count(),
-                    'students' => $studentsPayload,
+                    'total_students' => count($sortedStudents),
+                    'participated_count' => collect($sortedStudents)->where('has_participated', true)->count(),
+                    'students' => $sortedStudents,
                 ];
             }
 
@@ -972,5 +1102,134 @@ class OnlineExamSessionService
             'exam_title' => $exam->name ?? null,
             'levels' => $levelsPayload,
         ];
+    }
+
+    /**
+     * محاسبه مجدد نتایج ثبت‌شده‌ی یک آزمون (بعد از تغییر کلید/وزن/نمره منفی و ...)
+     *
+     * نکته: فقط سشن‌های پایان‌یافته را بازنمره‌دهی می‌کند (submitted/graded/expired).
+     * پیش‌فرض: فقط آخرین attempt هر دانش‌آموز را محاسبه می‌کند.
+     */
+    public function recalculateExamResults(
+        int $examId,
+        ?int $termId = null,
+        bool $latestAttemptOnly = true
+    ): array {
+        $exam = Exam::query()
+            ->whereKey($examId)
+            ->where('delivery_mode', 'online')
+            ->with([
+                'lesson',
+                'onlineExamDetail.answerKeys',
+                'onlineExamDetail.booklets.lesson',
+            ])
+            ->first();
+
+        if (! $exam) {
+            throw new ModelNotFoundException('آزمون آنلاین مورد نظر یافت نشد.');
+        }
+
+        $result = [
+            'exam_id' => $examId,
+            'checked' => 0,
+            'rescored' => 0,
+            'skipped' => 0,
+            'failed' => 0,
+            'rescored_session_ids' => [],
+            'failed_session_ids' => [],
+            'latest_attempt_only' => $latestAttemptOnly,
+        ];
+
+        // 1) پایه‌ی کوئری: فقط سشن‌های پایان‌یافته
+        $baseQuery = OnlineExamSession::query()
+            ->where('exam_id', $examId)
+            ->whereIn('status', ['submitted', 'graded', 'expired']);
+
+//        if ($termId) {
+            // اگر term_id روی خود exam هست، معمولاً لازم نیست.
+            // ولی اگر سشن‌ها به ترم خاصی باید محدود شوند، اینجا جای فیلتر است.
+            // (فعلاً چیزی روی OnlineExamSession نداریم، فقط گذاشتم برای توسعه‌ی بعدی)
+//        }
+
+        // 2) اگر فقط آخرین تلاش هر دانش‌آموز مدنظر است:
+        //    یک زیرکوئری می‌گیریم که session_id آخرین attempt را برگرداند.
+        if ($latestAttemptOnly) {
+            // انتخاب آخرین attempt_number و در صورت تساوی آخرین id
+            // روش ساده: همه را مرتب کنیم و unique کنیم (ممکن است سنگین شود)
+            // روش بهتر: subquery.
+            $latestIds = OnlineExamSession::query()
+                ->select(DB::raw('MAX(id) as id'))
+                ->where('exam_id', $examId)
+                ->whereIn('status', ['submitted', 'graded', 'expired'])
+                ->groupBy('student_id')
+                ->pluck('id')
+                ->all();
+
+            $baseQuery->whereIn('id', $latestIds);
+        }
+
+        // 3) پردازش chunk
+        $baseQuery
+            ->orderBy('id')
+            ->chunkById(100, function ($sessions) use (&$result, $exam) {
+                foreach ($sessions as $session) {
+                    $result['checked']++;
+
+                    try {
+                        DB::transaction(function () use ($session, $exam, &$result) {
+                            /** @var OnlineExamSession $lockedSession */
+                            $lockedSession = OnlineExamSession::query()
+                                ->whereKey($session->id)
+                                ->lockForUpdate()
+                                ->firstOrFail();
+
+                            // اگر در این فاصله وضعیتش تغییر کرد (مثلاً رفت in_progress)، دست نزن
+                            if (! in_array($lockedSession->status, ['submitted', 'graded', 'expired'], true)) {
+                                $result['skipped']++;
+                                return;
+                            }
+
+                            // لود وابستگی‌های لازم برای scoring
+                            $lockedSession->load([
+                                'responses',
+                                'exam.lesson',
+                                'exam.onlineExamDetail.answerKeys',
+                                'exam.onlineExamDetail.booklets.lesson',
+                            ]);
+
+                            // اگر پاسخ‌ها نیست یا answerKey نداریم، منطقیه skip کنیم
+                            if (! $lockedSession->exam?->onlineExamDetail?->answerKeys) {
+                                $result['skipped']++;
+                                return;
+                            }
+
+                            $scoreData = $this->scoringService->calculateSessionScore($lockedSession);
+
+                            $lockedSession->update([
+                                'percent' => $scoreData['percent'] ?? 0,
+                                't_score' => $scoreData['obtained_marks'] ?? 0,
+                                // وضعیت را graded نگه می‌داریم چون نتیجه محاسبه شده
+                                'status' => 'graded',
+                            ]);
+
+                            $result['rescored']++;
+                            $result['rescored_session_ids'][] = $lockedSession->id;
+                        }, 3);
+                    } catch (Throwable $e) {
+                        $result['failed']++;
+                        $result['failed_session_ids'][] = $session->id;
+
+                        Log::error('Failed to recalculate exam session score.', [
+                            'exam_id' => $exam->id,
+                            'session_id' => $session->id,
+                            'student_id' => $session->student_id,
+                            'status' => $session->status,
+                            'exception' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            });
+
+        return $result;
     }
 }

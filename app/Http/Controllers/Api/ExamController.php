@@ -266,14 +266,21 @@ class ExamController extends Controller
     }
 
     // tick
-    public function updateWithOnlineDetail(Request $request, Exam $exam, ExamService $examService): JsonResponse
+    public function updateWithOnlineDetail(
+        Request $request,
+        Exam $exam,
+        ExamService $examService,
+        OnlineExamSessionService $onlineExamSessionService,
+    ): JsonResponse
     {
         $validated = $this->validateOnlineExam($request);
 
         $this->validateLessonOrBookletsExclusive($validated);
 
-        $exam = DB::transaction(function () use ($exam, $validated, $request, $examService) {
-            return $examService->updateOnlineExam($exam, $validated, $request);
+        $exam = DB::transaction(function () use ($exam, $validated, $request, $examService, $onlineExamSessionService) {
+            $exam = $examService->updateOnlineExam($exam, $validated, $request);
+            $onlineExamSessionService->recalculateExamResults($exam->id);
+            return $exam;
         });
 
         return $this->show($request, $exam->id);
