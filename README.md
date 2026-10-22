@@ -1,5 +1,52 @@
 ## Setup & Development
 
+## Bale bot connection
+
+Set `BALE_BOT_TOKEN`, `BALE_BOT_USERNAME` (without `@`), and a long random
+`BALE_WEBHOOK_SECRET` in `.env`. `BALE_LINK_TOKEN_TTL=300` controls the lifetime
+in seconds. Redis must be reachable from Laravel (`REDIS_HOST=redis` inside Sail).
+For existing databases where the modified initial users migration has already
+run, add `bale_chat_id` and `bale_username` to `users` with a separate schema
+migration before enabling the integration; editing an already-run migration
+does not update an existing table.
+
+Set `APP_URL` to your public HTTPS domain (including its port if needed), then run:
+
+```bash
+php artisan config:clear
+php artisan bale:set-webhook
+```
+
+The command registers `POST /api/v1/bale/webhook?secret=<BALE_WEBHOOK_SECRET>`
+with Bale. Keep the secret out of logs, screenshots, and public URLs. The webhook
+also accepts `X-Bale-Webhook-Secret` for setups that can inject a custom header.
+The standard API prefix is `api`; if `API_PREFIX` is customized, the paths
+change accordingly. The authenticated `POST /api/v1/bale/link` returns a deep
+link for disconnected users or `{ "connected": true }` if already connected;
+re-linking requires `DELETE /api/v1/bale/connection` first. Issuing another link
+invalidates the previous one, and disconnecting revokes any outstanding link.
+
+Example update (the `/start` token below is illustrative, not a live token):
+
+```json
+{
+  "update_id": 123,
+  "message": {
+    "message_id": 456,
+    "text": "/start 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "chat": { "id": 987654321, "type": "private" },
+    "from": { "id": 987654321, "username": "bale_student" }
+  }
+}
+```
+
+For isolated feature tests with Sail (in-memory SQLite and the running Redis
+container), run:
+
+```bash
+docker compose exec -T -e DB_CONNECTION=sqlite -e DB_DATABASE=:memory: -e REDIS_HOST=redis laravel.test php artisan test --filter=BaleConnectionTest
+```
+
 This project uses [Laravel Sail](https://laravel.com/docs/sail), a Docker-based local development environment. Docker must be installed and running on your machine before you can use Sail.
 
 ### 1. Install and configure Docker

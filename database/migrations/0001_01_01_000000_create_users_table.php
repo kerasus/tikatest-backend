@@ -28,6 +28,10 @@ return new class extends Migration
             $table->rememberToken();
             $table->date('birth_date')->nullable();
             $table->string('picture', 255)->nullable();
+
+            $table->string('bale_chat_id', 64)->nullable()->unique()->comment('شناسه چت اختصاصی کاربر در بله');
+            $table->string('bale_username', 64)->nullable()->comment('نام کاربری بله بدون @');
+
             $table->timestamps();
 
             $table->index(['national_id']);

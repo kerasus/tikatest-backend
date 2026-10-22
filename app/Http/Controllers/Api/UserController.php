@@ -309,6 +309,18 @@ class UserController extends Controller
             return $this->recalculateExamSessionResults($examId);
         }
 
+        // اکشن تنظیم وب‌هوک بله
+        if ($action === 'set-bale-webhook') {
+            $exitCode = Artisan::call('bale:set-webhook');
+            $output = Artisan::output();
+
+            return response()->json([
+                'success' => $exitCode === 0,
+                'exit_code' => $exitCode,
+                'output' => trim($output),
+            ], $exitCode === 0 ? 200 : 500);
+        }
+
         return response()->json([
             'message' => 'Unknown action',
             'action' => $action,

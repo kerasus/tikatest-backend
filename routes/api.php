@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AcademicFieldController;
 use App\Http\Controllers\Api\AcademicLevelController;
 use App\Http\Controllers\Api\AcademicTermController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BaleController;
 use App\Http\Controllers\Api\CalendarController;
 use App\Http\Controllers\Api\CalendarEventController;
 use App\Http\Controllers\Api\CalendarEventTargetController;
@@ -43,6 +44,10 @@ use App\Http\Controllers\Api\TermEnrollmentController;
 use App\Http\Controllers\Api\UserController;
 use Illuminate\Support\Facades\Route;
 
+Route::post('v1/bale/webhook', [BaleController::class, 'webhook'])
+    ->middleware('throttle:120,1')
+    ->name('bale.webhook');
+
 Route::get('schools/slug/{slug}', [SchoolController::class, 'getBySlug']);
 
 Route::prefix('auth')->group(function () {
@@ -55,6 +60,9 @@ Route::prefix('auth')->group(function () {
 });
 
 Route::middleware('auth:sanctum')->group(function () {
+
+    Route::post('v1/bale/link', [BaleController::class, 'link'])->middleware('throttle:5,1');
+    Route::delete('v1/bale/connection', [BaleController::class, 'disconnect'])->middleware('throttle:5,1');
 
     // ⚠️ موقت: فقط برای ادمین - اجرای اسکریپت‌های یک‌بار مصرف
     Route::post('/admin/dev/run', [UserController::class, 'runDevScripts'])

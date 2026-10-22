@@ -120,6 +120,8 @@ class User extends Authenticatable
         'address',
         'description',
         'picture',
+        'bale_chat_id',
+        'bale_username',
     ];
 
     protected $hidden = [
@@ -187,6 +189,11 @@ class User extends Authenticatable
     public function guardianRecords(): HasMany
     {
         return $this->hasMany(StudentGuardian::class, 'user_id');
+    }
+
+    public function hasBaleConnected(): bool
+    {
+        return !empty($this->bale_chat_id);
     }
 
     public function inPersonExamResults(): HasMany
