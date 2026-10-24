@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Exam;
-use App\Models\User;
 use Illuminate\Support\Str;
 use App\Models\AcademicTerm;
 use Illuminate\Http\Request;
@@ -25,8 +24,7 @@ use Illuminate\Validation\ValidationException;
 class ExamService
 {
     public function __construct(
-        protected FileStorageService $fileStorageService,
-        protected OnlineExamSessionService $onlineExamSessionService
+        protected FileStorageService $fileStorageService
     ) {}
 
     public function createOnlineExam(array $validated, Request $request): Exam
@@ -625,6 +623,7 @@ class ExamService
                             'exam_id',
                             'student_id',
                             'status',
+                            'percent',
                             'started_at',
                             'submitted_at',
                             'time_used_seconds',
@@ -688,21 +687,9 @@ class ExamService
         return $query;
     }
 
-    /**
-     * دریافت جزئیات آزمون برای دانش‌آموز همراه با اعمال سیاست‌های سخت‌گیرانه امنیتی
-     * جهت جلوگیری از افشای زودهنگام سوالات، گزینه‌ها و کلید پاسخنامه.
-     */
-    public function getExamForStudent(int $examId, User $student): Exam
+    public function getExamForStudent(int $examId): Exam
     {
-        // ۱. بررسی رول دانش‌آموز
-        abort_unless(
-            $student->hasRole('student'),
-            403,
-            'این عملیات فقط برای دانش‌آموزان مجاز است.'
-        );
-
-        // ۲. کوئری آزمون با روابط پایه و غیرفعال‌سازی لود خودکار روابط حساس
-        $exam = Exam::query()
+        return Exam::query()
             ->whereKey($examId)
             ->with([
                 'category:id,title',
@@ -718,59 +705,6 @@ class ExamService
                 'term.parentTerm:id,name',
             ])
             ->firstOrFail();
-
-        // ۳. بررسی و اعتبارسنجی سطح دسترسی دانش‌آموز به آزمون
-        $this->onlineExamSessionService->validateStudentAccess($exam, $student);
-
-        // ۴. دریافت آخرین نشست ثبت‌شده دانش‌آموز برای این آزمون
-        $session = $this->onlineExamSessionService->getLatestStudentSession($exam, $student);
-        $hasSubmitted = $this->onlineExamSessionService->hasSubmitted($session);
-
-        $onlineDetail = $exam->onlineExamDetail;
-
-        // ۵. بررسی وضعیت پایان زمان آزمون
-        $endsAt = $onlineDetail?->ends_at
-            ? Carbon::parse($onlineDetail->ends_at)
-            : null;
-
-        $isExamFinished = $endsAt
-            ? now()->greaterThan($endsAt)
-            : $hasSubmitted;
-
-        // ۶. سیاست امنیتی: نمایش داده‌های حساس فقط در صورتی مجاز است که دانش‌آموز سابمیت کرده و زمان آزمون تمام شده باشد
-        $canExposeSensitiveData = $hasSubmitted && $isExamFinished;
-
-        if ($canExposeSensitiveData) {
-            $exam->load([
-                'onlineExamDetail.booklets',
-                'onlineExamDetail.answerKeys' => function ($query) {
-                    $query->where('is_active', true);
-                },
-            ]);
-        } else {
-            // ماسک کردن محتوا و پاسخنامه در صورتی که در detail ذخیره شده باشند
-            if ($onlineDetail) {
-                $onlineDetail->unsetRelation('booklets');
-                $onlineDetail->unsetRelation('answerKeys');
-                $onlineDetail->makeHidden(['content', 'solution']);
-            }
-        }
-
-        // ۷. ست کردن داده‌های کمکی برای پاسخ API
-        $exam->setAttribute('participation_status', $session?->status ?? 'not_started');
-        $exam->setAttribute(
-            'student_online_exam_session',
-            $session ? [
-                'id' => $session->id,
-                'status' => $session->status,
-                'attempt_number' => $session->attempt_number,
-                'started_at' => $session->started_at,
-                'submitted_at' => $session->submitted_at,
-            ] : null
-        );
-        $exam->setAttribute('sensitive_data_available', $canExposeSensitiveData);
-
-        return $exam;
     }
 
     /**

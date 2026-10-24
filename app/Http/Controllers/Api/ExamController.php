@@ -15,6 +15,7 @@ use App\Models\OnlineExamSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use App\Http\Controllers\Controller;
+use App\Traits\ChecksOnlineExamAccess;
 use App\Http\Resources\ExamResource;
 use Illuminate\Support\Facades\Validator;
 use App\Services\OnlineExamSessionService;
@@ -23,7 +24,7 @@ use Throwable;
 
 class ExamController extends Controller
 {
-    use CommonCRUD, Filter;
+    use CommonCRUD, Filter, ChecksOnlineExamAccess;
 
     public function __construct()
     {
@@ -194,12 +195,39 @@ class ExamController extends Controller
         return $this->jsonResponseOk(new ExamResource($exam));
     }
 
-    public function studentShow(Request $request, int $id, ExamService $examService): JsonResponse
+    public function studentShow(Request $request, int $id, ExamService $examService, OnlineExamSessionService $sessions): JsonResponse
     {
-        $exam = $examService->getExamForStudent(
-            examId: $id,
-            student: $request->user()
-        );
+        $exam = $examService->getExamForStudent($id);
+
+        $this->checkStudentExamAccess($exam, $request->user());
+
+        if ($exam->delivery_mode === 'online') {
+            $this->checkExamVisibility($exam);
+        }
+
+        $session = $sessions->getLatestStudentSession($exam, $request->user());
+        $canShowSolutions = $exam->delivery_mode === 'online' && $this->canShowSolutions($exam, $session);
+
+        if ($canShowSolutions) {
+            $exam->load([
+                'onlineExamDetail.booklets',
+                'onlineExamDetail.answerKeys' => fn ($query) => $query->where('is_active', true),
+            ]);
+        } elseif ($exam->onlineExamDetail) {
+            $exam->onlineExamDetail->unsetRelation('booklets');
+            $exam->onlineExamDetail->unsetRelation('answerKeys');
+            $exam->onlineExamDetail->makeHidden(['content', 'solution', 'solution_file', 'solution_path', 'solution_descriptive']);
+        }
+
+        $exam->setAttribute('participation_status', $session?->status ?? 'not_started');
+        $exam->setAttribute('student_online_exam_session', $session ? [
+            'id' => $session->id,
+            'status' => $session->status,
+            'attempt_number' => $session->attempt_number,
+            'started_at' => $session->started_at,
+            'submitted_at' => $session->submitted_at,
+        ] : null);
+        $exam->setAttribute('sensitive_data_available', $canShowSolutions);
 
         return $this->jsonResponseOk(new ExamResource($exam));
     }

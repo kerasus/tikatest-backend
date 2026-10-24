@@ -5,7 +5,6 @@ namespace App\Services;
 use Throwable;
 use App\Models\User;
 use App\Models\Exam;
-use App\Enums\UserRoleType;
 use Carbon\CarbonInterface;
 use App\Models\SchoolClass;
 use App\Models\AcademicLevel;
@@ -17,7 +16,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Eloquent\Builder;
 use App\Models\OnlineExamSessionResponse;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class OnlineExamSessionService
 {
@@ -42,105 +40,13 @@ class OnlineExamSessionService
         ];
     }
 
-    /**
-     * بررسی صلاحیت و دسترسی دانش‌آموز به آزمون بر اساس ثبت‌نام (Enrollment)
-     */
-    public function validateStudentAccess(Exam $exam, User $user): void
+    public function loadSessionRelations(OnlineExamSession $session): OnlineExamSession
     {
-        // ادمین‌ها و کاربران با دسترسی مدیریت همیشه مجازند
-        if ($user->hasRole(UserRoleType::Admin->value) || $user->hasPermissionTo('exams.view')) {
-            return;
-        }
-
-        // اگر آزمون به کلاسی تخصیص نیافته، دسترسی عمومی تلقی می‌شود
-        $examClassIds = DB::table('exam_classes')
-            ->where('exam_id', $exam->id)
-            ->pluck('class_id')
-            ->all();
-
-        if (empty($examClassIds)) {
-            return;
-        }
-
-        // بررسی عضویت در کلاس‌های مربوطه
-        $hasActiveEnrollment = DB::table('term_enrollments')
-            ->where('user_id', $user->id)
-            ->whereIn('class_id', $examClassIds)
-            ->exists();
-
-        if (! $hasActiveEnrollment) {
-            throw new HttpException(403, 'شما دسترسی لازم برای شرکت در این آزمون را ندارید.');
-        }
-    }
-
-    /**
-     * بررسی بازه زمانی رسمی و آغاز/پایان آزمون
-     */
-    public function validateExamTiming(Exam $exam): void
-    {
-        $onlineDetail = $exam->onlineExamDetail;
-
-        if (! $onlineDetail) {
-            throw new HttpException(404, 'تنظیمات آزمون آنلاین برای این آزمون یافت نشد.');
-        }
-
-        $now = now();
-
-        if ($onlineDetail->visible_at && $now->lt($onlineDetail->visible_at)) {
-            throw new HttpException(403, 'آزمون هنوز برای شما در دسترس و قابل مشاهده نیست.');
-        }
-
-        if ($onlineDetail->starts_at && $now->lt($onlineDetail->starts_at)) {
-            throw new HttpException(409, 'زمان برگزاری آزمون هنوز فرا نرسیده است.');
-        }
-
-        if ($onlineDetail->ends_at && $now->gt($onlineDetail->ends_at)) {
-            throw new HttpException(409, 'مهلت برگزاری این آزمون به پایان رسیده است.');
-        }
-    }
-
-    /**
-     * ماسک کردن امنیتی کلیدهای پاسخ و فایل/متن پاسخ‌نامه تشریحی روی شیء Session
-     */
-    public function prepareSessionRelations(OnlineExamSession $session, bool $includeSolutions = false): OnlineExamSession
-    {
-        // اطمینان از لود بودن تمام وابستگی‌ها از جمله answerKeys
         $session->loadMissing([
             'responses',
             'exam.onlineExamDetail.booklets',
             'exam.onlineExamDetail.answerKeys' => fn ($q) => $q->where('is_active', true),
         ]);
-
-        $onlineDetail = $session->exam?->onlineExamDetail;
-
-        // ۱. مخفی‌سازی اطلاعات کل پاسخنامه تشریحی (solution) از onlineExamDetail در زمان آزمون
-        if ($onlineDetail && ! $includeSolutions) {
-            $onlineDetail->makeHidden([
-                'solution',
-                'solution_file',
-                'solution_path',
-                'solution_descriptive',
-            ]);
-        }
-
-        // ۲. مخفی‌سازی correct_option از تک تک سوالات
-        $answerKeys = $onlineDetail?->answerKeys;
-
-        if ($answerKeys) {
-            if (! $includeSolutions) {
-                // حذف گزینه صحیح از دید دانش‌آموز در حین آزمون
-                $answerKeys->makeHidden(['correct_option']);
-            } else {
-                // اگر آزمون تمام شده باشد، جزئیات پاسخ داوطلب هم برای نمایش کارنامه الصاق می‌شود
-                $responsesByQuestion = $session->responses->keyBy('question_number');
-                $answerKeys->each(function ($key) use ($responsesByQuestion) {
-                    $response = $responsesByQuestion->get($key->question_number);
-                    $key->submitted_option = $response?->submitted_option;
-                    $key->is_correct = $response?->is_correct;
-                    $key->marks_obtained = $response?->marks_obtained;
-                });
-            }
-        }
 
         return $session;
     }
@@ -150,9 +56,6 @@ class OnlineExamSessionService
      */
     public function startOrCreateSession(Exam $exam, User $user, int $attemptNumber = 1, ?string $ip = null, ?string $userAgent = null): array
     {
-        $this->validateStudentAccess($exam, $user);
-        $this->validateExamTiming($exam);
-
         $onlineDetail = $exam->onlineExamDetail;
         $now = now();
 
@@ -167,26 +70,13 @@ class OnlineExamSessionService
             if ($existingSession->status === 'in_progress') {
                 $remaining = $this->calculateRemainingTime($existingSession, $now);
 
-                if ($remaining !== null && $remaining <= 0) {
-                    $existingSession->update(['status' => 'expired', 'is_locked' => true]);
-                    throw new HttpException(410, 'مهلت زمانی نشست آزمون شما منقضی شده است.');
-                }
-
-                $this->prepareSessionRelations($existingSession, includeSolutions: false);
-
                 return [
                     'session' => $existingSession,
                     'remaining_time' => $remaining,
                 ];
             }
 
-            if (in_array($existingSession->status, ['submitted', 'graded'], true)) {
-                throw new HttpException(409, 'این آزمون قبلاً توسط شما ارسال و ثبت شده است.');
-            }
-
-            if ($existingSession->status === 'expired') {
-                throw new HttpException(410, 'مهلت جلسه آزمون به پایان رسیده است.');
-            }
+            return ['session' => $existingSession, 'remaining_time' => $this->calculateRemainingTime($existingSession, $now)];
         }
 
         // محاسبه کل مدت مجاز زمان آزمون به ثانیه
@@ -201,10 +91,6 @@ class OnlineExamSessionService
                 : $secondsUntilGlobalEnd;
         }
 
-        if ($durationSeconds !== null && $durationSeconds <= 0) {
-            throw new HttpException(409, 'مهلت شرکت در آزمون خاتمه یافته است.');
-        }
-
         $session = OnlineExamSession::create([
             'exam_id' => $exam->id,
             'student_id' => $user->id,
@@ -217,8 +103,6 @@ class OnlineExamSessionService
             'is_locked' => false,
         ]);
 
-        $this->prepareSessionRelations($session, includeSolutions: false);
-
         return [
             'session' => $session,
             'remaining_time' => $durationSeconds,
@@ -230,24 +114,6 @@ class OnlineExamSessionService
      */
     public function saveAnswer(OnlineExamSession $session, int $userId, int $questionNumber, ?string $submittedOption, ?string $answerText): void
     {
-        if ($session->student_id !== $userId) {
-            throw new HttpException(403, 'دسترسی غیرمجاز به این نشست.');
-        }
-
-        if ($session->status !== 'in_progress') {
-            throw new HttpException(409, 'این آزمون در حال برگزاری نیست.');
-        }
-
-        $remainingTime = $this->calculateRemainingTime($session);
-
-        // ۱۵ ثانیه فرجه شبکه (Latency buffer)
-        if ($remainingTime !== null && $remainingTime < -15) {
-            $session->update(['status' => 'expired', 'is_locked' => true]);
-            throw new HttpException(409, 'مهلت زمانی آزمون به پایان رسیده است.');
-        }
-
-        $session->loadMissing('exam.onlineExamDetail');
-
         $now = now();
 
         OnlineExamSessionResponse::upsert(
@@ -279,10 +145,6 @@ class OnlineExamSessionService
      */
     public function submitAndGradeSession(OnlineExamSession $session, int $userId): OnlineExamSession
     {
-        if ($session->student_id !== $userId) {
-            throw new HttpException(403, 'دسترسی غیرمجاز.');
-        }
-
         if (in_array($session->status, ['submitted', 'graded'], true)) {
             return $session;
         }
@@ -369,27 +231,80 @@ class OnlineExamSessionService
     }
 
     /**
-     * پکیج کردن خروجی استاندارد نشست به همراه ماسک کردن امنیتی کلیدها
+     * پکیج کردن خروجی استاندارد نتیجه آزمون (ساختار یکدست برای سشن‌دار و بی‌سشن)
      */
-    public function buildSessionPayload(OnlineExamSession $session): array
+    public function buildExamResultPayload(Exam $exam, ?OnlineExamSession $session, int $studentId): array
     {
-        $endsAt = $session->exam?->onlineExamDetail?->ends_at;
-        $isExamEnded = $endsAt && now()->greaterThan($endsAt);
+        // آماده‌سازی روابط آزمون و کلیدها
+        $exam->loadMissing([
+            'category',
+            'lesson',
+            'onlineExamDetail.booklets',
+            'onlineExamDetail.answerKeys' => fn ($q) => $q->where('is_active', true),
+        ]);
 
-        // دانش‌آموز زمانی پاسخ‌های تشریحی و کلیدها را می‌بیند که:
-        // ۱. آزمون را ثبت کرده یا تصحیح شده باشد
-        // ۲. یا سشن منقضی شده باشد
-        // ۳. یا مهلت کلی برگزاری آزمون به پایان رسیده باشد
-        $includeSolutions = in_array($session->status, ['submitted', 'graded', 'expired'], true) || $isExamEnded;
-
-        $this->prepareSessionRelations($session, includeSolutions: $includeSolutions);
+        if ($session) {
+            $this->loadSessionRelations($session);
+        }
 
         return [
-            'session' => $session,
-            'remaining_time' => $this->calculateRemainingTime($session),
-            'answer_keys' => $this->formatAnswerKeys($session, includeSolutions: $includeSolutions),
-            'rankings' => $this->getSessionRankings($session),
+            'exam' => $exam,
+            'session' => $session ? [
+                'id' => $session->id,
+                'status' => $session->status,
+                'attempt_number' => $session->attempt_number,
+                'started_at' => $session->started_at,
+                'submitted_at' => $session->submitted_at,
+                'time_used_seconds' => $session->time_used_seconds,
+                'percent' => $session->percent !== null ? (float) $session->percent : null,
+                't_score' => $session->t_score,
+                'is_locked' => $session->is_locked,
+                'responses' => $session->responses,
+            ] : null,
+            'remaining_time' => $session ? $this->calculateRemainingTime($session) : null,
+            'answer_keys' => $this->formatAnswerKeysForExam($exam, $session),
+            'rankings' => $session ? $this->getSessionRankings($session) : [
+                'metric' => 'percent',
+                'attempt_policy' => 'latest_graded',
+                'classes' => [],
+                'levels' => [],
+            ],
+            'is_review_only' => $session === null,
         ];
+    }
+
+    /**
+     * فرمت یکپارچه کلیدها برای آزمون (چه سشن باشد چه نباشد)
+     */
+    public function formatAnswerKeysForExam(Exam $exam, ?OnlineExamSession $session): ?array
+    {
+        $answerKeys = $exam->onlineExamDetail?->answerKeys;
+        if (! $answerKeys) {
+            return null;
+        }
+
+        $responsesByQuestion = $session ? $session->responses->keyBy('question_number') : collect();
+
+        return $answerKeys->map(function ($key) use ($responsesByQuestion) {
+            $response = $responsesByQuestion->get($key->question_number);
+
+            $payload = [
+                'id' => $key->id,
+                'exam_id' => $key->exam_id,
+                'question_number' => $key->question_number,
+                'number_of_choices' => $key->number_of_choices,
+                'submitted_option' => $response?->submitted_option,
+                'weight' => $key->weight,
+                'has_negative_mark' => $key->has_negative_mark,
+                'is_active' => $key->is_active,
+            ];
+
+            $payload['correct_option'] = $key->correct_option;
+            $payload['is_correct'] = $response?->is_correct;
+            $payload['marks_obtained'] = $response?->marks_obtained;
+
+            return $payload;
+        })->values()->all();
     }
 
     /**
@@ -509,152 +424,6 @@ class OnlineExamSessionService
     }
 
     /**
-     * فرمت یکپارچه کلیدها بر اساس وضعیت آزمون (در حال آزمون یا بعد از تصحیح)
-     */
-    public function formatAnswerKeys(OnlineExamSession $session, bool $includeSolutions = false): ?array
-    {
-        $answerKeys = $session->exam?->onlineExamDetail?->answerKeys;
-        if (! $answerKeys) {
-            return null;
-        }
-
-        $responsesByQuestion = $session->responses->keyBy('question_number');
-
-        return $answerKeys->map(function ($key) use ($responsesByQuestion, $includeSolutions) {
-            $response = $responsesByQuestion->get($key->question_number);
-
-            $payload = [
-                'id' => $key->id,
-                'exam_id' => $key->exam_id,
-                'question_number' => $key->question_number,
-                'number_of_choices' => $key->number_of_choices,
-                'submitted_option' => $response?->submitted_option,
-                'weight' => $key->weight,
-                'has_negative_mark' => $key->has_negative_mark,
-                'is_active' => $key->is_active,
-            ];
-
-            if ($includeSolutions) {
-                $payload['correct_option'] = $key->correct_option;
-                $payload['is_correct'] = $response?->is_correct;
-                $payload['marks_obtained'] = $response?->marks_obtained;
-            }
-
-            return $payload;
-        })->values()->all();
-    }
-
-    /**
-     * کلیدهای خام بدون افشای گزینه صحیح برای آزمون در حال اجرا
-     */
-    public function sanitizeAnswerKeys($answerKeys): ?array
-    {
-        if (! $answerKeys) {
-            return null;
-        }
-
-        return $answerKeys->map(fn ($key) => [
-            'id' => $key->id,
-            'exam_id' => $key->exam_id,
-            'question_number' => $key->question_number,
-            'number_of_choices' => $key->number_of_choices,
-            'weight' => $key->weight,
-            'has_negative_mark' => $key->has_negative_mark,
-            'is_active' => $key->is_active,
-        ])->values()->all();
-    }
-
-    public function getExamResultPayload(int $examId, int $studentId, ?int $attemptNumber = null): array
-    {
-        $exam = Exam::query()
-            ->where('id', $examId)
-            ->where('delivery_mode', 'online')
-            ->with(['onlineExamDetail'])
-            ->first();
-
-        if (! $exam) {
-            throw new ModelNotFoundException('آزمون آنلاین مورد نظر یافت نشد.');
-        }
-
-        $query = OnlineExamSession::query()
-            ->where('exam_id', $examId)
-            ->where('student_id', $studentId)
-            ->whereIn('status', ['submitted', 'graded', 'expired'])
-            ->with($this->getSessionDetailRelations());
-
-        if ($attemptNumber) {
-            $query->where('attempt_number', $attemptNumber);
-        } else {
-            $query->orderByDesc('attempt_number');
-        }
-
-        $session = $query->first();
-
-        // اگر سشن فعال یا ثبت‌شده‌ای نبود
-        if (! $session) {
-            $endsAt = $exam->onlineExamDetail?->ends_at;
-            $isExamEnded = $endsAt && now()->greaterThan($endsAt);
-
-            // اگر مهلت آزمون تمام شده، اجازه بده دفترچه سوالات و پاسخنامه را خالی (بدون پاسخ‌های دانش‌آموز) ببیند
-            if ($isExamEnded) {
-                return $this->buildEmptyExamReviewPayload($exam, $studentId);
-            }
-
-            throw new ModelNotFoundException('کارنامه یا نتیجه پایان‌یافته‌ای برای این دانش‌آموز در این آزمون یافت نشد.');
-        }
-
-        return $this->buildSessionPayload($session);
-    }
-
-    /**
-     * تولید پی‌لود پیش‌فرض برای حالتی که دانش‌آموز در آزمون شرکت نکرده اما مهلت آزمون تمام شده است.
-     */
-    protected function buildEmptyExamReviewPayload(Exam $exam, int $studentId): array
-    {
-        // لود کردن سوالات و کلیدهای پاسخ
-        $exam->loadMissing([
-            'onlineExamDetail.answerKeys' => fn ($q) => $q->where('is_active', true),
-            'lesson',
-            'grades',
-        ]);
-
-        return [
-            'id' => null,
-            'exam_id' => $exam->id,
-            'student_id' => $studentId,
-            'attempt_number' => 1,
-            'status' => 'not_participated',
-            'started_at' => null,
-            'finished_at' => null,
-            'score' => 0,
-            'total_score' => $exam->onlineExamDetail?->total_score ?? 0,
-            'percentage' => 0,
-            'total_questions' => $exam->onlineExamDetail?->total_questions ?? 0,
-            'correct_answers_count' => 0,
-            'wrong_answers_count' => 0,
-            'unanswered_count' => $exam->onlineExamDetail?->total_questions ?? 0,
-            'responses' => [],
-            'exam' => $exam,
-            'is_review_only' => true,
-        ];
-    }
-
-    public function getExamResultPayloadBySessionId(int $sessionId): array
-    {
-        $session = OnlineExamSession::query()
-            ->where('id', $sessionId)
-            ->whereIn('status', ['submitted', 'graded'])
-            ->with($this->getSessionDetailRelations())
-            ->first();
-
-        if (! $session) {
-            throw new ModelNotFoundException('نشست آزمون یافت نشد یا هنوز به پایان نرسیده است.');
-        }
-
-        return $this->buildSessionPayload($session);
-    }
-
-    /**
      * آخرین نشست دانش‌آموز برای یک آزمون
      */
     public function getLatestStudentSession(
@@ -670,16 +439,6 @@ class OnlineExamSessionService
     }
 
     /**
-     * آیا دانش‌آموز پاسخ آزمون را ارسال کرده است؟
-     */
-    public function hasSubmitted(
-        ?OnlineExamSession $session
-    ): bool {
-        return $session !== null
-            && in_array($session->status, ['submitted', 'graded'], true);
-    }
-
-    /**
      * دریافت آمار عملکرد تفکیکی دانش‌آموزان به ازای تک‌تک سوالات و گزینه‌ها
      * جهت رسم در نمودارها و تحلیل آیتم‌های آزمون (Item Analysis)
      */
@@ -691,10 +450,6 @@ class OnlineExamSessionService
         ]);
 
         $onlineDetail = $exam->onlineExamDetail;
-        if (! $onlineDetail) {
-            throw new HttpException(404, 'تنظیمات آزمون آنلاین برای این آزمون یافت نشد.');
-        }
-
         $answerKeys = $onlineDetail->answerKeys ?? collect();
 
         // 1. لیست شناسه سشن‌های تکمیل‌شده/تصحیح‌شده یا منقضی شده

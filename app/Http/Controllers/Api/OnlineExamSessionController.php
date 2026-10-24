@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\UserRoleType;
+use App\Traits\ChecksOnlineExamAccess;
 use App\Http\Controllers\Controller;
 use App\Models\Exam;
 use App\Models\OnlineExamSession;
+use App\Models\User;
 use App\Services\OnlineExamSessionService;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
@@ -18,7 +20,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class OnlineExamSessionController extends Controller
 {
-    use CommonCRUD, Filter;
+    use CommonCRUD, Filter, ChecksOnlineExamAccess;
 
     public function __construct(
         protected OnlineExamSessionService $sessionService
@@ -32,6 +34,8 @@ class OnlineExamSessionController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $this->denyStudentManagementAccess($request->user());
+
         if ($request->query('exam_id')) {
             $this->sessionService->repairExpiredSessionsForExam($request->query('exam_id'));
         }
@@ -53,13 +57,35 @@ class OnlineExamSessionController extends Controller
             ->findOrFail($id);
 
         $user = $request->user();
-        $canViewAll = $user->hasRole(UserRoleType::Admin->value) || $user->hasPermissionTo('exams.view');
+        $canViewAll = ! $user->hasRole(UserRoleType::Student->value)
+            && ($user->hasRole(UserRoleType::Admin->value) || $user->can('exams.view'));
 
         if ($session->student_id !== $user->id && ! $canViewAll) {
             return $this->jsonResponseError('دسترسی غیرمجاز', 403);
         }
 
-        return $this->jsonResponseOk($this->sessionService->buildSessionPayload($session));
+        if (! $canViewAll) {
+            $this->checkStudentExamAccess($session->exam, $user);
+            $this->checkExamVisibility($session->exam);
+
+            if ($session->status === 'in_progress') {
+                $this->checkExamOpen($session->exam);
+
+                if ($this->sessionTimeExpired($session)) {
+                    return $this->jsonResponseError('مهلت زمانی نشست آزمون شما منقضی شده است.', 410);
+                }
+            } elseif (! $this->examHasEnded($session->exam) && $session->exam->onlineExamDetail->ends_at) {
+                return $this->jsonResponseError('پاسخنامه هنوز قابل مشاهده نیست.', 409);
+            }
+        }
+
+        $payload = $this->sessionService->buildExamResultPayload($session->exam, $session, $session->student_id);
+
+        if (! $canViewAll) {
+            $this->hideStudentSolutions($payload, $this->canShowSolutions($session->exam, $session));
+        }
+
+        return $this->jsonResponseOk($payload);
     }
 
     public function getMyResultByExamId(Request $request, int $examId): JsonResponse
@@ -68,16 +94,36 @@ class OnlineExamSessionController extends Controller
             'attempt_number' => 'sometimes|integer|min:1',
         ]);
 
-        try {
-            $studentId = auth()->id();
-            $attemptNumber = $request->input('attempt_number');
+        $exam = Exam::query()->where('delivery_mode', 'online')->with('onlineExamDetail')->findOrFail($examId);
+        $this->checkStudentExamAccess($exam, $request->user());
+        $this->checkExamVisibility($exam);
 
-            $result = $this->sessionService->getExamResultPayload($examId, $studentId, $attemptNumber);
+        $query = OnlineExamSession::query()
+            ->where('exam_id', $examId)
+            ->where('student_id', $request->user()->id)
+            ->whereIn('status', ['submitted', 'graded', 'expired'])
+            ->with($this->sessionService->getSessionDetailRelations());
 
-            return $this->jsonResponseOk($result);
-        } catch (ModelNotFoundException $e) {
-            return $this->jsonResponseError($e->getMessage(), 404);
+        if ($request->filled('attempt_number')) {
+            $query->where('attempt_number', $request->integer('attempt_number'));
+        } else {
+            $query->orderByDesc('attempt_number');
         }
+
+        $session = $query->first();
+
+        if (! $session && ($request->filled('attempt_number') || ! $this->examHasEnded($exam))) {
+            return $this->jsonResponseError('کارنامه یا نتیجه پایان‌یافته‌ای برای این دانش‌آموز در این آزمون یافت نشد.', 404);
+        }
+
+        if ($exam->onlineExamDetail->ends_at && ! $this->examHasEnded($exam)) {
+            return $this->jsonResponseError('پاسخنامه هنوز قابل مشاهده نیست.', 409);
+        }
+
+        $payload = $this->sessionService->buildExamResultPayload($exam, $session, $request->user()->id);
+        $this->hideStudentSolutions($payload, $this->canShowSolutions($exam, $session));
+
+        return $this->jsonResponseOk($payload);
     }
 
     public function getResultBySessionId(Request $request, int $sessionId): JsonResponse
@@ -92,11 +138,16 @@ class OnlineExamSessionController extends Controller
                 UserRoleType::Staff->value,
             ];
 
-            if (! $user || ! $user->hasAnyRole($allowedRoles)) {
+            if (! $user || $user->hasRole(UserRoleType::Student->value) || ! $user->hasAnyRole($allowedRoles)) {
                 return $this->jsonResponseError('شما دسترسی به این نتیجه آزمون را ندارید.', 403);
             }
 
-            $result = $this->sessionService->getExamResultPayloadBySessionId($sessionId);
+            $session = OnlineExamSession::query()
+                ->whereIn('status', ['submitted', 'graded', 'expired'])
+                ->with($this->sessionService->getSessionDetailRelations())
+                ->findOrFail($sessionId);
+
+            $result = $this->sessionService->buildExamResultPayload($session->exam, $session, $session->student_id);
 
             return $this->jsonResponseOk($result);
         } catch (ModelNotFoundException $e) {
@@ -126,15 +177,46 @@ class OnlineExamSessionController extends Controller
         }
 
         try {
+            $this->checkStudentExamAccess($exam, $request->user());
+            $this->checkExamOpen($exam);
+
             $payload = DB::transaction(function () use ($exam, $request) {
-                return $this->sessionService->startOrCreateSession(
+                $this->checkExamOpen($exam);
+
+                $existing = OnlineExamSession::query()
+                    ->where('exam_id', $exam->id)
+                    ->where('student_id', $request->user()->id)
+                    ->where('attempt_number', $request->integer('attempt_number', 1))
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($existing && $existing->status !== 'in_progress') {
+                    throw new HttpException($existing->status === 'expired' ? 410 : 409, 'این نشست آزمون دیگر قابل شروع نیست.');
+                }
+
+                $result = $this->sessionService->startOrCreateSession(
                     exam: $exam,
                     user: $request->user(),
                     attemptNumber: $request->integer('attempt_number', 1),
                     ip: $request->ip(),
                     userAgent: $request->userAgent()
                 );
+
+                if ($this->sessionTimeExpired($result['session'])) {
+                    $result['session']->update(['status' => 'expired', 'is_locked' => true]);
+
+                    return ['error' => 'مهلت زمانی نشست آزمون شما منقضی شده است.'];
+                }
+
+                return $result;
             });
+
+            if (isset($payload['error'])) {
+                return $this->jsonResponseError($payload['error'], 410);
+            }
+
+            $this->sessionService->loadSessionRelations($payload['session']);
+            $this->hideExamSolutions($payload['session']->exam);
 
             return $this->jsonResponseOk($payload);
         } catch (HttpException $e) {
@@ -164,13 +246,38 @@ class OnlineExamSessionController extends Controller
         }
 
         try {
-            $this->sessionService->saveAnswer(
-                session: $session,
-                userId: auth()->id(),
-                questionNumber: $request->integer('question_number'),
-                submittedOption: $request->input('submitted_option'),
-                answerText: $request->input('answer_text')
-            );
+            $this->checkStudentExamAccess($session->exam, $request->user());
+            $this->checkSessionOwner($session, $request->user());
+
+            $saved = DB::transaction(function () use ($session, $request) {
+                $locked = OnlineExamSession::query()->with('exam.onlineExamDetail')->lockForUpdate()->findOrFail($session->id);
+                $this->checkSessionOwner($locked, $request->user());
+                $this->checkExamOpen($locked->exam);
+
+                if ($locked->status !== 'in_progress' || $locked->is_locked) {
+                    throw new HttpException(409, 'این آزمون در حال برگزاری نیست.');
+                }
+
+                if ($this->sessionTimeExpired($locked)) {
+                    $locked->update(['status' => 'expired', 'is_locked' => true]);
+
+                    return false;
+                }
+
+                $this->sessionService->saveAnswer(
+                    session: $locked,
+                    userId: $request->user()->id,
+                    questionNumber: $request->integer('question_number'),
+                    submittedOption: $request->input('submitted_option'),
+                    answerText: $request->input('answer_text')
+                );
+
+                return true;
+            });
+
+            if (! $saved) {
+                return $this->jsonResponseError('مهلت زمانی آزمون به پایان رسیده است.', 409);
+            }
 
             return $this->jsonResponseOk([
                 'message' => 'پاسخ با موفقیت ذخیره شد.',
@@ -198,9 +305,32 @@ class OnlineExamSessionController extends Controller
         }
 
         try {
-            $gradedSession = DB::transaction(function () use ($session) {
-                return $this->sessionService->submitAndGradeSession($session, auth()->id());
+            $this->checkStudentExamAccess($session->exam, $request->user());
+            $this->checkSessionOwner($session, $request->user());
+
+            $gradedSession = DB::transaction(function () use ($session, $request) {
+                $locked = OnlineExamSession::query()->with('exam.onlineExamDetail')->lockForUpdate()->findOrFail($session->id);
+                $this->checkSessionOwner($locked, $request->user());
+                $this->checkExamOpen($locked->exam);
+
+                if ($locked->status !== 'in_progress' || $locked->is_locked) {
+                    throw new HttpException(409, 'این نشست آزمون قابل ثبت نیست.');
+                }
+
+                if ($this->sessionTimeExpired($locked)) {
+                    $locked->update(['status' => 'expired', 'is_locked' => true]);
+
+                    return null;
+                }
+
+                return $this->sessionService->submitAndGradeSession($locked, $request->user()->id);
             });
+
+            if (! $gradedSession) {
+                return $this->jsonResponseError('مهلت زمانی آزمون به پایان رسیده است.', 409);
+            }
+
+            $this->hideSessionSolutions($gradedSession);
 
             return $this->jsonResponseOk([
                 'message' => 'آزمون با موفقیت ثبت و نمره‌دهی شد.',
@@ -225,8 +355,10 @@ class OnlineExamSessionController extends Controller
         return $this->jsonResponseOk($sessions);
     }
 
-    public function getExamSessions(int $examId): JsonResponse
+    public function getExamSessions(Request $request, int $examId): JsonResponse
     {
+        $this->denyStudentManagementAccess($request->user());
+
         $sessions = OnlineExamSession::query()
             ->where('exam_id', $examId)
             ->with(['student', 'exam.category', 'exam.lesson'])
@@ -236,8 +368,10 @@ class OnlineExamSessionController extends Controller
         return $this->jsonResponseOk($sessions);
     }
 
-    public function getExamSessionsGroupedByClass(int $examId): JsonResponse
+    public function getExamSessionsGroupedByClass(Request $request, int $examId): JsonResponse
     {
+        $this->denyStudentManagementAccess($request->user());
+
         $exam = Exam::query()->where('delivery_mode', 'online')->find($examId);
 
         if (! $exam) {
@@ -247,8 +381,10 @@ class OnlineExamSessionController extends Controller
         return $this->jsonResponseOk($this->sessionService->getExamSessionsGroupedByClass($exam));
     }
 
-    public function destroy($id): JsonResponse
+    public function destroy(Request $request, $id): JsonResponse
     {
+        $this->denyStudentManagementAccess($request->user());
+
         $session = OnlineExamSession::query()->find($id);
 
         if (! $session) {
@@ -280,6 +416,64 @@ class OnlineExamSessionController extends Controller
         ];
     }
 
+    private function denyStudentManagementAccess(User $user): void
+    {
+        abort_if($user->hasRole(UserRoleType::Student->value), 403, 'دانش‌آموز به اطلاعات مدیریتی آزمون دسترسی ندارد.');
+    }
+
+    private function sessionTimeExpired(OnlineExamSession $session): bool
+    {
+        $remaining = $this->sessionService->calculateRemainingTime($session);
+
+        return $remaining !== null && $remaining <= 0;
+    }
+
+    private function hideExamSolutions(Exam $exam): void
+    {
+        $detail = $exam->onlineExamDetail;
+
+        if ($detail) {
+            $detail->makeHidden(['solution', 'solution_file', 'solution_path', 'solution_descriptive']);
+            $detail->answerKeys?->makeHidden(['correct_option']);
+        }
+    }
+
+    private function hideSessionSolutions(OnlineExamSession $session): void
+    {
+        if ($this->canShowSolutions($session->exam, $session)) {
+            return;
+        }
+
+        $this->hideExamSolutions($session->exam);
+        $session->unsetRelation('results');
+        $session->makeHidden(['percent', 't_score']);
+        $session->responses?->makeHidden(['is_correct', 'marks_obtained']);
+    }
+
+    private function hideStudentSolutions(array &$payload, bool $canShowSolutions): void
+    {
+        if ($canShowSolutions) {
+            return;
+        }
+
+        $this->hideExamSolutions($payload['exam']);
+
+        if ($payload['answer_keys']) {
+            foreach ($payload['answer_keys'] as &$key) {
+                unset($key['correct_option'], $key['is_correct'], $key['marks_obtained']);
+            }
+            unset($key);
+        }
+
+        if ($payload['session']) {
+            $payload['session']['percent'] = null;
+            $payload['session']['t_score'] = null;
+            $payload['session']['responses']?->makeHidden(['is_correct', 'marks_obtained']);
+        }
+
+        $payload['rankings'] = ['metric' => 'percent', 'attempt_policy' => 'latest_graded', 'classes' => [], 'levels' => []];
+    }
+
     /**
      * دریافت آمار و تحلیل عملکرد سوالات آزمون آنلاین جهت نمایش در نمودارها
      */
@@ -294,7 +488,7 @@ class OnlineExamSessionController extends Controller
             UserRoleType::Staff->value,
         ];
 
-        if (! $user || ! $user->hasAnyRole($allowedRoles)) {
+        if (! $user || $user->hasRole(UserRoleType::Student->value) || ! $user->hasAnyRole($allowedRoles)) {
             return $this->jsonResponseError('شما دسترسی به آمار این آزمون را ندارید.', 403);
         }
 
@@ -305,6 +499,10 @@ class OnlineExamSessionController extends Controller
 
         if (! $exam) {
             return $this->jsonResponseError('آزمون آنلاین مورد نظر یافت نشد.', 404);
+        }
+
+        if (! $exam->onlineExamDetail) {
+            return $this->jsonResponseError('تنظیمات آزمون آنلاین برای این آزمون یافت نشد.', 404);
         }
 
         try {

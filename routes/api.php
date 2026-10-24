@@ -139,7 +139,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('online-exam-details', OnlineExamDetailController::class);
     Route::get('online-exams/{exam}/questions-analytics', [OnlineExamSessionController::class, 'getExamQuestionsAnalytics'])
         ->middleware(['auth:sanctum']);
-    Route::apiResource('online-exam-sessions', OnlineExamSessionController::class);
     Route::apiResource('online-exam-session-responses', OnlineExamSessionResponseController::class);
     Route::apiResource('online-exam-answer-keys', OnlineExamAnswerKeyController::class);
     Route::apiResource('online-exam-booklets', OnlineExamBookletController::class);
@@ -158,6 +157,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('{sessionId}/answer', [OnlineExamSessionController::class, 'submitAnswer']);
         Route::post('{sessionId}/submit', [OnlineExamSessionController::class, 'submitSession']);
     });
+    Route::apiResource('online-exam-sessions', OnlineExamSessionController::class);
 
     Route::apiResource('disciplinary-cases', DisciplinaryCaseController::class);
     Route::apiResource('disciplinary-records', DisciplinaryRecordController::class);
