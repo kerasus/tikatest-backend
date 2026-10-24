@@ -94,7 +94,11 @@ class OnlineExamSessionController extends Controller
             'attempt_number' => 'sometimes|integer|min:1',
         ]);
 
-        $exam = Exam::query()->where('delivery_mode', 'online')->with('onlineExamDetail')->findOrFail($examId);
+        $exam = Exam::query()
+            ->where('delivery_mode', 'online')
+            ->with('onlineExamDetail')
+            ->findOrFail($examId);
+
         $this->checkStudentExamAccess($exam, $request->user());
         $this->checkExamVisibility($exam);
 
@@ -112,16 +116,45 @@ class OnlineExamSessionController extends Controller
 
         $session = $query->first();
 
-        if (! $session && ($request->filled('attempt_number') || ! $this->examHasEnded($exam))) {
+        // اگر سشنی ثبت یا تحویل داده نشده باشد
+        if (! $session) {
             return $this->jsonResponseError('کارنامه یا نتیجه پایان‌یافته‌ای برای این دانش‌آموز در این آزمون یافت نشد.', 404);
         }
 
-        if ($exam->onlineExamDetail->ends_at && ! $this->examHasEnded($exam)) {
-            return $this->jsonResponseError('پاسخنامه هنوز قابل مشاهده نیست.', 409);
+        $detail = $exam->onlineExamDetail;
+
+        /*
+         * اولویت‌بندی مشاهده کلید و راه‌حل‌ها:
+         * ۱. اگر اپراتور صراحتاً answers_visible_at تعریف کرده باشد:
+         *    - اگر زمانش رسیده باشد => مجاز به مشاهده پاسخنامه است (مسئولیت با اپراتور).
+         *    - اگر زمانش نرسیده باشد => هنوز مجاز به دیدن راه‌حل نیست.
+         * ۲. اگر answers_visible_at تعریف نشده باشد:
+         *    - ملاک، پایان یافتن کل مهلت آزمون (ends_at) یا خروجی canShowSolutions است.
+         */
+        $hasCustomAnswerTime = ! empty($detail?->answers_visible_at);
+
+        if ($hasCustomAnswerTime) {
+            $canViewSolutions = now()->gte($detail->answers_visible_at);
+        } else {
+            $canViewSolutions = $this->canShowSolutions($exam, $session);
         }
 
+        // اگر سیاست شما این است که تا قبل از موعد پاسخنامه کلاً ارور ۴۰۹ بدهید:
+        if (! $canViewSolutions) {
+            if ($hasCustomAnswerTime) {
+                return $this->jsonResponseError('پاسخنامه بر اساس زمان‌بندی اعلام‌شده هنوز قابل مشاهده نیست.', 409);
+            }
+
+            if (! $this->examHasEnded($exam)) {
+                return $this->jsonResponseError('پاسخنامه هنوز قابل مشاهده نیست.', 409);
+            }
+        }
+
+        // ساخت نتیجه کارنامه
         $payload = $this->sessionService->buildExamResultPayload($exam, $session, $request->user()->id);
-        $this->hideStudentSolutions($payload, $this->canShowSolutions($exam, $session));
+
+        // اعمال مخفی‌سازی در صورتی که مجاز به دیدن راه‌حل‌ها نباشد
+        $this->hideStudentSolutions($payload, $canViewSolutions);
 
         return $this->jsonResponseOk($payload);
     }
@@ -173,56 +206,135 @@ class OnlineExamSessionController extends Controller
             ->first();
 
         if (! $exam) {
-            return $this->jsonResponseError('آزمون آنلاین مورد نظر یافت نشد.', 404);
+            return $this->jsonResponseError(
+                'آزمون آنلاین مورد نظر یافت نشد.',
+                404
+            );
         }
 
         try {
-            $this->checkStudentExamAccess($exam, $request->user());
+            $student = $request->user();
+            $attemptNumber = $request->integer('attempt_number', 1);
+
+            $this->checkStudentExamAccess($exam, $student);
             $this->checkExamOpen($exam);
 
-            $payload = DB::transaction(function () use ($exam, $request) {
+            $result = DB::transaction(function () use (
+                $exam,
+                $request,
+                $student,
+                $attemptNumber
+            ) {
                 $this->checkExamOpen($exam);
 
                 $existing = OnlineExamSession::query()
                     ->where('exam_id', $exam->id)
-                    ->where('student_id', $request->user()->id)
-                    ->where('attempt_number', $request->integer('attempt_number', 1))
+                    ->where('student_id', $student->id)
+                    ->where('attempt_number', $attemptNumber)
                     ->lockForUpdate()
                     ->first();
 
                 if ($existing && $existing->status !== 'in_progress') {
-                    throw new HttpException($existing->status === 'expired' ? 410 : 409, 'این نشست آزمون دیگر قابل شروع نیست.');
+                    throw new HttpException(
+                        $existing->status === 'expired' ? 410 : 409,
+                        'این نشست آزمون دیگر قابل شروع نیست.'
+                    );
                 }
 
                 $result = $this->sessionService->startOrCreateSession(
                     exam: $exam,
-                    user: $request->user(),
-                    attemptNumber: $request->integer('attempt_number', 1),
+                    user: $student,
+                    attemptNumber: $attemptNumber,
                     ip: $request->ip(),
                     userAgent: $request->userAgent()
                 );
 
                 if ($this->sessionTimeExpired($result['session'])) {
-                    $result['session']->update(['status' => 'expired', 'is_locked' => true]);
+                    $result['session']->update([
+                        'status' => 'expired',
+                        'is_locked' => true,
+                    ]);
 
-                    return ['error' => 'مهلت زمانی نشست آزمون شما منقضی شده است.'];
+                    return [
+                        'error' => 'مهلت زمانی نشست آزمون شما منقضی شده است.',
+                    ];
                 }
 
                 return $result;
             });
 
-            if (isset($payload['error'])) {
-                return $this->jsonResponseError($payload['error'], 410);
+            if (isset($result['error'])) {
+                return $this->jsonResponseError($result['error'], 410);
             }
 
-            $this->sessionService->loadSessionRelations($payload['session']);
-            $this->hideExamSolutions($payload['session']->exam);
+            /** @var OnlineExamSession $session */
+            $session = $result['session'];
+
+            // لود مطمئن پاسخ‌های قبلی دانش‌آموز در این نشست (در صورت عدم لود)
+            $session->loadMissing('responses');
+
+            // هنگام شروع یا ادامه نشست، اطلاعات تصحیح پاسخ‌ها نباید برای دانش‌آموز قابل رویت باشد
+            if ($session->relationLoaded('responses') && $session->responses) {
+                $session->responses->makeHidden([
+                    'correct_option',
+                    'is_correct',
+                    'marks_obtained',
+                ]);
+            }
+
+            // ساخت پاسخ با همان ساختار استاندارد کارنامه
+            $payload = $this->sessionService->buildExamResultPayload(
+                exam: $exam,
+                session: $session,
+                studentId: (int) $student->id
+            );
+
+            // ۱. مخفی کردن راه‌حل‌ها و پاسخ‌های تشریحی از روی آبجکت exam
+            $this->hideExamSolutions($payload['exam']);
+
+            // روابط exam روی session ممکن است آبجکت جداگانه‌ای داشته باشند
+            if ($session->relationLoaded('exam') && $session->exam) {
+                $this->hideExamSolutions($session->exam);
+            }
+
+            // ۲. تابع کمکی برای امن‌سازی کلیدهای سوالات درون exam.online_exam_detail.answer_keys
+            $sanitizeDetailAnswerKeys = static function ($examModel): void {
+                if (
+                    $examModel instanceof Exam
+                    && $examModel->relationLoaded('onlineExamDetail')
+                    && $examModel->onlineExamDetail?->relationLoaded('answerKeys')
+                ) {
+                    $examModel->onlineExamDetail->answerKeys->makeHidden([
+                        'correct_option',
+                        'is_correct',
+                        'marks_obtained',
+                        'solution_text',
+                        'solution_file_path',
+                    ]);
+                }
+            };
+
+            // اعمال فیلتر امنیتی روی exam اصلی و exam احتمالی لود شده روی session
+            $sanitizeDetailAnswerKeys($payload['exam'] ?? null);
+            if (isset($payload['session']) && $payload['session'] instanceof OnlineExamSession) {
+                $sanitizeDetailAnswerKeys($payload['session']->exam ?? null);
+            }
+
+            // ۳. حذف قطعی کلید answer_keys از ریشه payload تا فقط در exam.online_exam_detail بماند
+            unset($payload['answer_keys']);
 
             return $this->jsonResponseOk($payload);
         } catch (HttpException $e) {
-            return $this->jsonResponseError($e->getMessage(), $e->getStatusCode());
+            return $this->jsonResponseError(
+                $e->getMessage(),
+                $e->getStatusCode()
+            );
         } catch (\Throwable $e) {
-            return $this->jsonResponseServerError(['errors' => ['session' => $e->getMessage()]]);
+            return $this->jsonResponseServerError([
+                'errors' => [
+                    'session' => $e->getMessage(),
+                ],
+            ]);
         }
     }
 

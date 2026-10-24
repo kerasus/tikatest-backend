@@ -38,7 +38,7 @@ class ExamController extends Controller
         })->only(['show']);
         $this->middleware('admin_or_permission:exams.view')->only(['index', 'show', 'examStudents']);
         $this->middleware('admin_or_permission:exams.create')->only(['store']);
-        $this->middleware('admin_or_permission:exams.update')->only(['update']);
+        $this->middleware('admin_or_permission:exams.update')->only(['update', 'notifyUnparticipatedStudents']);
         $this->middleware('admin_or_permission:exams.delete')->only(['destroy']);
     }
 
@@ -278,6 +278,13 @@ class ExamController extends Controller
     public function destroy(Exam $exam): JsonResponse
     {
         return $this->commonDestroy($exam);
+    }
+
+    public function notifyUnparticipatedStudents(Exam $exam, ExamService $examService): JsonResponse
+    {
+        abort_unless($exam->delivery_mode === 'online', 422, 'اطلاع‌رسانی فقط برای آزمون‌های آنلاین امکان‌پذیر است.');
+
+        return $this->jsonResponseOk($examService->notifyUnparticipatedStudents($exam));
     }
 
     public function storeWithOnlineDetail(Request $request, ExamService $examService): JsonResponse

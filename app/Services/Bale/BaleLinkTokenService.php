@@ -3,15 +3,19 @@
 namespace App\Services\Bale;
 
 use RuntimeException;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 
 class BaleLinkTokenService
 {
-    public function __construct(private readonly BaleService $baleService) {}
+    public function __construct(
+        private readonly BaleService $baleService,
+    ) {
+    }
 
     public function issueTokenForUser(int $userId): array
     {
-        \Log::debug('Bale token: issuing', ['user_id' => $userId]);
+        Log::debug('Bale token: issue attempt', ['user_id' => $userId]);
 
         $ttl = (int) config('bale.link_token_ttl_seconds', 300);
 
@@ -28,7 +32,7 @@ class BaleLinkTokenService
         Cache::put($this->key($token), $userId, $ttl);
         Cache::put($this->userKey($userId), $token, $ttl);
 
-        \Log::info('Bale token: issued', [
+        Log::info('Bale token: issued successfully', [
             'user_id' => $userId,
             'token_prefix' => substr($token, 0, 8).'…',
             'ttl' => $ttl,
@@ -51,7 +55,7 @@ class BaleLinkTokenService
         $tokenKey = $this->key($token);
         $userId = Cache::get($tokenKey);
 
-        \Log::debug('Bale token: consume attempt', [
+        Log::debug('Bale token: consume attempt', [
             'token_prefix' => substr($token, 0, 8).'…',
             'found' => $userId !== null,
             'cache_store' => config('cache.default'),

@@ -241,6 +241,11 @@ class User extends Authenticatable
         return $this->hasMany(HomeworkSubmission::class, 'graded_by');
     }
 
+    public function onlineExamSessions()
+    {
+        return $this->hasMany(OnlineExamSession::class, 'student_id');
+    }
+
     public function schools(): BelongsToMany
     {
         return $this->belongsToMany(School::class, 'school_user')

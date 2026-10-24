@@ -2,18 +2,17 @@
 
 namespace App\Providers;
 
-use App\Checks\DatabaseInfoCheck;
-use App\Checks\DatabaseLatencyCheck;
-use App\Checks\DiskSpaceCheck;
 use App\Checks\OpcacheCheck;
-use App\Checks\SslCertificateCheck;
+use App\Checks\DiskSpaceCheck;
+use App\Checks\DatabaseInfoCheck;
 use Spatie\Health\Facades\Health;
 use Illuminate\Support\Collection;
+use App\Checks\SslCertificateCheck;
+use App\Checks\DatabaseLatencyCheck;
 use Illuminate\Support\ServiceProvider;
-use Spatie\Health\Checks\Checks\DatabaseCheck;
 use Spatie\Health\Checks\Checks\DebugModeCheck;
+use App\Services\Notification\NotificationManager;
 use Spatie\Health\Checks\Checks\OptimizedAppCheck;
-use Spatie\Health\Checks\Checks\UsedDiskSpaceCheck;
 
 
 class AppServiceProvider extends ServiceProvider
@@ -23,7 +22,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(NotificationManager::class);
     }
 
     /**

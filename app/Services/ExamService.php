@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Exam;
+use App\Models\User;
+use Hekmatinasser\Verta\Verta;
 use Illuminate\Support\Str;
 use App\Models\AcademicTerm;
 use Illuminate\Http\Request;
@@ -11,20 +13,21 @@ use Illuminate\Support\Carbon;
 use App\Models\OnlineExamDetail;
 use Illuminate\Http\UploadedFile;
 use App\Models\OnlineExamBooklet;
+use App\Models\OnlineExamSession;
 use App\Models\InPersonExamResult;
 use App\Models\InPersonExamDetail;
 use App\Models\OnlineExamAnswerKey;
-use Illuminate\Support\Facades\Auth;
-use App\Services\FileStorageService;
 use App\Models\ExamCategoryTermLimit;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\ValidationException;
+use App\Services\Notification\NotificationMessage;
+use App\Services\Notification\NotificationManager;
 
 class ExamService
 {
     public function __construct(
-        protected FileStorageService $fileStorageService
+        protected FileStorageService $fileStorageService,
+        protected NotificationManager $notificationManager
     ) {}
 
     public function createOnlineExam(array $validated, Request $request): Exam
@@ -764,4 +767,212 @@ class ExamService
         ];
     }
 
+    /**
+     * ارسال پیام یادآوری/اطلاع‌رسانی به دانش‌آموزانی که هنوز در آزمون شرکت نکرده‌اند.
+     *
+     * @param Exam $exam
+     * @param string|null $channel کانال خاص مثلا 'bale' یا null برای ارسال به تمام کانال‌های فعال کاربر
+     * @return array آمار ارسال‌ها
+     */
+    public function notifyUnparticipatedStudents(Exam $exam, ?string $channel = 'bale'): array
+    {
+        $exam->loadMissing(['onlineExamDetail', 'lesson', 'classes', 'academicLevels']);
+
+        // ۱. استخراج لیست دانش‌آموزان هدف (واجد شرایط که آزمون نداده‌اند)
+        $students = $this->getEligibleUnparticipatedStudents($exam);
+
+        if ($students->isEmpty()) {
+            return [
+                'total' => 0,
+                'sent' => 0,
+                'skipped' => 0,
+                'failed' => 0,
+                'students' => [],
+            ];
+        }
+
+        // ۲. آماده‌سازی پیام شیک و دقیق (با پشتیبانی از Markdown برای بله)
+        $examTitle = $exam->name ?? 'آزمون آنلاین';
+        $lessonName = $exam->lesson?->name;
+
+        // استفاده از استایل بولد مارک‌داون برای بله (**متن**)
+        $title = "🔔 *یادآوری: {$examTitle}*";
+
+        $bodyLines = [];
+        if ($lessonName) {
+            $bodyLines[] = "📚 درس: {$lessonName}";
+        }
+
+        $detail = $exam->onlineExamDetail;
+        if ($detail?->ends_at) {
+            $endsAtShamsi = $this->formatToPersianDate($detail->ends_at);
+            $bodyLines[] = "⏳ مهلت پایانی: {$endsAtShamsi}";
+        }
+
+        if ($detail?->time_limit_minutes) {
+            $bodyLines[] = "⏱ مدت پاسخگویی: {$detail->time_limit_minutes} دقیقه";
+        }
+
+        $bodyLines[] = "\nدانش‌آموز گرامی، شما هنوز در این آزمون شرکت نکرده‌اید. لطفاً پیش از اتمام مهلت اقدام فرمایید.";
+
+        // لینک مستقیم به صفحه آزمون با فرمت مارک‌داون [متن لینک](آدرس)
+        $frontendUrl = rtrim(config('app.frontend_url', config('app.url')), '/');
+        $actionUrl = "{$frontendUrl}/student/online-exams/{$exam->id}";
+
+        $bodyLines[] = "\n🔗 [شروع و مشاهده آزمون]({$actionUrl})";
+
+        $body = implode("\n", $bodyLines);
+
+        $message = new NotificationMessage(
+            title: $title,
+            body: $body,
+            actionUrl: $actionUrl,
+            actionText: 'شروع و مشاهده آزمون',
+            data: [
+                'exam_id' => $exam->id,
+                'type' => 'exam_reminder',
+            ]
+        );
+
+
+
+
+
+
+        // ۳. پیمایش و ارسال نوتیفیکیشن
+        $stats = [
+            'total' => $students->count(),
+            'sent' => 0,
+            'skipped' => 0, // کسانی که این کانال را ندارند (مثلاً bale_chat_id خالی است)
+            'failed' => 0,
+            'results' => [],
+        ];
+
+        foreach ($students as $student) {
+            try {
+                // اگر کانال خاصی مشخص شده باشد
+                if ($channel) {
+                    $channelInstance = $this->notificationManager->driver($channel);
+
+                    if (! $channelInstance->isAvailableFor($student)) {
+                        $stats['skipped']++;
+                        $stats['results'][] = [
+                            'user_id' => $student->id,
+                            'status' => 'skipped',
+                            'reason' => 'channel_unavailable',
+                        ];
+                        continue;
+                    }
+
+                    $channelInstance->send($student, $message);
+                } else {
+                    // ارسال روی تمام کانال‌های معتبر کاربر
+                    $this->notificationManager->send($student, $message);
+                }
+
+                $stats['sent']++;
+                $stats['results'][] = [
+                    'user_id' => $student->id,
+                    'status' => 'sent',
+                ];
+            } catch (\Throwable $e) {
+                \Log::error('Exam notification failed for user', [
+                    'exam_id' => $exam->id,
+                    'user_id' => $student->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                $stats['failed']++;
+                $stats['results'][] = [
+                    'user_id' => $student->id,
+                    'status' => 'failed',
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
+     * تبدیل تاریخ میلادی به تاریخ شمسی خوانا (سازگار با ورتا و PHP Intl)
+     */
+    private function formatToPersianDate(mixed $date): string
+    {
+        if (function_exists('verta')) {
+            return \verta($date)->format('Y/m/d ساعت H:i');
+        }
+
+        if (class_exists(Verta::class)) {
+            return Verta::instance($date)->format('Y/m/d ساعت H:i');
+        }
+
+        // فال‌بک بومی با IntlDateFormatter استاندارد PHP بدون نیاز به هیچ پکیج اضافی
+        try {
+            $timestamp = $date instanceof \DateTimeInterface ? $date->getTimestamp() : strtotime((string) $date);
+            $formatter = new \IntlDateFormatter(
+                'fa_IR@calendar=persian',
+                \IntlDateFormatter::MEDIUM,
+                \IntlDateFormatter::SHORT,
+                'Asia/Tehran',
+                \IntlDateFormatter::TRADITIONAL,
+                'yyyy/MM/dd ساعت HH:mm'
+            );
+            return $formatter->format($timestamp) ?: (string) $date;
+        } catch (\Throwable) {
+            return (string) $date;
+        }
+    }
+
+    /**
+     * پیدا کردن دانش‌آموزانی که واجد شرایط این آزمون هستند اما آزمون را انجام نداده‌اند.
+     */
+    public function getEligibleUnparticipatedStudents(Exam $exam): \Illuminate\Support\Collection
+    {
+        $classIds = $exam->classes()->pluck('classes.id')->all();
+        $academicLevelIds = $exam->academicLevels()->pluck('academic_levels.id')->all();
+
+        // ۱. استخراج آی‌دی دانش‌آموزان واجد شرایط از ثبت‌نام‌های ترم جاری
+        $enrollmentsQuery = TermEnrollment::query()
+            ->active()
+            ->whereTermIsActive()
+            ->whereHas('schoolClass', function ($classQuery) use ($classIds, $academicLevelIds) {
+                $classQuery->where(function ($sub) use ($classIds, $academicLevelIds) {
+                    if (! empty($classIds) && empty($academicLevelIds)) {
+                        $sub->whereIn('classes.id', $classIds);
+                    } elseif (empty($classIds) && ! empty($academicLevelIds)) {
+                        $sub->whereIn('academic_level_id', $academicLevelIds);
+                    } elseif (! empty($classIds) && ! empty($academicLevelIds)) {
+                        $sub->whereIn('classes.id', $classIds)
+                            ->whereIn('academic_level_id', $academicLevelIds);
+                    }
+                });
+            });
+
+        $eligibleUserIds = $enrollmentsQuery->distinct()->pluck('user_id')->all();
+
+        if (empty($eligibleUserIds)) {
+            return collect();
+        }
+
+        // ۲. استخراج کاربرانی که قبلاً در این آزمون نشست تحویل‌شده، نمره‌داده‌شده یا منقضی دارند
+        $participatedUserIds = OnlineExamSession::query()
+            ->where('exam_id', $exam->id)
+            ->whereIn('student_id', $eligibleUserIds)
+            ->whereIn('status', ['submitted', 'graded', 'expired'])
+            ->pluck('student_id')
+            ->all();
+
+        // ۳. حذف شرکت‌کنندگان از کل واجدین شرایط
+        $unparticipatedUserIds = array_diff($eligibleUserIds, $participatedUserIds);
+
+        if (empty($unparticipatedUserIds)) {
+            return collect();
+        }
+
+        // ۴. بازگرداندن مدل‌های User هدف
+        return User::query()
+            ->whereIn('id', $unparticipatedUserIds)
+            ->get();
+    }
 }

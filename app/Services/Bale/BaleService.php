@@ -2,83 +2,148 @@
 
 namespace App\Services\Bale;
 
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
+use Throwable;
 
 class BaleService
 {
     public function buildDeepLink(string $token): string
     {
-        $username = ltrim((string) config('bale.bot_username'), '@');
+        $username = ltrim(
+            (string) config('bale.bot_username'),
+            '@'
+        );
 
         if ($username === '') {
-            throw new RuntimeException('نام کاربری بازوی بله تنظیم نشده است.');
+            throw new RuntimeException(
+                'نام کاربری بازوی بله تنظیم نشده است.'
+            );
         }
 
-        return 'https://ble.ir/'.rawurlencode($username).'?start='.rawurlencode($token);
+        return sprintf(
+            'https://ble.ir/%s?start=%s',
+            rawurlencode($username),
+            rawurlencode($token),
+        );
     }
 
-    public function sendMessage(string $chatId, string $text, array $options = []): array
-    {
-        return $this->request('sendMessage', array_merge($options, [
-            'chat_id' => $chatId,
-            'text' => $text,
-        ]));
+    public function sendMessage(
+        string $chatId,
+        string $text,
+        array $options = [],
+    ): array {
+        return $this->request(
+            'sendMessage',
+            array_merge($options, [
+                'chat_id' => $chatId,
+                'text' => $text,
+            ]),
+        );
     }
 
     public function setWebhook(string $url): array
     {
-        return $this->request('setWebhook', ['url' => $url]);
+        return $this->request('setWebhook', [
+            'url' => $url,
+        ]);
     }
 
-    private function request(string $method, array $parameters): array
-    {
+    private function request(
+        string $method,
+        array $parameters,
+    ): array {
         $token = (string) config('bale.token');
 
-        \Log::info('Bale: request checkpoint', [
-            'method' => $method,
-            'token_type' => gettype($token),
-            'token_is_null' => $token === null,
-            'token_is_empty' => $token === '',
-            'token_length' => is_string($token) ? strlen($token) : null,
-        ]);
+        if (trim($token) === '') {
+            Log::error('Bale token is missing', [
+                'method' => $method,
+            ]);
 
-        if (!is_string($token) || trim($token) === '') {
-            \Log::error('Bale: token missing', ['method' => $method]);
-            throw new RuntimeException('توکن بازوی بله تنظیم نشده است.');
+            throw new RuntimeException(
+                'توکن بازوی بله تنظیم نشده است.'
+            );
         }
 
-        \Log::info('Bale: before HTTP request', ['method' => $method]);
+        $baseUrl = rtrim(
+            (string) config(
+                'bale.api_url',
+                'https://tapi.bale.ai'
+            ),
+            '/'
+        );
 
+        $timeout = (int) config('bale.timeout', 10);
+        $retryTimes = (int) config('bale.retry_times', 2);
+        $retrySleep = (int) config('bale.retry_sleep_ms', 300);
 
+        Log::debug('Bale request started', [
+            'method' => $method,
+            'parameters' => $this->maskParams($parameters),
+        ]);
 
         try {
-            $response = Http::timeout(10)->post(
-                'https://tapi.bale.ai/bot'.$token.'/'.$method,
-                $parameters
-            );
+            /** @var Response $response */
+            $response = Http::acceptJson()
+                ->asJson()
+                ->timeout($timeout)
+                ->retry(
+                    $retryTimes,
+                    $retrySleep,
+                    throw: false,
+                )
+                ->post(
+                    "{$baseUrl}/bot{$token}/{$method}",
+                    $parameters,
+                );
 
-            \Log::info('Bale: HTTP response received', [
+            Log::debug('Bale response received', [
                 'method' => $method,
                 'status' => $response->status(),
-                'body' => $response->json(),
+                'successful' => $response->successful(),
             ]);
 
             $response->throw();
-        } catch (\Throwable $e) {
-            \Log::error('Bale: HTTP request failed', [
+        } catch (Throwable $exception) {
+            Log::error('Bale HTTP request failed', [
                 'method' => $method,
-                'exception' => get_class($e),
-                'message' => $e->getMessage(),
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
             ]);
 
-            throw $e;
+            throw new RuntimeException(
+                'ارتباط با سرویس بله ناموفق بود.',
+                previous: $exception,
+            );
         }
 
         $data = $response->json();
 
-        if (! is_array($data) || ($data['ok'] ?? false) !== true) {
-            throw new RuntimeException('درخواست به بازوی بله ناموفق بود.');
+        if (! is_array($data)) {
+            Log::error('Invalid Bale response format', [
+                'method' => $method,
+                'status' => $response->status(),
+            ]);
+
+            throw new RuntimeException(
+                'پاسخ دریافتی از سرویس بله نامعتبر است.'
+            );
+        }
+
+        if (($data['ok'] ?? false) !== true) {
+            Log::warning('Bale API request rejected', [
+                'method' => $method,
+                'description' => $data['description'] ?? null,
+                'error_code' => $data['error_code'] ?? null,
+            ]);
+
+            throw new RuntimeException(
+                $data['description']
+                ?? 'درخواست به بازوی بله ناموفق بود.'
+            );
         }
 
         return $data;
@@ -86,10 +151,15 @@ class BaleService
 
     private function maskParams(array $parameters): array
     {
-        $copy = $parameters;
-        if (isset($copy['text'])) {
-            $copy['text'] = \Str::limit($copy['text'], 80);
+        $masked = $parameters;
+
+        if (isset($masked['text']) && is_string($masked['text'])) {
+            $masked['text'] = Str::limit(
+                $masked['text'],
+                80
+            );
         }
-        return $copy;
+
+        return $masked;
     }
 }

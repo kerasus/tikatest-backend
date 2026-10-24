@@ -126,6 +126,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('calendar-event-targets', CalendarEventTargetController::class);
     Route::apiResource('calendar-users', CalendarUserController::class);
     Route::apiResource('exams', ExamController::class);
+    Route::post('exams/{exam}/notify-unparticipated-students', [ExamController::class, 'notifyUnparticipatedStudents']);
     Route::post('exams/store-with-online-detail', [ExamController::class, 'storeWithOnlineDetail']);
     Route::post('exams/update-with-online-detail/{exam}', [ExamController::class, 'updateWithOnlineDetail']);
     Route::post('exams/store-with-inperson-results', [ExamController::class, 'storeWithInPersonDetailAndResults']);
