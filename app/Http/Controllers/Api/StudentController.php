@@ -237,7 +237,7 @@ class StudentController extends Controller
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'username' => 'required|string|unique:users,username',
-            'password' => 'required|string|min:6', // یا پسورد پیش‌فرض دلخواهت
+            'password' => 'required|string', // یا پسورد پیش‌فرض دلخواهت
             'mobile' => 'nullable|string|max:20|unique:users,mobile',
             'national_id' => 'nullable|string|max:20',
             'student_code' => 'nullable|string|max:50',
