@@ -15,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use App\Http\Controllers\Controller;
+use App\Services\SchoolFtpFileService;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Storage;
 
@@ -319,6 +320,20 @@ class UserController extends Controller
                 'exit_code' => $exitCode,
                 'output' => trim($output),
             ], $exitCode === 0 ? 200 : 500);
+        }
+
+        if ($action === 'flush-school-ftp-cache') {
+            $validated = $request->validate([
+                'school_id' => ['nullable', 'integer', 'min:1', 'exists:schools,id'],
+            ]);
+            $schoolId = isset($validated['school_id']) ? (int) $validated['school_id'] : null;
+            $success = app(SchoolFtpFileService::class)->flushAllServiceCache($schoolId);
+
+            return response()->json([
+                'success' => $success,
+                'message' => $success ? 'کش فایل‌های FTP پاک شد.' : 'پاک‌سازی کش فایل‌های FTP ناموفق بود.',
+                'school_id' => $schoolId,
+            ], $success ? 200 : 500);
         }
 
         return response()->json([
