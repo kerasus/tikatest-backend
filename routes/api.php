@@ -225,6 +225,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('skyroom-rooms')->group(function () {
         Route::get('{skyroomRoom}', [SkyroomRoomController::class, 'show']);
         Route::post('{skyroomRoom}/login-url', [SkyroomRoomController::class, 'generateLoginUrl']);
+        Route::post('{skyroomRoom}/student-login-url', [SkyroomRoomController::class, 'generateStudentLoginUrl']);
     });
 
     Route::apiResource('skyroom-room-schedules', SkyroomRoomScheduleController::class);

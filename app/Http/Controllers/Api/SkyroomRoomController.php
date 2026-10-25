@@ -184,6 +184,27 @@ class SkyroomRoomController extends Controller
         return $this->jsonResponseOk($url);
     }
 
+    public function generateStudentLoginUrl(Request $request, SkyroomRoom $skyroomRoom): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->termEnrollments()->active()->where('class_id', $skyroomRoom->class_id)->exists(),
+            403,
+            'شما در کلاس این اتاق ثبت‌نام فعال ندارید.'
+        );
+
+        $skyroomRoom->loadMissing('skyroomAccount');
+        abort_unless($skyroomRoom->status && $skyroomRoom->skyroom_id, 422, 'اتاق اسکای‌روم فعال نیست.');
+        abort_unless($skyroomRoom->skyroomAccount?->is_active && $skyroomRoom->skyroomAccount->api_key, 422, 'اکانت اسکای‌روم فعال نیست.');
+
+        $nickname = $user->first_name.' '.$user->last_name.'('.$user->id.')';
+        $url = $this->skyroom
+            ->usingApiKey($skyroomRoom->skyroomAccount->api_key)
+            ->createStudentLoginUrl($skyroomRoom->skyroom_id, $user->id, $nickname);
+
+        return $this->jsonResponseOk(['join_url' => $url]);
+    }
+
     private function validateRoom(Request $request, ?SkyroomRoom $room = null): array
     {
         return $request->validate([

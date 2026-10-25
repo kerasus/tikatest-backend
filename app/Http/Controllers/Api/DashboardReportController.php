@@ -17,7 +17,6 @@ use App\Models\SchoolFeature;
 use App\Services\ExamService;
 use App\Services\HomeworkService;
 use App\Models\TermEnrollment;
-use App\Services\SkyroomService;
 use App\Models\OnlineExamSession;
 use Illuminate\Http\JsonResponse;
 use App\Models\InPersonExamResult;
@@ -125,8 +124,7 @@ class DashboardReportController extends Controller
     public function studentDashboard(
         Request $request,
         ExamService $examService,
-        HomeworkService $homeworkService,
-        SkyroomService $skyroomService
+        HomeworkService $homeworkService
     ): JsonResponse {
         $student = $request->user();
         $studentId = $student->id;
@@ -199,42 +197,12 @@ class DashboardReportController extends Controller
                                 ->where('start_time', '<=', $nearFutureTime);
                         });
                 })
-                ->with(['room.class', 'room.skyroomAccount'])
+                ->with('room.class')
                 ->orderBy('start_time')
                 ->get()
-                ->map(function (SkyroomRoomSchedule $schedule) use ($currentTime, $skyroomService, $student) {
+                ->map(function (SkyroomRoomSchedule $schedule) use ($currentTime) {
                     $room = $schedule->room;
-                    $apiKey = $room->skyroomAccount?->api_key;
                     $isLiveNow = ($schedule->start_time <= $currentTime && $schedule->end_time >= $currentTime);
-
-                    $joinUrl = null;
-
-                    if ($room && $student && $room->skyroom_id && $apiKey) {
-                        $nickname = $student->first_name.' '.$student->last_name.'('.$student->id.')';
-
-                        //                        // ۱. ابتدا اخراج کاربر از اتاق (با مدیریت خطا تا در صورت نبودن کاربر در کلاس، لینک لغو نشود)
-                        //                        try {
-                        //                            $skyroomService->usingApiKey($apiKey)->removeRoomUsers(
-                        //                                $room->skyroom_id,
-                        //                                $student->id
-                        //                            );
-                        //                        } catch (\Throwable $e) {
-                        //                            // لاگ اخطار جهت خطایابی؛ روند تولید لینک ورود متوقف نمی‌شود
-                        //                            \Log::warning('Skyroom kick before join failed', [
-                        //                                'room_id'    => $room->skyroom_id,
-                        //                                'student_id' => $student->id,
-                        //                                'error'      => $e->getMessage(),
-                        //                            ]);
-                        //                        }
-
-                        // ۲. تولید لینک جدید و معتبر برای ورود
-                        $joinUrl = $skyroomService->usingApiKey($apiKey)
-                            ->createStudentLoginUrl(
-                                $room->skyroom_id,
-                                $student->id,
-                                $nickname
-                            );
-                    }
 
                     return [
                         'schedule_id' => $schedule->id,
@@ -246,7 +214,6 @@ class DashboardReportController extends Controller
                         'end_time' => substr($schedule->end_time, 0, 5),
                         'is_live_now' => $isLiveNow,
                         'status' => $isLiveNow ? 'live' : 'upcoming',
-                        'join_url' => $joinUrl,
                     ];
                 });
         }
