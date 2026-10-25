@@ -117,88 +117,49 @@ class SchoolFtpFileService
         $classesHash = md5(implode(',', $validClassIds));
         $cacheKey = "ftp_files_tree_school_{$schoolId}_{$classesHash}";
 
-        try {
-            $address = rtrim($config['base_url'], '/') . '/sanjad/classes/files-tree';
-            // چون آرایه ممکنه طولانی باشه، متد POST با Body مناسب‌تره
-            // (یا اگر اندپوینت مقصدت GET با کوئری پارامتر قبول می‌کنه، می‌تونی get بزنی)
-            $response = Http::withHeaders([
-                'X-Service-Api-Key' => $config['outbound_api_key'],
-                'Accept'            => 'application/json',
-            ])
-                ->timeout(15) // تایم‌اوت رو برای حجم درختی یکم دست‌ودلبازتر گذاشتیم
-                ->post($address, [
+        // کش کردن پاسخ به مدت ۲ ساعت با استفاده از Cache::remember
+        return Cache::remember($cacheKey, now()->addHours(2), function () use ($config, $schoolId, $validClassIds) {
+            try {
+                $address = rtrim($config['base_url'], '/') . '/sanjad/classes/files-tree';
+
+                $response = Http::withHeaders([
+                    'X-Service-Api-Key' => $config['outbound_api_key'],
+                    'Accept'            => 'application/json',
+                ])
+                    ->timeout(15)
+                    ->post($address, [
+                        'class_ids' => $validClassIds,
+                    ]);
+
+                if ($response->successful()) {
+                    $body = $response->json();
+                    $tree = $body['data'] ?? $body ?? [];
+
+                    return [
+                        'success' => true,
+                        'tree'    => $tree,
+                    ];
+                }
+
+                Log::warning('پاسخ ناموفق در دریافت درخت فایل‌های کلاس‌ها از پنل FTP', [
+                    'school_id' => $schoolId,
+                    'class_ids' => $validClassIds,
+                    'status'    => $response->status(),
+                    'body'      => $response->body(),
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('خطا در ارتباط با سرور FTP جهت دریافت درخت فایل‌ها: ' . $e->getMessage(), [
+                    'school_id' => $schoolId,
                     'class_ids' => $validClassIds,
                 ]);
-
-            if ($response->successful()) {
-                $body = $response->json();
-                $tree = $body['data'] ?? $body ?? [];
-
-                return [
-                    'success' => true,
-                    'tree'    => $tree,
-                ];
             }
 
-            Log::warning('پاسخ ناموفق در دریافت درخت فایل‌های کلاس‌ها از پنل FTP', [
-                'school_id' => $schoolId,
-                'class_ids' => $validClassIds,
-                'status'    => $response->status(),
-                'body'      => $response->body(),
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('خطا در ارتباط با سرور FTP جهت دریافت درخت فایل‌ها: ' . $e->getMessage(), [
-                'school_id' => $schoolId,
-                'class_ids' => $validClassIds,
-            ]);
-        }
-
-        return [
-            'success' => false,
-            'message' => 'امکان دریافت ساختار فایل‌ها در حال حاضر وجود ندارد.',
-            'tree'    => [],
-        ];
-//
-//        return Cache::remember($cacheKey, now()->addHour(), function () use ($config, $schoolId, $validClassIds) {
-//            try {
-//                $address = rtrim($config['base_url'], '/') . '/sanjad/classes/files-tree';
-//                // چون آرایه ممکنه طولانی باشه، متد POST با Body مناسب‌تره
-//                // (یا اگر اندپوینت مقصدت GET با کوئری پارامتر قبول می‌کنه، می‌تونی get بزنی)
-//                $response = Http::withHeaders([
-//                    'X-Service-Api-Key' => $config['outbound_api_key'],
-//                    'Accept'            => 'application/json',
-//                ])
-//                    ->timeout(15) // تایم‌اوت رو برای حجم درختی یکم دست‌ودلبازتر گذاشتیم
-//                    ->post($address, [
-//                        'class_ids' => $validClassIds,
-//                    ]);
-//
-//                if ($response->successful()) {
-//                    return [
-//                        'success' => true,
-//                        'tree'    => $response->json('data') ?? [],
-//                    ];
-//                }
-//
-//                Log::warning('پاسخ ناموفق در دریافت درخت فایل‌های کلاس‌ها از پنل FTP', [
-//                    'school_id' => $schoolId,
-//                    'class_ids' => $validClassIds,
-//                    'status'    => $response->status(),
-//                    'body'      => $response->body(),
-//                ]);
-//            } catch (\Throwable $e) {
-//                Log::error('خطا در ارتباط با سرور FTP جهت دریافت درخت فایل‌ها: ' . $e->getMessage(), [
-//                    'school_id' => $schoolId,
-//                    'class_ids' => $validClassIds,
-//                ]);
-//            }
-//
-//            return [
-//                'success' => false,
-//                'message' => 'امکان دریافت ساختار فایل‌ها در حال حاضر وجود ندارد.',
-//                'tree'    => [],
-//            ];
-//        });
+            return [
+                'success' => false,
+                'message' => 'امکان دریافت ساختار فایل‌ها در حال حاضر وجود ندارد.',
+                'tree'    => [],
+            ];
+        });
     }
 
     /**
