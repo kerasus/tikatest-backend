@@ -10,6 +10,11 @@ use Illuminate\Support\Facades\Cache;
 class SchoolFtpFileService
 {
     /**
+     * پیشوند عمومی کلیدهای کش این سرویس
+     */
+    protected const CACHE_PREFIX = 'ftp_files_service';
+
+    /**
      * استخراج و اعتبارسنجی تنظیمات سرویس FTP مدرسه
      */
     protected function getFtpConfig(int $schoolId): ?array
@@ -30,6 +35,14 @@ class SchoolFtpFileService
     }
 
     /**
+     * دریافت کلید نسخه کش برای یک مدرسه (جهت باطل‌سازی آنی تمام کش‌ها)
+     */
+    protected function getSchoolCacheVersion(int $schoolId): int
+    {
+        return (int) Cache::get(self::CACHE_PREFIX . "_version_school_{$schoolId}", 1);
+    }
+
+    /**
      * دریافت فایل‌های دسته‌بندی‌شده یک کلاس از پنل FTP مدرسه
      */
     public function getClassFiles(int $schoolId, int $classId): array
@@ -44,8 +57,8 @@ class SchoolFtpFileService
             ];
         }
 
-        // کش یک‌ساعته به ازای هر مدرسه و کلاس
-        $cacheKey = "ftp_files_school_{$schoolId}_class_{$classId}";
+        $v = $this->getSchoolCacheVersion($schoolId);
+        $cacheKey = "ftp_files_v{$v}_school_{$schoolId}_class_{$classId}";
 
         return Cache::remember($cacheKey, now()->addHour(), function () use ($config, $classId, $schoolId) {
             try {
@@ -85,14 +98,9 @@ class SchoolFtpFileService
 
     /**
      * دریافت درخت فایل‌های مجموعه‌ای از کلاس‌ها (Batch / Tree)
-     *
-     * @param int $schoolId
-     * @param array<int> $classIds
-     * @return array
      */
     public function getClassesFilesTree(int $schoolId, array $classIds): array
     {
-        // آرایه خالی یا بدون آیدی معتبر نیاز به درخواست به سرور نداره
         $validClassIds = array_values(array_unique(array_filter($classIds, fn($id) => is_numeric($id) && $id > 0)));
 
         if (empty($validClassIds)) {
@@ -112,72 +120,126 @@ class SchoolFtpFileService
             ];
         }
 
-        // سورت می‌کنیم تا کش‌کی برای ترتیب‌های مختلف یکسان باشه (مثلا [1, 2] و [2, 1])
         sort($validClassIds);
         $classesHash = md5(implode(',', $validClassIds));
-        $cacheKey = "ftp_files_tree_school_{$schoolId}_{$classesHash}";
+        $v = $this->getSchoolCacheVersion($schoolId);
+        $cacheKey = "ftp_files_tree_v{$v}_school_{$schoolId}_{$classesHash}";
 
-        // کش کردن پاسخ به مدت ۲ ساعت با استفاده از Cache::remember
-        return Cache::remember($cacheKey, now()->addHours(2), function () use ($config, $schoolId, $validClassIds) {
-            try {
-                $address = rtrim($config['base_url'], '/') . '/sanjad/classes/files-tree';
+        if (Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
+        }
 
-                $response = Http::withHeaders([
-                    'X-Service-Api-Key' => $config['outbound_api_key'],
-                    'Accept'            => 'application/json',
-                ])
-                    ->timeout(15)
-                    ->post($address, [
-                        'class_ids' => $validClassIds,
-                    ]);
+        try {
+            $address = rtrim($config['base_url'], '/') . '/sanjad/classes/files-tree';
 
-                if ($response->successful()) {
-                    $body = $response->json();
-                    $tree = $body['data'] ?? $body ?? [];
-
-                    return [
-                        'success' => true,
-                        'tree'    => $tree,
-                    ];
-                }
-
-                Log::warning('پاسخ ناموفق در دریافت درخت فایل‌های کلاس‌ها از پنل FTP', [
-                    'school_id' => $schoolId,
-                    'class_ids' => $validClassIds,
-                    'status'    => $response->status(),
-                    'body'      => $response->body(),
-                ]);
-            } catch (\Throwable $e) {
-                Log::error('خطا در ارتباط با سرور FTP جهت دریافت درخت فایل‌ها: ' . $e->getMessage(), [
-                    'school_id' => $schoolId,
+            $response = Http::withHeaders([
+                'X-Service-Api-Key' => $config['outbound_api_key'],
+                'Accept'            => 'application/json',
+            ])
+                ->timeout(15)
+                ->post($address, [
                     'class_ids' => $validClassIds,
                 ]);
+
+            if ($response->successful()) {
+                $body = $response->json();
+                $tree = $body['data'] ?? $body ?? [];
+
+                $result = [
+                    'success' => true,
+                    'tree'    => $tree,
+                ];
+
+                Cache::put($cacheKey, $result, now()->addHours(2));
+
+                return $result;
             }
 
-            return [
-                'success' => false,
-                'message' => 'امکان دریافت ساختار فایل‌ها در حال حاضر وجود ندارد.',
-                'tree'    => [],
-            ];
-        });
+            Log::warning('پاسخ ناموفق در دریافت درخت فایل‌های کلاس‌ها از پنل FTP', [
+                'school_id' => $schoolId,
+                'class_ids' => $validClassIds,
+                'status'    => $response->status(),
+                'body'      => $response->body(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('خطا در ارتباط با سرور FTP جهت دریافت درخت فایل‌ها: ' . $e->getMessage(), [
+                'school_id' => $schoolId,
+                'class_ids' => $validClassIds,
+            ]);
+        }
+
+        return [
+            'success' => false,
+            'message' => 'امکان دریافت ساختار فایل‌ها در حال حاضر وجود ندارد.',
+            'tree'    => [],
+        ];
     }
 
     /**
-     * برای وقتی که ادمین فایل جدیدی آپلود کرده و کش باید تازه شود
+     * پاک‌سازی کش یک کلاس مشخص
      */
     public function forgetClassFilesCache(int $schoolId, int $classId): void
     {
-        Cache::forget("ftp_files_school_{$schoolId}_class_{$classId}");
+        $v = $this->getSchoolCacheVersion($schoolId);
+        Cache::forget("ftp_files_v{$v}_school_{$schoolId}_class_{$classId}");
     }
 
     /**
      * پاک‌سازی کش درخت فایل‌های چند کلاس
      */
-    public function forgetClassesFilesTreeCache(int $schoolId, array $classIds): void
+    public function forgetClassesFilesTreeCache(int $schoolId, array $classIds): bool
     {
         $validClassIds = array_values(array_unique(array_filter($classIds, fn($id) => is_numeric($id) && $id > 0)));
         sort($validClassIds);
         $classesHash = md5(implode(',', $validClassIds));
-        Cache::forget("ftp_files_tree_school_{$schoolId}_{$classesHash}");
+        $v = $this->getSchoolCacheVersion($schoolId);
+        $cacheKey = "ftp_files_tree_v{$v}_school_{$schoolId}_{$classesHash}";
+
+        return Cache::forget($cacheKey);
+    }
+
+    /**
+     * 🔥 پاک‌سازی کامل تمام کش‌های این سرویس برای یک مدرسه (یا با ورودی null برای کل مدارس)
+     * با افزایش شماره ورژن، تمام کلیدهای کش قبلی بدون سربار به عنوان منقضی در نظر گرفته می‌شوند.
+     */
+    public function flushAllServiceCache(?int $schoolId = null): bool
+    {
+        if ($schoolId !== null) {
+            $versionKey = self::CACHE_PREFIX . "_version_school_{$schoolId}";
+            $currentVersion = (int) Cache::get($versionKey, 1);
+            Cache::forever($versionKey, $currentVersion + 1);
+
+            return true;
+        }
+
+        // اگر بخواهیم با متد Redis اگر ردیس فعال باشد یا به ازای لیست مدارس فعال پاک کنیم:
+        try {
+            // اگر از Redis استفاده می‌کنید:
+            if (config('cache.default') === 'redis') {
+                $redis = Cache::getStore()->getRedis();
+                $prefix = config('database.redis.options.prefix', '');
+                $keys = $redis->keys($prefix . 'ftp_files_*');
+                if (!empty($keys)) {
+                    foreach ($keys as $key) {
+                        // حذف پیشوند لاراول از کلید قبل از del در ردیس
+                        $cleanedKey = preg_replace('/^' . preg_quote($prefix, '/') . '/', '', $key);
+                        Cache::forget($cleanedKey);
+                    }
+                }
+                return true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('خطا در پاکسازی کلیدهای ردیس کش FTP: ' . $e->getMessage());
+        }
+
+        // برای درایورهای File یا دیتابیس در صورت نیاز، کش تمام مدارس را صفر می‌کنیم
+        $schoolIds = SchoolFeature::where('feature_key', SchoolFeature::FTP_PANEL)->pluck('school_id');
+        foreach ($schoolIds as $sId) {
+            $versionKey = self::CACHE_PREFIX . "_version_school_{$sId}";
+            $currentVersion = (int) Cache::get($versionKey, 1);
+            Cache::forever($versionKey, $currentVersion + 1);
+        }
+
+        return true;
     }
 }
