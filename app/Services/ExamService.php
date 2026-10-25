@@ -595,6 +595,7 @@ class ExamService
 
         $fromDt = $from ? Carbon::parse($from) : null;
         $toDt   = $to ? Carbon::parse($to) : null;
+        $now    = now();
 
         // ۲. کوئری اصلی آزمون با Select امن
         $query = Exam::query()
@@ -640,8 +641,14 @@ class ExamService
             $query->where('delivery_mode', 'online');
         }
 
-        // ۳. فیلتر بازه زمانی آنلاین بر اساس starts_at / ends_at
-        $query->whereHas('onlineExamDetail', function ($detailQuery) use ($fromDt, $toDt) {
+        // فیلتر بازه زمانی آنلاین + اعمال شرط انتشار (visible_at)
+        $query->whereHas('onlineExamDetail', function ($detailQuery) use ($fromDt, $toDt, $now) {
+            // شرط رویت: زمان انتشار نرسیده باشد، آزمون مخفی می‌ماند
+            $detailQuery->where(function ($vq) use ($now) {
+                $vq->whereNull('visible_at')
+                    ->orWhere('visible_at', '<=', $now);
+            });
+
             if ($fromDt) {
                 $detailQuery->where('ends_at', '>=', $fromDt);
             }
