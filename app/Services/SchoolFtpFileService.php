@@ -136,7 +136,7 @@ class SchoolFtpFileService
                 'X-Service-Api-Key' => $config['outbound_api_key'],
                 'Accept'            => 'application/json',
             ])
-                ->timeout(15)
+                ->timeout(60) // افزایش به ۶۰ ثانیه برای جلوگیری از تایم‌اوت زودهنگام
                 ->post($address, [
                     'class_ids' => $validClassIds,
                 ]);
