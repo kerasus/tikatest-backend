@@ -110,7 +110,7 @@ class UserController extends Controller
                     'username' => 'required|string|unique:users',
                     'mobile' => 'required|string|unique:users',
                     'email' => 'nullable|string|email|unique:users',
-                    'password' => 'required|string|min:6',
+                    'password' => 'required|string',
                     'picture' => 'nullable|image|mimes:jpeg,jpg,png,gif|max:2048',
                     'school_id' => $schoolIdRules,
                 ]);
