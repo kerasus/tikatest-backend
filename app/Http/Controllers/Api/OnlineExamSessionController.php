@@ -94,17 +94,19 @@ class OnlineExamSessionController extends Controller
             'attempt_number' => 'sometimes|integer|min:1',
         ]);
 
+        $user = $request->user();
+
         $exam = Exam::query()
             ->where('delivery_mode', 'online')
             ->with('onlineExamDetail')
             ->findOrFail($examId);
 
-        $this->checkStudentExamAccess($exam, $request->user());
+        $this->checkStudentExamAccess($exam, $user);
         $this->checkExamVisibility($exam);
 
         $query = OnlineExamSession::query()
             ->where('exam_id', $examId)
-            ->where('student_id', $request->user()->id)
+            ->where('student_id', $user->id)
             ->whereIn('status', ['submitted', 'graded', 'expired'])
             ->with($this->sessionService->getSessionDetailRelations());
 
@@ -116,42 +118,41 @@ class OnlineExamSessionController extends Controller
 
         $session = $query->first();
 
-        // اگر سشنی ثبت یا تحویل داده نشده باشد
-        if (! $session) {
-            return $this->jsonResponseError('کارنامه یا نتیجه پایان‌یافته‌ای برای این دانش‌آموز در این آزمون یافت نشد.', 404);
-        }
-
         $detail = $exam->onlineExamDetail;
 
         /*
          * اولویت‌بندی مشاهده کلید و راه‌حل‌ها:
          * ۱. اگر اپراتور صراحتاً answers_visible_at تعریف کرده باشد:
-         *    - اگر زمانش رسیده باشد => مجاز به مشاهده پاسخنامه است (مسئولیت با اپراتور).
-         *    - اگر زمانش نرسیده باشد => هنوز مجاز به دیدن راه‌حل نیست.
+         *    - ملاک منحصراً رسیدن به این تاریخ است (چه دانش‌آموز آزمون داده باشد چه غایب باشد).
          * ۲. اگر answers_visible_at تعریف نشده باشد:
-         *    - ملاک، پایان یافتن کل مهلت آزمون (ends_at) یا خروجی canShowSolutions است.
+         *    - اگر دانش‌آموز آزمون داده باشد ($session موجود است) => تابع canShowSolutions
+         *    - اگر در آزمون غایب بوده ($session نال است) => پایان یافتن کل بازه زمانی آزمون (examHasEnded)
          */
         $hasCustomAnswerTime = ! empty($detail?->answers_visible_at);
 
         if ($hasCustomAnswerTime) {
             $canViewSolutions = now()->gte($detail->answers_visible_at);
         } else {
-            $canViewSolutions = $this->canShowSolutions($exam, $session);
+            $canViewSolutions = $session
+                ? $this->canShowSolutions($exam, $session)
+                : $this->examHasEnded($exam);
         }
 
-        // اگر سیاست شما این است که تا قبل از موعد پاسخنامه کلاً ارور ۴۰۹ بدهید:
+        // اگر هنوز موعد مشاهده پاسخنامه نرسیده است:
         if (! $canViewSolutions) {
             if ($hasCustomAnswerTime) {
                 return $this->jsonResponseError('پاسخنامه بر اساس زمان‌بندی اعلام‌شده هنوز قابل مشاهده نیست.', 409);
             }
 
-            if (! $this->examHasEnded($exam)) {
-                return $this->jsonResponseError('پاسخنامه هنوز قابل مشاهده نیست.', 409);
-            }
+            return $this->jsonResponseError('پاسخنامه هنوز قابل مشاهده نیست.', 409);
         }
 
-        // ساخت نتیجه کارنامه
-        $payload = $this->sessionService->buildExamResultPayload($exam, $session, $request->user()->id);
+        /*
+         * ساخت نتیجه آزمون یا بازبینی (Review Mode):
+         * اگر $session نال باشد (غایب یا شرکت نکرده)، متد سرویس به صورت خودکار
+         * پی‌لود را با session = null و is_review_only = true می‌سازد.
+         */
+        $payload = $this->sessionService->buildExamResultPayload($exam, $session, $user->id);
 
         // اعمال مخفی‌سازی در صورتی که مجاز به دیدن راه‌حل‌ها نباشد
         $this->hideStudentSolutions($payload, $canViewSolutions);
@@ -627,5 +628,4 @@ class OnlineExamSessionController extends Controller
             return $this->jsonResponseServerError(['errors' => ['analytics' => $e->getMessage()]]);
         }
     }
-
 }
