@@ -6,11 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Message;
 use App\Models\MessageOwner;
 use App\Models\User;
+use App\Services\Notification\NotificationManager;
+use App\Services\Notification\NotificationMessage;
 use App\Traits\CommonCRUD;
 use App\Traits\Filter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class MessageController extends Controller
 {
@@ -247,6 +250,74 @@ class MessageController extends Controller
 
             return $this->jsonResponseServerError(['errors' => ['message' => 'خطا در ارسال پیام به کلاس.']]);
         }
+    }
+
+    public function sendToStudents(Request $request): JsonResponse
+    {
+        $request->validate([
+            'body' => 'required|string',
+            'school_id' => 'nullable|integer|exists:schools,id',
+            'field_id' => 'nullable|integer|exists:academic_fields,id',
+            'academic_level_id' => 'nullable|integer|exists:academic_levels,id',
+            'class_id' => 'nullable|integer|exists:classes,id',
+            'first_name' => 'nullable|string|max:255',
+            'last_name' => 'nullable|string|max:255',
+            'national_id' => 'nullable|string|max:20',
+            'username' => 'nullable|string|max:255',
+        ]);
+
+        $filterKeys = ['school_id', 'field_id', 'academic_level_id', 'class_id', 'first_name', 'last_name', 'national_id', 'username'];
+        if (! collect($filterKeys)->contains(fn ($key) => $request->filled($key))) {
+            throw ValidationException::withMessages(['filters' => 'حداقل یک فیلتر برای انتخاب دانش‌آموزان الزامی است.']);
+        }
+
+        $modelQuery = User::query()->whereHas('roles', fn ($q) => $q->where('name', 'student'));
+
+        foreach (['first_name', 'last_name', 'national_id', 'username'] as $key) {
+            if ($request->filled($key)) {
+                $modelQuery->where($key, 'like', '%'.trim($request->input($key)).'%');
+            }
+        }
+
+        if ($request->filled('school_id') || $request->filled('field_id') || $request->filled('academic_level_id') || $request->filled('class_id')) {
+            $modelQuery->whereHas('termEnrollments', function ($registrationQuery) use ($request) {
+                if ($request->filled('class_id')) {
+                    $registrationQuery->where('term_enrollments.class_id', $request->integer('class_id'));
+                }
+                $registrationQuery->whereHas('schoolClass', function ($classQuery) use ($request) {
+                    if ($request->filled('academic_level_id')) {
+                        $classQuery->where('classes.academic_level_id', $request->integer('academic_level_id'));
+                    }
+                    if ($request->filled('field_id') || $request->filled('school_id')) {
+                        $classQuery->whereHas('academicLevel', function ($levelQuery) use ($request) {
+                            if ($request->filled('field_id')) {
+                                $levelQuery->where('academic_levels.field_id', $request->integer('field_id'));
+                            }
+                            if ($request->filled('school_id')) {
+                                $levelQuery->whereHas('academicField', fn ($f) => $f->where('academic_fields.school_id', $request->integer('school_id')));
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
+        $students = $modelQuery->whereNotNull('bale_chat_id')->get();
+        $message = NotificationMessage::make('پیام', $request->body);
+        $sent = 0;
+
+        foreach ($students as $student) {
+            try {
+                $result = app(NotificationManager::class)->sendVia('bale', $student, $message);
+                if ($result['ok'] ?? false) {
+                    $sent++;
+                }
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
+        return $this->jsonResponseOk(['sent' => $sent]);
     }
 
     public function markAsRead(Request $request, MessageOwner $messageOwner): JsonResponse

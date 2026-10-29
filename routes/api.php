@@ -180,6 +180,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('messages/received', [MessageController::class, 'received']);
     Route::post('messages/send-to-student', [MessageController::class, 'sendToStudent']);
     Route::post('messages/send-to-class', [MessageController::class, 'sendToClass']);
+    Route::post('messages/send-to-students', [MessageController::class, 'sendToStudents'])
+        ->middleware('role:admin|manager|staff');
     Route::patch('messages/{message}/read', [MessageController::class, 'markAsRead']);
     Route::get('study-sessions/report/general', [StudentController::class, 'studyHoursGeneralReport']);
     Route::get('study-sessions/report/student/{studentId}', [StudentController::class, 'studyHoursStudentReport']);
