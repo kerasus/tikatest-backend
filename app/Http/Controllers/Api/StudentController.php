@@ -224,6 +224,14 @@ class StudentController extends Controller
             });
         }
 
+        if ($request->filled('bale_status')) {
+            if ($request->get('bale_status') === 'connected') {
+                $modelQuery->whereNotNull('bale_chat_id');
+            } elseif ($request->get('bale_status') === 'not_connected') {
+                $modelQuery->whereNull('bale_chat_id');
+            }
+        }
+
         return $this->jsonResponseOk($modelQuery->paginate($perPage));
     }
 
