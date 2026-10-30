@@ -66,7 +66,7 @@ class SchoolFtpFileService
                     'X-Service-Api-Key' => $config['outbound_api_key'],
                     'Accept'            => 'application/json',
                 ])
-                    ->timeout(10)
+                    ->timeout(60)
                     ->get(rtrim($config['base_url'], '/') . "/classes/{$classId}/files");
 
                 if ($response->successful()) {
