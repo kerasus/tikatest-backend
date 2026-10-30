@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\UserRoleType;
-use App\Http\Controllers\Controller;
 use App\Models\School;
-use App\Traits\CommonCRUD;
 use App\Traits\Filter;
-use Illuminate\Http\JsonResponse;
+use App\Traits\CommonCRUD;
+use App\Enums\UserRoleType;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
+use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 

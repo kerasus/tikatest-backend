@@ -217,7 +217,6 @@ class SkyroomService
 //            'users'   => $normalizedUsers,
 //        ], $apiKey);
 //
-//        dd($result);
 //        return (int) ($result ?? 0);
 //    }
 }
