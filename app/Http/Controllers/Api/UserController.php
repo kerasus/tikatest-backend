@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Resources\UserResource;
 use Throwable;
 use App\Models\User;
 use App\Traits\Filter;
@@ -274,10 +275,9 @@ class UserController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        // لود تنبل/Lazy Load رابطه‌ها روی کاربر لاگین‌شده
-        $user->load(['roles', 'permissions', 'schools', 'termEnrollments.schoolClass.academicLevel.academicField.school']);
+        $user->loadAuthRelations();
 
-        return $this->jsonResponseOk($user);
+        return $this->jsonResponseOk(new UserResource($user));
     }
 
     public function runDevScripts(Request $request): JsonResponse

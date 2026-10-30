@@ -259,4 +259,14 @@ class User extends Authenticatable
             $q->where('name', UserRoleType::Student->value);
         });
     }
+
+    public function loadAuthRelations(): self
+    {
+        return $this->loadMissing([
+            'roles',
+            'schools',
+            'permissions',
+            'termEnrollments.schoolClass.academicLevel.academicField.school.features',
+        ]);
+    }
 }

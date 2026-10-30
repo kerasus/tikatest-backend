@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -29,16 +30,12 @@ class AuthController extends Controller
 
         $token = $user->createToken($request->input('device_name', 'api-token'))->plainTextToken;
 
+        $user->loadAuthRelations();
+
         return response()->json([
             'token' => $token,
             'token_type' => 'Bearer',
-            'user' => $user->load(
-                'roles',
-                'permissions',
-                'schools',
-                'termEnrollments.school.features',
-                'termEnrollments.schoolClass.academicLevel.academicField'
-            ),
+            'user' => new UserResource($user),
         ]);
     }
 
