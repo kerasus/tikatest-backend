@@ -343,7 +343,7 @@ class StudentController extends Controller
                 'username' => 'sometimes|required|string|unique:users,username,'.$student->id,
                 'password' => 'nullable|string|min:6',
                 'mobile' => 'sometimes|nullable|string|max:20|unique:users,mobile,'.$student->id,
-                'national_id' => 'nullable|string|max:20',
+                'national_id' => 'nullable|digits:10|unique:users,national_id,{$userId}',
                 'birth_date' => 'nullable|date',
                 'email' => 'nullable|email|max:255',
                 'address' => 'nullable|string',
