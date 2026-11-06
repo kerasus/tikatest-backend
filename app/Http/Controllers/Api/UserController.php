@@ -11,6 +11,7 @@ use App\Models\SchoolUser;
 use Illuminate\Support\Str;
 use App\Enums\UserRoleType;
 use Illuminate\Http\Request;
+use App\Traits\SanitizesInput;
 use Illuminate\Validation\Rule;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +23,7 @@ use Illuminate\Support\Facades\Storage;
 
 class UserController extends Controller
 {
-    use CommonCRUD, Filter;
+    use CommonCRUD, Filter, SanitizesInput;
 
     public function __construct()
     {
@@ -92,6 +93,12 @@ class UserController extends Controller
         $isSystemAdmin = $creator->hasRole(UserRoleType::Admin->value);
         $picturePath = null;
 
+        $this->sanitizeRequestInputs(
+            request: $request,
+            credentialFields: ['username', 'password', 'mobile'],
+            textFields: ['first_name', 'last_name']
+        );
+
         try {
             $user = DB::transaction(function () use ($request, $creator, $isSystemAdmin, &$picturePath) {
                 $schoolIdRules = $isSystemAdmin
@@ -157,6 +164,12 @@ class UserController extends Controller
 
     public function update(Request $request, User $user): JsonResponse
     {
+        $this->sanitizeRequestInputs(
+            request: $request,
+            credentialFields: ['username', 'password', 'mobile'],
+            textFields: ['first_name', 'last_name']
+        );
+
         $request->validate([
             'first_name' => 'sometimes|required|string|max:255',
             'last_name' => 'sometimes|required|string|max:255',

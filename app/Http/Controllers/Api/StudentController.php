@@ -2,28 +2,29 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\UserRoleType;
-use App\Http\Controllers\Controller;
-use App\Models\DisciplinaryRecord;
-use App\Models\InPersonExamResult;
-use App\Models\SchoolClass;
-use App\Models\StudentProfile;
-use App\Models\StudySession;
-use App\Models\User;
-use App\Services\TermEnrollmentService;
-use App\Services\TermService;
-use App\Traits\CommonCRUD;
-use App\Traits\Filter;
 use Carbon\Carbon;
-use Illuminate\Http\JsonResponse;
+use App\Models\User;
+use App\Traits\Filter;
+use App\Traits\CommonCRUD;
+use App\Enums\UserRoleType;
+use App\Models\SchoolClass;
+use App\Models\StudySession;
 use Illuminate\Http\Request;
+use App\Services\TermService;
+use App\Traits\SanitizesInput;
+use App\Models\StudentProfile;
+use Illuminate\Http\JsonResponse;
+use App\Models\DisciplinaryRecord;
 use Illuminate\Support\Facades\DB;
+use App\Models\InPersonExamResult;
+use App\Http\Controllers\Controller;
+use App\Services\TermEnrollmentService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 
 class StudentController extends Controller
 {
-    use CommonCRUD, Filter;
+    use CommonCRUD, Filter, SanitizesInput;
 
     public function __construct()
     {
@@ -241,6 +242,12 @@ class StudentController extends Controller
         TermEnrollmentService $termEnrollmentService
     ): JsonResponse {
 
+        $this->sanitizeRequestInputs(
+            request: $request,
+            credentialFields: ['username', 'password', 'national_id', 'mobile', 'student_code'],
+            textFields: ['first_name', 'last_name', 'address', 'description']
+        );
+
         $request->validate([
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
@@ -337,6 +344,11 @@ class StudentController extends Controller
         $isStaff = $this->isStaffUser($user);
 
         if ($isStaff) {
+            $this->sanitizeRequestInputs(
+                request: $request,
+                credentialFields: ['username', 'password', 'national_id', 'mobile'],
+                textFields: ['first_name', 'last_name', 'address', 'description']
+            );
             $request->validate([
                 'first_name' => 'sometimes|required|string|max:255',
                 'last_name' => 'sometimes|required|string|max:255',
