@@ -36,6 +36,20 @@ return new class extends Migration
                 }
              */
 
+            // تنظیمات دسترسی غایبین پس از پایان زمان آزمون
+            $table->boolean('show_content_to_absentees_after_end')
+                ->default(true)
+                ->comment('آیا محتوای سؤالات پس از پایان آزمون برای دانش‌آموزانی که شرکت نکرده‌اند نمایش داده شود؟');
+
+            $table->boolean('show_solution_to_absentees_after_end')
+                ->default(true)
+                ->comment('آیا پاسخ تشریحی پس از پایان آزمون برای دانش‌آموزانی که شرکت نکرده‌اند نمایش داده شود؟');
+
+            $table->boolean('show_answer_key_to_absentees_after_end')
+                ->default(true)
+                ->comment('آیا پاسخ‌نامه کلیدی پس از پایان آزمون برای دانش‌آموزانی که شرکت نکرده‌اند نمایش داده شود؟');
+
+
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
             $table->index('starts_at');

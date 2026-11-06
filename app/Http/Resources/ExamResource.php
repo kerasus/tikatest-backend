@@ -87,6 +87,13 @@ class ExamResource extends JsonResource
                     $payload['content_path'] = $onlineDetail->content_path ?? null;
                 }
 
+                // فلدهای دسترسی غایبان (فقط برای نقش‌های غیردانش‌آموز)
+                if (! $isStudent) {
+                    $payload['show_content_to_absentees_after_end'] = $onlineDetail->show_content_to_absentees_after_end;
+                    $payload['show_solution_to_absentees_after_end'] = $onlineDetail->show_solution_to_absentees_after_end;
+                    $payload['show_answer_key_to_absentees_after_end'] = $onlineDetail->show_answer_key_to_absentees_after_end;
+                }
+
                 // دفترچه‌ها (Booklets)
                 if ($onlineDetail->relationLoaded('booklets')) {
                     $payload['booklets'] = $onlineDetail->booklets;

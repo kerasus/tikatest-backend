@@ -62,6 +62,9 @@ class ExamService
             'answers_visible_at' => $validated['answers_visible_at'] ?? null,
             'content' => $this->processExamContent($request, 'content'),
             'solution' => $this->processExamContent($request, 'solution'),
+            'show_content_to_absentees_after_end' => $validated['show_content_to_absentees_after_end'] ?? true,
+            'show_solution_to_absentees_after_end' => $validated['show_solution_to_absentees_after_end'] ?? true,
+            'show_answer_key_to_absentees_after_end' => $validated['show_answer_key_to_absentees_after_end'] ?? true,
             'created_by' => $request->user()->id,
         ]);
 
@@ -117,6 +120,9 @@ class ExamService
             'time_limit_minutes' => $validated['time_limit_minutes'] ?? null,
             'visible_at' => $validated['visible_at'] ?? null,
             'answers_visible_at' => $validated['answers_visible_at'] ?? null,
+            'show_content_to_absentees_after_end' => $validated['show_content_to_absentees_after_end'] ?? true,
+            'show_solution_to_absentees_after_end' => $validated['show_solution_to_absentees_after_end'] ?? true,
+            'show_answer_key_to_absentees_after_end' => $validated['show_answer_key_to_absentees_after_end'] ?? true,
             'created_by' => $request->user()->id,
         ];
 
@@ -345,6 +351,9 @@ class ExamService
             'time_limit_minutes' => $request->input('time_limit_minutes'),
             'visible_at' => $request->input('visible_at'),
             'answers_visible_at' => $request->input('answers_visible_at'),
+            'show_content_to_absentees_after_end' => $request->boolean('show_content_to_absentees_after_end', true),
+            'show_solution_to_absentees_after_end' => $request->boolean('show_solution_to_absentees_after_end', true),
+            'show_answer_key_to_absentees_after_end' => $request->boolean('show_answer_key_to_absentees_after_end', true),
             'created_by' => $request->user()->id,
         ];
         $oldContentPath = null;

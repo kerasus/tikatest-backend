@@ -20,6 +20,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
  * @property \Illuminate\Support\Carbon|null $answers_visible_at
  * @property array<array-key, mixed>|null $content
  * @property array<array-key, mixed>|null $solution
+ * @property bool $show_content_to_absentees_after_end
+ * @property bool $show_solution_to_absentees_after_end
+ * @property bool $show_answer_key_to_absentees_after_end
  * @property int|null $created_by
  * @property \Illuminate\Support\Carbon|null $created_at
  * @property \Illuminate\Support\Carbon|null $updated_at
@@ -59,6 +62,9 @@ class OnlineExamDetail extends Model
         'answers_visible_at',
         'content',
         'solution',
+        'show_content_to_absentees_after_end',
+        'show_solution_to_absentees_after_end',
+        'show_answer_key_to_absentees_after_end',
         'created_by',
     ];
 
@@ -70,6 +76,9 @@ class OnlineExamDetail extends Model
         'time_limit_minutes' => 'integer',
         'content' => 'array',
         'solution' => 'array',
+        'show_content_to_absentees_after_end' => 'boolean',
+        'show_solution_to_absentees_after_end' => 'boolean',
+        'show_answer_key_to_absentees_after_end' => 'boolean',
     ];
 
     public function exam(): BelongsTo

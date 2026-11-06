@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
@@ -79,10 +80,11 @@ class OnlineExamSessionController extends Controller
             }
         }
 
-        $payload = $this->sessionService->buildExamResultPayload($session->exam, $session, $session->student_id);
+        $payload = $this->sessionService->buildExamResultPayload($session->exam, $session);
 
         if (! $canViewAll) {
-            $this->hideStudentSolutions($payload, $this->canShowSolutions($session->exam, $session));
+            $canShow = $this->canShowSolutions($session->exam, $session);
+            $this->hideStudentSolutions($payload, $canShow, $canShow, $canShow);
         }
 
         return $this->jsonResponseOk($payload);
@@ -118,33 +120,41 @@ class OnlineExamSessionController extends Controller
 
         $session = $query->first();
 
-        $detail = $exam->onlineExamDetail;
+        $onlineExamDetail = $exam->onlineExamDetail;
 
         /*
-         * اولویت‌بندی مشاهده کلید و راه‌حل‌ها:
-         * ۱. اگر اپراتور صراحتاً answers_visible_at تعریف کرده باشد:
-         *    - ملاک منحصراً رسیدن به این تاریخ است (چه دانش‌آموز آزمون داده باشد چه غایب باشد).
-         * ۲. اگر answers_visible_at تعریف نشده باشد:
-         *    - اگر دانش‌آموز آزمون داده باشد ($session موجود است) => تابع canShowSolutions
-         *    - اگر در آزمون غایب بوده ($session نال است) => پایان یافتن کل بازه زمانی آزمون (examHasEnded)
+         * اولویت‌بندی مشاهده محتوای سوالات، پاسخ تشریحی و پاسخنامه کلیدی:
+         * - اگر answers_visible_at تعریف شده و هنوز نرسیده: هیچ‌کدام قابل مشاهده نیستند.
+         * - اگر دانش‌آموز شرکت کرده ($session وجود دارد): منطق قبلی canShowSolutions برای هر سه موارد.
+         * - اگر غایب یا شرکت نکرده ($session null است): هر مورد فقط اگر فلد مربوطه true باشد
+         *   و بازه زمانی آزمون پایان یافته باشد.
          */
-        $hasCustomAnswerTime = ! empty($detail?->answers_visible_at);
+        $examHasEnded = $this->examHasEnded($exam);
+        $hasCustomAnswerTime = ! empty($onlineExamDetail?->answers_visible_at);
+        $now = now();
+        $globalBlocked = $hasCustomAnswerTime && $now->lt($onlineExamDetail->answers_visible_at);
 
-        if ($hasCustomAnswerTime) {
-            $canViewSolutions = now()->gte($detail->answers_visible_at);
+        if ($session) {
+            // دانش‌آموز شرکت کرده: محتوای سوالات همیشه قابل مشاهده است (نسبت به answers_visible_at مسدود نمی‌شود)
+            // فقط پاسخ تشریحی و پاسخنامه کلیه تحت قید answers_visible_at هستند.
+            $canViewContent = true;
+
+            $baseCanView = $this->canShowSolutions($exam, $session);
+            $canViewSolutions = $baseCanView;
+            $canViewAnswerKeys = $baseCanView;
         } else {
-            $canViewSolutions = $session
-                ? $this->canShowSolutions($exam, $session)
-                : $this->examHasEnded($exam);
+            $canViewContent = ($onlineExamDetail->show_content_to_absentees_after_end ?? true) && $examHasEnded;
+            $canViewSolutions = !$globalBlocked && ($onlineExamDetail->show_solution_to_absentees_after_end ?? true) && $examHasEnded;
+            $canViewAnswerKeys = !$globalBlocked && ($onlineExamDetail->show_answer_key_to_absentees_after_end ?? true) && $examHasEnded;
         }
 
-        // اگر هنوز موعد مشاهده پاسخنامه نرسیده است:
-        if (! $canViewSolutions) {
-            if ($hasCustomAnswerTime) {
-                return $this->jsonResponseError('پاسخنامه بر اساس زمان‌بندی اعلام‌شده هنوز قابل مشاهده نیست.', 409);
-            }
-
-            return $this->jsonResponseError('پاسخنامه هنوز قابل مشاهده نیست.', 409);
+        if (
+            !isset($session) &&
+            !$canViewContent &&
+            !$canViewSolutions &&
+            !$canViewAnswerKeys
+        ) {
+            return $this->jsonResponseError('شما قادر به مشاهده این آزمون نیستید', 403);
         }
 
         /*
@@ -152,10 +162,16 @@ class OnlineExamSessionController extends Controller
          * اگر $session نال باشد (غایب یا شرکت نکرده)، متد سرویس به صورت خودکار
          * پی‌لود را با session = null و is_review_only = true می‌سازد.
          */
-        $payload = $this->sessionService->buildExamResultPayload($exam, $session, $user->id);
+        $payload = $this->sessionService->buildExamResultPayload(
+            $exam,
+            $session,
+            $canViewContent,
+            $canViewSolutions,
+            $canViewAnswerKeys
+        );
 
-        // اعمال مخفی‌سازی در صورتی که مجاز به دیدن راه‌حل‌ها نباشد
-        $this->hideStudentSolutions($payload, $canViewSolutions);
+        // اعمال مخفی‌سازی جداگانه برای هر سه مورد
+        $this->hideStudentSolutions($payload, $canViewContent, $canViewSolutions, $canViewAnswerKeys);
 
         return $this->jsonResponseOk($payload);
     }
@@ -181,7 +197,7 @@ class OnlineExamSessionController extends Controller
                 ->with($this->sessionService->getSessionDetailRelations())
                 ->findOrFail($sessionId);
 
-            $result = $this->sessionService->buildExamResultPayload($session->exam, $session, $session->student_id);
+            $result = $this->sessionService->buildExamResultPayload($session->exam, $session);
 
             return $this->jsonResponseOk($result);
         } catch (ModelNotFoundException $e) {
@@ -287,7 +303,7 @@ class OnlineExamSessionController extends Controller
             $payload = $this->sessionService->buildExamResultPayload(
                 exam: $exam,
                 session: $session,
-                studentId: (int) $student->id
+                loadRankings: false
             );
 
             // ۱. مخفی کردن راه‌حل‌ها و پاسخ‌های تشریحی از روی آبجکت exam
@@ -546,8 +562,17 @@ class OnlineExamSessionController extends Controller
         $detail = $exam->onlineExamDetail;
 
         if ($detail) {
-            $detail->makeHidden(['solution', 'solution_file', 'solution_path', 'solution_descriptive']);
+            $detail->makeHidden(['solution']);
             $detail->answerKeys?->makeHidden(['correct_option']);
+        }
+    }
+
+    private function hideExamContent(Exam $exam): void
+    {
+        $detail = $exam->onlineExamDetail;
+
+        if ($detail) {
+            $detail->makeHidden(['content']);
         }
     }
 
@@ -563,28 +588,37 @@ class OnlineExamSessionController extends Controller
         $session->responses?->makeHidden(['is_correct', 'marks_obtained']);
     }
 
-    private function hideStudentSolutions(array &$payload, bool $canShowSolutions): void
+    private function hideStudentSolutions(array &$payload, bool $canViewContent, bool $canViewSolutions, bool $canViewAnswerKeys): void
     {
-        if ($canShowSolutions) {
+        // اگر هر سه قابل مشاهده باشند،nothing to hide
+        if ($canViewContent && $canViewSolutions && $canViewAnswerKeys) {
             return;
         }
 
-        $this->hideExamSolutions($payload['exam']);
-
-        if ($payload['answer_keys']) {
-            foreach ($payload['answer_keys'] as &$key) {
-                unset($key['correct_option'], $key['is_correct'], $key['marks_obtained']);
-            }
-            unset($key);
+        // مخفی‌سازی محتوای سوالات
+        if (! $canViewContent) {
+            $this->hideExamContent($payload['exam']);
         }
 
-        if ($payload['session']) {
-            $payload['session']['percent'] = null;
-            $payload['session']['t_score'] = null;
-            $payload['session']['responses']?->makeHidden(['is_correct', 'marks_obtained']);
+        // مخفی‌سازی پاسخ تشریحی
+        if (! $canViewSolutions) {
+            $payload['exam']->onlineExamDetail->makeHidden(['solution']);
         }
 
-        $payload['rankings'] = ['metric' => 'percent', 'attempt_policy' => 'latest_graded', 'classes' => [], 'levels' => []];
+        if (! $canViewAnswerKeys) {
+            $payload['exam']->onlineExamDetail->answerKeys?->makeHidden(['correct_option']);
+        }
+
+//        // اگر پاسخ‌ها نمایش داده نمی‌شوند، نمرات و رتبه‌بندی را هم مخفی می‌کنیم
+//        if (! $canViewSolutions) {
+//            if ($payload['session']) {
+//                $payload['session']['percent'] = null;
+//                $payload['session']['t_score'] = null;
+//                $payload['session']['responses']?->makeHidden(['is_correct', 'marks_obtained']);
+//            }
+//
+//            $payload['rankings'] = ['metric' => 'percent', 'attempt_policy' => 'latest_graded', 'classes' => [], 'levels' => []];
+//        }
     }
 
     /**

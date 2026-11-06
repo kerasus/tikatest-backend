@@ -232,8 +232,19 @@ class OnlineExamSessionService
 
     /**
      * پکیج کردن خروجی استاندارد نتیجه آزمون (ساختار یکدست برای سشن‌دار و بی‌سشن)
+     *
+     * @param bool $canViewContent    آیا نمایش محتوای سوالات مجاز است
+     * @param bool $canViewSolutions  آیا نمایش پاسخ تشریحی مجاز است
+     * @param bool $canViewAnswerKeys آیا نمایش پاسخنامه کلیدی مجاز است
      */
-    public function buildExamResultPayload(Exam $exam, ?OnlineExamSession $session, int $studentId): array
+    public function buildExamResultPayload(
+        Exam $exam,
+        ?OnlineExamSession $session,
+        bool $loadRankings = true,
+        bool $canViewContent = true,
+        bool $canViewSolutions = true,
+        bool $canViewAnswerKeys = true
+    ): array
     {
         // آماده‌سازی روابط آزمون و کلیدها
         $exam->loadMissing([
@@ -256,55 +267,23 @@ class OnlineExamSessionService
                 'started_at' => $session->started_at,
                 'submitted_at' => $session->submitted_at,
                 'time_used_seconds' => $session->time_used_seconds,
+                'duration_limit_seconds' => $session->duration_limit_seconds,
                 'percent' => $session->percent !== null ? (float) $session->percent : null,
                 't_score' => $session->t_score,
                 'is_locked' => $session->is_locked,
                 'responses' => $session->responses,
             ] : null,
             'remaining_time' => $session ? $this->calculateRemainingTime($session) : null,
-            'answer_keys' => $this->formatAnswerKeysForExam($exam, $session),
-            'rankings' => $session ? $this->getSessionRankings($session) : [
+            'rankings' => ($loadRankings && $session) ? $this->getSessionRankings($session) : [
                 'metric' => 'percent',
                 'attempt_policy' => 'latest_graded',
                 'classes' => [],
                 'levels' => [],
             ],
             'is_review_only' => $session === null,
+            '_can_view_content' => $canViewContent,
+            '_can_view_solutions' => $canViewSolutions,
         ];
-    }
-
-    /**
-     * فرمت یکپارچه کلیدها برای آزمون (چه سشن باشد چه نباشد)
-     */
-    public function formatAnswerKeysForExam(Exam $exam, ?OnlineExamSession $session): ?array
-    {
-        $answerKeys = $exam->onlineExamDetail?->answerKeys;
-        if (! $answerKeys) {
-            return null;
-        }
-
-        $responsesByQuestion = $session ? $session->responses->keyBy('question_number') : collect();
-
-        return $answerKeys->map(function ($key) use ($responsesByQuestion) {
-            $response = $responsesByQuestion->get($key->question_number);
-
-            $payload = [
-                'id' => $key->id,
-                'exam_id' => $key->exam_id,
-                'question_number' => $key->question_number,
-                'number_of_choices' => $key->number_of_choices,
-                'submitted_option' => $response?->submitted_option,
-                'weight' => $key->weight,
-                'has_negative_mark' => $key->has_negative_mark,
-                'is_active' => $key->is_active,
-            ];
-
-            $payload['correct_option'] = $key->correct_option;
-            $payload['is_correct'] = $response?->is_correct;
-            $payload['marks_obtained'] = $response?->marks_obtained;
-
-            return $payload;
-        })->values()->all();
     }
 
     /**

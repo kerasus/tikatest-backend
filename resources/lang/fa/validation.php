@@ -190,6 +190,9 @@ return [
         'is_active'        => 'وضعیت فعال',
         'left_at'          => 'تاریخ ترک',
         'enrolled_at'      => 'تاریخ ثبت نام',
+        'show_content_to_absentees_after_end'   => 'نمایش محتوای سوالات برای غایبان پس از پایان آزمون',
+        'show_solution_to_absentees_after_end'  => 'نمایش پاسخ تشریحی برای غایبان پس از پایان آزمون',
+        'show_answer_key_to_absentees_after_end'=> 'نمایش پاسخ‌نامه کلیدی برای غایبان پس از پایان آزمون',
     ],
 
 ];
