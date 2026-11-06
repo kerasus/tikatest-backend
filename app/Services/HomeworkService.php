@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\AcademicLevel;
+use App\Models\SchoolClass;
 use App\Models\User;
 use App\Models\Homework;
 use Illuminate\Support\Str;
@@ -491,7 +493,7 @@ class HomeworkService
     public function getHomeworkSubmissionsGroupedByClass(Homework $homework): array
     {
         // 1) کلاس‌های صریح تکلیف (homework_classes)
-        $explicitClasses = \App\Models\SchoolClass::query()
+        $explicitClasses = SchoolClass::query()
             ->whereIn('id', DB::table('homework_classes')->where('homework_id', $homework->id)->pluck('class_id'))
             ->with('academicLevel')
             ->get();
@@ -506,7 +508,7 @@ class HomeworkService
 
         $levelsWithClasses = collect();
         if (! empty($levelIds)) {
-            $levelsWithClasses = \App\Models\AcademicLevel::query()
+            $levelsWithClasses = AcademicLevel::query()
                 ->whereIn('id', $levelIds)
                 ->with(['classes.academicLevel'])
                 ->get();
@@ -613,6 +615,43 @@ class HomeworkService
                         ] : null,
                     ];
                 }
+
+                // ==========================================
+                // مرتب‌سازی دانش‌آموزان طبق اولویت‌های ۳ گانه
+                // ==========================================
+                usort($studentsPayload, function (array $a, array $b): int {
+                    // 1) تعیین گروه اولویت:
+                    // گروه 1: ارسال کرده (submitted یا reviewed)
+                    // گروه 2: مشاهده کرده ولی ارسال نکرده
+                    // گروه 3: نه ارسال کرده و نه مشاهده کرده
+                    $groupA = $a['has_submitted'] ? 1 : ($a['has_seen'] ? 2 : 3);
+                    $groupB = $b['has_submitted'] ? 1 : ($b['has_seen'] ? 2 : 3);
+
+                    // اگر در دو گروه متفاوت هستند، گروه کوچک‌تر بالاتر قرار می‌گیرد (1 قبل از 2 و 2 قبل از 3)
+                    if ($groupA !== $groupB) {
+                        return $groupA <=> $groupB;
+                    }
+
+                    // 2) سورت داخل هر گروه به صورت نزولی (جدیدترین به قدیمی‌ترین):
+                    if ($groupA === 1) {
+                        $timeA = ! empty($a['submission']['submitted_at']) ? strtotime($a['submission']['submitted_at']) : 0;
+                        $timeB = ! empty($b['submission']['submitted_at']) ? strtotime($b['submission']['submitted_at']) : 0;
+
+                        // نزولی (DESC): b نسبت به a
+                        return $timeB <=> $timeA;
+                    }
+
+                    if ($groupA === 2) {
+                        $timeA = ! empty($a['submission']['student_seen_at']) ? strtotime($a['submission']['student_seen_at']) : 0;
+                        $timeB = ! empty($b['submission']['student_seen_at']) ? strtotime($b['submission']['student_seen_at']) : 0;
+
+                        // نزولی (DESC): b نسبت به a
+                        return $timeB <=> $timeA;
+                    }
+
+                    // در گروه 3 (هیچ کاری نکرده‌ها): سورت بر اساس آیدی یا نام
+                    return ($a['student']['id'] ?? 0) <=> ($b['student']['id'] ?? 0);
+                });
 
                 $classesPayload[] = [
                     'class_id' => $schoolClass->id,
