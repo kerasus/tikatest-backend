@@ -507,6 +507,8 @@ class OnlineExamSessionController extends Controller
             return $this->jsonResponseError('آزمون آنلاین مورد نظر یافت نشد.', 404);
         }
 
+        $this->sessionService->repairExpiredSessionsForExam($examId);
+
         return $this->jsonResponseOk($this->sessionService->getExamSessionsGroupedByClass($exam));
     }
 
