@@ -121,6 +121,23 @@ class HomeworkService
             }
         }
 
+        $homeworkTable = $query->getModel()->getTable();
+        $query->orderByRaw(
+            "CASE
+                WHEN `{$homeworkTable}`.`due_date` >= ?
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM `homework_submissions`
+                        WHERE `homework_submissions`.`homework_id` = `{$homeworkTable}`.`id`
+                          AND `homework_submissions`.`student_id` = ?
+                          AND `homework_submissions`.`submitted_at` IS NOT NULL
+                    )
+                THEN 0
+                ELSE 1
+            END ASC",
+            [now(), $student->id]
+        )->orderBy("{$homeworkTable}.due_date", 'DESC');
+
         return $query;
     }
 

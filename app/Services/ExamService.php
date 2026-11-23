@@ -606,7 +606,7 @@ class ExamService
         $toDt   = $to ? Carbon::parse($to) : null;
         $now    = now();
 
-        // ۲. کوئری اصلی آزمون با Select امن
+        // ۲. کوئری اصلی آزمون با Select امن و ستون‌های اولویت‌بندی پویا
         $query = Exam::query()
             ->select([
                 'exams.id',
@@ -695,13 +695,30 @@ class ExamService
             });
         }
 
-        // ۶. سورت بر اساس نزدیک‌ترین زمان شروع
-        $query->orderBy(
-            OnlineExamDetail::select('starts_at')
-                ->whereColumn('online_exam_details.exam_id', 'exams.id')
-                ->limit(1),
-            'asc'
-        );
+        // ۶. مرتب‌سازی سفارشی (Custom Sorting):
+        // اولویت ۱: آزمون‌هایی که دانش‌آموز هنوز شرکت نکرده و مهلت زمان شرکت در آن‌ها همچنان باقی است (ends_at > now) -> امتیاز ۰
+        // اولویت ۲: سایر آزمون‌ها -> امتیاز ۱
+        // سپس مرتب‌سازی ثانویه بر اساس زمان شروع (starts_at) به صورت نزولی (یا صعودی بر حسب نیاز)
+
+        $query->addSelect([
+            'sorting_priority' => OnlineExamDetail::selectRaw("
+                CASE
+                    WHEN ends_at IS NULL OR ends_at > ? THEN 0
+                    ELSE 1
+                END
+            ", [$now])
+            ->whereColumn('online_exam_details.exam_id', 'exams.id')
+            ->limit(1)
+        ]);
+
+        // اعمال ترتیب بر اساس اولویت شرکت‌نکرده‌ها و سپس تاریخ شروع به صورت صعودی/کاهشی
+        $query->orderBy('sorting_priority', 'asc')
+              ->orderBy(
+                  OnlineExamDetail::select('starts_at')
+                      ->whereColumn('online_exam_details.exam_id', 'exams.id')
+                      ->limit(1),
+                  'desc'
+              );
 
         return $query;
     }
